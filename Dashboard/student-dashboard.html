@@ -1,0 +1,197 @@
+<!-- ══════════════════════════════════════════
+     Student Dashboard, Portfolio, Upload, Projects, Notifications
+══════════════════════════════════════════ -->
+<div class="screen" id="s-student">
+  <div class="app-shell">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">Artfolio</div>
+      <div class="sidebar-user">
+        <div class="sidebar-avatar" id="s-sidebar-avatar"><img src="https://i.pravatar.cc/80?img=3" alt=""/></div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-name" id="s-sidebar-name">Juan Dela Cruz</div>
+          <div class="sidebar-role">Student</div>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <a class="snav-item active" onclick="sPage('dashboard')">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          Dashboard
+        </a>
+        <a class="snav-item" onclick="sPage('assignments')">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>
+          Classwork
+          <span class="nav-badge" id="assign-badge"></span>
+        </a>
+        <a class="snav-item" onclick="sPage('portfolio')">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          My Portfolio
+        </a>
+        <a class="snav-item" onclick="sPage('upload')">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Upload Work
+        </a>
+        <a class="snav-item" onclick="sPage('projects')">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          My Projects
+        </a>
+        <a class="snav-item" onclick="sPage('notifications')">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          Notifications
+          <span class="nav-badge" id="notif-badge"></span>
+        </a>
+      </nav>
+      <div class="sidebar-logout">
+        <button onclick="go('s-login')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Logout
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main-content">
+
+      <!-- DASHBOARD PAGE -->
+      <div id="sp-dashboard">
+        <div class="welcome-banner">
+          <div>
+            <h2 id="s-welcome-name">Welcome Back, Juan!</h2>
+            <p id="s-welcome-sub">You have 5 files uploaded</p>
+          </div>
+          <button class="btn-upload-new" onclick="sPage('upload')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload New Work
+          </button>
+        </div>
+
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-num" id="dash-total">0</div>
+            <div class="stat-label">Total Uploads</div>
+            <div class="stat-sub green">Total uploads this week</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num" id="dash-approved">0</div>
+            <div class="stat-label">Approved Works</div>
+            <div class="stat-sub orange" id="dash-approval-rate">0% approval rate</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-num" id="dash-pending">0</div>
+            <div class="stat-label">Pending Review</div>
+            <div class="stat-sub orange">Awaiting feedback</div>
+          </div>
+        </div>
+
+        <div class="section-header">
+          <div class="section-title">Recent Uploads</div>
+          <div class="view-all" onclick="sPage('projects')">View All</div>
+        </div>
+        <div class="uploads-grid" id="dash-recent-uploads" style="margin-bottom:28px;"></div>
+
+        <div class="section-title" style="margin-bottom:14px;">Recent Notifications</div>
+        <div id="dash-recent-notifs"><div style="font-size:13px;color:var(--text3);">No notifications yet.</div></div>
+      </div>
+
+      <!-- CLASSWORK / ASSIGNMENTS PAGE -->
+      <div id="sp-assignments" style="display:none">
+        <div class="page-title">Classwork</div>
+        <div class="assignments-list" id="sa-list">
+          <div style="font-size:13px;color:var(--text3);padding:20px 0;">Loading assignments…</div>
+        </div>
+      </div>
+
+      <!-- MY PORTFOLIO PAGE -->
+      <div id="sp-portfolio" style="display:none">
+        <div class="portfolio-header">
+          <div class="portfolio-header-inner">
+            <div class="portfolio-avatar-lg" id="s-portfolio-avatar"><img src="https://i.pravatar.cc/80?img=3" alt=""/></div>
+            <div class="portfolio-info">
+              <div class="portfolio-name" id="s-portfolio-name">Juan Dela Cruz</div>
+              <div class="portfolio-meta" id="s-portfolio-meta">
+                Student ID<br>Section &nbsp;·&nbsp; Year Level<br>No social link added
+              </div>
+              <div class="portfolio-skills" id="s-portfolio-skills">
+                <span class="skill-pill" style="opacity:.6">No skills added yet</span>
+              </div>
+            </div>
+          </div>
+          <button class="btn-edit-portfolio" onclick="openEditProfile()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Edit Profile
+          </button>
+          <button class="btn-share-portfolio">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Share Portfolio
+          </button>
+        </div>
+
+        <div class="portfolio-tabs">
+          <button class="ptab-btn active" onclick="portTab(this,'public')">Public</button>
+          <button class="ptab-btn" onclick="portTab(this,'approved')">Approved Works</button>
+        </div>
+
+        <div id="pt-public" class="portfolio-grid"></div>
+        <div id="pt-approved" class="portfolio-grid" style="display:none"></div>
+      </div>
+
+      <!-- UPLOAD WORK PAGE -->
+      <div id="sp-upload" style="display:none">
+        <div class="upload-page-card">
+          <div class="upload-page-title">Upload New Work</div>
+          <div class="upload-page-sub">Share your creative work and get feedback from professors. Your file and details are saved to your account's database, so your professor can review them and they'll still be here next time you log in.</div>
+          <input type="file" id="up-file-input" accept="image/*,.pdf,.psd,.blend,.mp4,.zip" style="display:none" onchange="handleUploadFileSelect(event)"/>
+          <div class="drop-zone" id="up-drop-zone" onclick="document.getElementById('up-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--dark)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleUploadDrop(event)">
+            <div class="drop-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </div>
+            <div class="drop-text" id="up-drop-text">Drop files here or click to upload</div>
+          </div>
+          <label class="flabel">Project Title *</label>
+          <input class="finput" id="up-title" placeholder="e.g., Brand Identity Design"/>
+          <label class="flabel">Description</label>
+          <textarea class="comment-area" id="up-desc" rows="3" placeholder="Tell us about your project…"></textarea>
+          <label class="flabel">Grading Period *</label>
+          <select class="fselect" id="up-grading-period">
+            <option value="">Select Grading Period</option>
+            <option value="prelim">Prelim</option>
+            <option value="midterm">Midterm</option>
+            <option value="prefinals">Pre-Finals</option>
+            <option value="finals">Finals</option>
+          </select>
+          <div class="form-actions">
+            <button class="btn-cancel" onclick="cancelUpload()">✕ Cancel</button>
+            <button class="btn-submit-work" onclick="submitWork()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Submit for Review
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MY PROJECTS PAGE -->
+      <div id="sp-projects" style="display:none">
+        <div class="filter-tabs">
+          <button class="filter-tab active" onclick="projTab(this,'approved-p')">Approved Works</button>
+          <button class="filter-tab" onclick="projTab(this,'pending-p')">Pending Works</button>
+          <button class="filter-tab" onclick="projTab(this,'rejected-p')">Rejected Works</button>
+          <button class="filter-tab" onclick="projTab(this,'grades-p')">My Grades</button>
+        </div>
+
+        <div id="approved-p" class="projects-grid"></div>
+        <div id="pending-p" class="projects-grid" style="display:none"></div>
+        <div id="rejected-p" style="display:none"></div>
+        <div id="grades-p" style="display:none"></div>
+      </div>
+
+      <!-- NOTIFICATIONS PAGE -->
+      <div id="sp-notifications" style="display:none">
+        <div class="page-title">Notifications</div>
+        <div class="notif-list" id="s-notif-list">
+          <div style="font-size:13px;color:var(--text3);padding:20px 0;">No notifications yet.</div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>

@@ -1,0 +1,42 @@
+<!-- ══════════════════════════════════════════
+     Sign Up — Student
+══════════════════════════════════════════ -->
+<div class="screen" id="s-signup-student">
+  <div class="auth-wrap" style="align-items:center;justify-content:center;background:var(--surface);">
+    <div style="position:absolute;inset:0;pointer-events:none;overflow:hidden;opacity:.2;font-size:22px;display:flex;flex-wrap:wrap;gap:28px;padding:24px;align-content:flex-start;">
+      🎨✏️📐🖌️📷🎭🖼️🗂️📌✂️🖍️📷🎬🎵🎼🖥️📱💡🔮🎲🎯📚🔭🏆🎨✏️📐🖌️
+    </div>
+    <div class="auth-card" style="max-width:440px;">
+      <div style="margin-bottom:16px;cursor:pointer;color:var(--text3)" onclick="go('s-signup-choice')">← back</div>
+      <div class="auth-card-title">Create account</div>
+      <div class="auth-card-sub">Already have an account? <a onclick="go('s-login')">Login</a></div>
+      <div class="finput-row">
+        <div><label class="flabel">First Name</label><input class="finput" placeholder="First Name"/></div>
+        <div><label class="flabel">Last Name</label><input class="finput" placeholder="Last Name"/></div>
+      </div>
+      <label class="flabel">Student ID</label>
+      <input class="finput" placeholder="ex. 1 - 230371"/>
+      <div class="finput-row">
+        <div><label class="flabel">Section</label>
+          <select class="fselect" id="signup-student-section">
+            <option value="">Select Section</option>
+          </select>
+        </div>
+        <div>
+          <label class="flabel">Year Level</label>
+          <select class="fselect" id="signup-student-year">
+            <option value="">Select Year Level</option>
+            <option>1st Year</option>
+            <option>2nd Year</option>
+            <option>3rd Year</option>
+            <option>4th Year</option>
+          </select>
+        </div>
+      </div>
+      <label class="flabel">Email</label>
+      <input class="finput" type="email" placeholder="example@gmail.com"/>
+
+      <button class="btn-full" onclick="doSignupStudent()">NEXT</button>
+    </div>
+  </div>
+</div>

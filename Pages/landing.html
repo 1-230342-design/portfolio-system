@@ -1,0 +1,41 @@
+<!-- ══════════════════════════════════════════
+     Landing Page — About and Features
+══════════════════════════════════════════ -->
+<div class="screen active" id="s-landing">
+  <nav class="landing-nav">
+    <div class="landing-logo">Artfolio</div>
+    <div class="landing-nav-links">
+      <a class="active" onclick="showSection('about')">About Us</a>
+      <a onclick="showSection('features')">Features</a>
+    </div>
+    <div class="landing-nav-right">
+      <div class="search-bar-nav" style="cursor:text;">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="landing-search-input" placeholder="Search Name or Student" style="border:none;outline:none;background:transparent;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);width:100%;" onkeydown="if(event.key==='Enter')runLandingSearch()"/>
+      </div>
+      <a onclick="browseAllStudents()" style="font-size:12px;color:var(--text3);cursor:pointer;text-decoration:underline;white-space:nowrap;">Browse All Students</a>
+      <button class="btn-login-nav" onclick="go('s-login')">LOGIN</button>
+    </div>
+  </nav>
+
+  <!-- ABOUT SECTION -->
+  <div id="sec-about" class="section-page" style="position:relative;overflow:hidden;">
+    <h2>About Us</h2>
+    <p>Our Web-Based Portfolio System is designed to help students store, manage, and showcase their academic works, projects, skills, and achievements in one organized platform. The system provides an easy and accessible way for students to present their portfolios digitally while allowing professors and administrators to manage and review submissions efficiently.</p>
+    <!-- doodle icons scattered -->
+    <div style="position:absolute;right:80px;top:60px;opacity:.25;font-size:28px;pointer-events:none;">
+      <span style="position:absolute;top:0;left:0">🎨</span>
+      <span style="position:absolute;top:60px;left:80px">✏️</span>
+      <span style="position:absolute;top:120px;left:-30px">📐</span>
+      <span style="position:absolute;top:20px;left:180px">🖌️</span>
+      <span style="position:absolute;top:160px;left:120px">📷</span>
+      <span style="position:absolute;top:-20px;left:280px">🎭</span>
+    </div>
+  </div>
+
+  <!-- FEATURES SECTION -->
+  <div id="sec-features" class="section-page" style="display:none;position:relative;overflow:hidden;">
+    <h2>Features</h2>
+    <p>Our Web-Based Portfolio System offers features that help students and professors manage portfolios easily and efficiently. Students can upload projects, while professors and administrators can review and manage submitted works. The system also provides secure user access, organized portfolio management, and an easy-to-use interface for a better user experience.</p>
+  </div>
+</div>

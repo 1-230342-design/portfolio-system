@@ -1,0 +1,20 @@
+<!-- ══════════════════════════════════════════
+     Sign Up — Role Selection
+══════════════════════════════════════════ -->
+<div class="screen" id="s-signup-choice">
+  <div class="auth-wrap" style="align-items:center;justify-content:center;background:var(--surface);">
+    <div style="position:absolute;inset:0;pointer-events:none;overflow:hidden;opacity:.2;font-size:22px;display:flex;flex-wrap:wrap;gap:28px;padding:24px;align-content:flex-start;">
+      🎨✏️📐🖌️📷🎭🖼️🗂️📌✂️🖍️📷🎬🎵🎼🖥️📱💡🔮🎲🎯📚🔭🏆🎨✏️📐🖌️
+    </div>
+    <div class="auth-card" style="max-width:400px;">
+      <div style="margin-bottom:20px;cursor:pointer;color:var(--text3)" onclick="go('s-login')">← back</div>
+      <div class="auth-card-title">Create account</div>
+      <div class="auth-card-sub">Already have an account? <a onclick="go('s-login')">Login</a></div>
+      <div class="choice-btns">
+        <button class="choice-btn" onclick="go('s-signup-student')">SIGN UP AS STUDENT</button>
+        <div class="or-div">OR</div>
+        <button class="choice-btn outline" onclick="go('s-signup-prof')">SIGN UP AS PROFESSOR</button>
+      </div>
+    </div>
+  </div>
+</div>
