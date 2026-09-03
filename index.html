@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Artfolio | ASIATECH Multimedia Arts</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════════════════════════════════
+     SHARED MODALS (student preview, similarity
+     inspector, edit profile, QR code) — used by
+     both the student and professor dashboards
+══════════════════════════════════════════ -->
+<!-- Read-only preview for a public work (no grades/comments — those stay private to the student) -->
+<div class="modal-overlay" id="publicWorkPreviewOverlay">
+  <div class="modal-box" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="ppv-title">—</div>
+      <button class="modal-close" onclick="closePublicWorkPreview()">✕</button>
+    </div>
+    <img id="ppv-img" src="" alt="" style="width:100%;max-height:400px;object-fit:cover;border-radius:10px;margin-bottom:14px;background:var(--surface2);"/>
+    <div id="ppv-placeholder" style="display:none;height:200px;align-items:center;justify-content:center;font-size:52px;background:var(--surface2);border-radius:10px;margin-bottom:14px;">🖼️</div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:6px;border-top:1px solid var(--border);">
+      <img id="ppv-qr-img" src="" alt="Scan for details" style="width:180px;height:180px;border-radius:10px;"/>
+      <div style="font-size:12px;color:var(--text3);">📱 Scan to view full details</div>
+      <a id="ppv-manual-link" href="#" target="_blank" rel="noopener" style="font-size:11px;color:var(--dark);text-decoration:underline;word-break:break-all;text-align:center;">—</a>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="studentProjectPreviewOverlay">
+  <div class="modal-box" style="max-width:560px;">
+    <div class="modal-head">
+      <div class="modal-title" id="spv-title">—</div>
+      <button class="modal-close" onclick="closeStudentProjectPreview()">✕</button>
+    </div>
+    <img id="spv-img" src="" alt="" style="width:100%;max-height:400px;object-fit:cover;border-radius:10px;margin-bottom:14px;background:var(--surface2);"/>
+    <div id="spv-placeholder" style="display:none;height:200px;align-items:center;justify-content:center;font-size:52px;background:var(--surface2);border-radius:10px;margin-bottom:14px;">🖼️</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span class="upload-status-badge" id="spv-status-badge" style="position:static;">—</span>
+      <span style="font-size:13px;color:var(--text3);" id="spv-meta">—</span>
+    </div>
+    <div style="font-size:14px;color:var(--dark);line-height:1.6;margin-bottom:14px;" id="spv-desc">—</div>
+
+    <div id="spv-stars-box" style="display:none;margin-bottom:14px;">
+      <div class="rd-label">Professor's Rating</div>
+      <div style="font-size:18px;color:var(--star);" id="spv-stars">—</div>
+    </div>
+
+    <div id="spv-grade-box" style="display:none;background:var(--dark);color:#fff;border-radius:10px;padding:16px 18px;margin-bottom:14px;">
+      <div style="font-size:12px;opacity:.7;margin-bottom:2px;">FINAL GRADE</div>
+      <div style="font-size:26px;font-weight:700;margin-bottom:10px;" id="spv-grade">—</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:12px;opacity:.85;border-top:1px solid rgba(255,255,255,.2);padding-top:10px;">
+        <div>Creativity<br><strong id="spv-c1" style="font-size:14px;">—</strong>/40</div>
+        <div>Technique<br><strong id="spv-c2" style="font-size:14px;">—</strong>/35</div>
+        <div>Composition<br><strong id="spv-c3" style="font-size:14px;">—</strong>/25</div>
+      </div>
+      <div id="spv-remarks" style="font-size:12px;font-style:italic;opacity:.85;margin-top:10px;display:none;"></div>
+    </div>
+
+    <div id="spv-comment-box" style="display:none;background:var(--surface);border-radius:10px;padding:14px 16px;margin-bottom:14px;">
+      <div class="rd-label">Professor's Comment</div>
+      <div style="font-size:13px;color:var(--dark);font-style:italic;" id="spv-comment">—</div>
+    </div>
+
+    <button class="btn-outline" id="spv-public-toggle-btn" style="display:none;margin-top:0;margin-bottom:10px;" onclick="togglePublic(currentPreviewItemId)">🌐 Add to Public</button>
+    <button class="btn-outline" id="spv-qr-btn" style="display:none;margin-top:0;margin-bottom:10px;" onclick="showWorkQr(currentPreviewItemId)">📱 View QR Code</button>
+    <div id="spv-public-hint" style="display:none;font-size:11px;color:var(--text3);margin-top:-6px;margin-bottom:14px;text-align:center;">Public works can be found by anyone searching your name on the Artfolio homepage.</div>
+
+    <button class="btn-cancel" style="width:100%;color:var(--red);border-color:rgba(244,67,54,.4);justify-content:center;" onclick="deleteWorkFromPreview()">🗑️ Delete This Work</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="qrCodeOverlay">
+  <div class="modal-box" style="max-width:340px;text-align:center;">
+    <div class="modal-head">
+      <div class="modal-title">Work QR Code</div>
+      <button class="modal-close" onclick="closeQrModal()">✕</button>
+    </div>
+    <div id="qr-loading" style="display:none;font-size:12px;color:var(--text3);padding:40px 0;">Generating QR code…</div>
+    <img id="qr-canvas" src="" alt="QR code" style="width:240px;height:240px;margin:0 auto 14px;display:block;border-radius:10px;background:#fff;"/>
+    <div id="qr-link-text" style="font-size:11px;color:var(--text3);word-break:break-all;background:var(--surface);border-radius:8px;padding:8px 10px;margin-bottom:14px;">—</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-outline" style="margin-top:0;" onclick="copyQrLink()">🔗 Copy Link</button>
+      <button class="btn-full" style="margin-top:0;" onclick="downloadQrImage()">⬇ Download PNG</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:12px;">Print this next to your physical artwork — scanning it opens this work's title and description.</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="inspectSimilarOverlay">
+  <div class="modal-box" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title">Similar Submission</div>
+      <button class="modal-close" onclick="closeInspectSimilar()">✕</button>
+    </div>
+    <img id="inspect-sim-img" src="" alt="" style="width:100%;max-height:360px;object-fit:cover;border-radius:10px;margin-bottom:14px;background:var(--surface2);"/>
+    <div style="font-weight:700;font-size:16px;margin-bottom:4px;" id="inspect-sim-title">—</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:12px;" id="inspect-sim-owner">—</div>
+    <div class="sim-badge" id="inspect-sim-badge" style="display:inline-block;">—</div>
+    <div style="font-size:12px;color:var(--text3);margin-top:14px;line-height:1.6;">This is the earlier submission your current review was flagged against. Use this preview to compare the two before approving or rejecting.</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="sectionPreviewOverlay">
+  <div class="modal-box" style="max-width:820px;">
+    <div class="modal-head">
+      <div class="modal-title" id="sp-section-title">—</div>
+      <button class="modal-close" onclick="closeSectionPreview()">✕</button>
+    </div>
+    <div class="form-row" style="margin-bottom:16px;">
+      <div>
+        <label class="flabel">Grading Period</label>
+        <select class="fselect" id="sp-period-select" onchange="loadSectionPreview()">
+          <option value="prelim">Prelim</option>
+          <option value="midterm">Midterm</option>
+          <option value="prefinals">Pre-Finals</option>
+          <option value="finals">Finals</option>
+        </select>
+      </div>
+      <!-- Invisible label mirrors the "Grading Period" label's height so the button
+           lines up with the dropdown itself, not the bottom of the whole label+field stack. -->
+      <div>
+        <label class="flabel" style="visibility:hidden;">Download</label>
+        <button class="btn-submit-work" style="width:100%;justify-content:center;margin:0;" onclick="downloadSectionSpreadsheet()">⬇ Download Spreadsheet</button>
+      </div>
+    </div>
+    <div id="sp-table-wrap" style="max-height:400px;overflow-x:auto;overflow-y:auto;">
+      <div style="font-size:13px;color:var(--text3);">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="attachWorkOverlay">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-head">
+      <div class="modal-title">Attach Work — <span id="aw-assignment-title" style="font-weight:400;">—</span></div>
+      <button class="modal-close" onclick="closeAttachWorkModal()">✕</button>
+    </div>
+    <input type="file" id="aw-file-input" accept="image/*,.pdf,.psd,.blend,.mp4,.zip" style="display:none" onchange="handleAttachFileSelect(event)"/>
+    <div class="drop-zone" id="aw-drop-zone" style="padding:32px 16px;" onclick="document.getElementById('aw-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--dark)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleAttachDrop(event)">
+      <div class="drop-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <div class="drop-text" id="aw-drop-text">Drop files here or click to upload</div>
+    </div>
+    <label class="flabel">Title *</label>
+    <input class="finput" id="aw-title" placeholder="Give your submission a title"/>
+    <label class="flabel">Description</label>
+    <textarea class="comment-area" id="aw-desc" rows="3" placeholder="Notes for your professor (optional)…"></textarea>
+    <button class="btn-full" onclick="submitAttachedWork()">📎 Submit Attachment</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="createAssignmentOverlay">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-head">
+      <div class="modal-title">New Assignment</div>
+      <button class="modal-close" onclick="closeCreateAssignmentModal()">✕</button>
+    </div>
+    <label class="flabel">Title *</label>
+    <input class="finput" id="ca-title" placeholder="e.g., Portrait Photography Series"/>
+    <label class="flabel">Instructions</label>
+    <textarea class="comment-area" id="ca-instructions" rows="4" placeholder="Describe what students should submit…"></textarea>
+    <div class="finput-row">
+      <div>
+        <label class="flabel">Grading Period</label>
+        <select class="fselect" id="ca-period">
+          <option value="">— None —</option>
+          <option value="prelim">Prelim</option>
+          <option value="midterm">Midterm</option>
+          <option value="prefinals">Pre-Finals</option>
+          <option value="finals">Finals</option>
+        </select>
+      </div>
+      <div>
+        <label class="flabel">Due Date</label>
+        <input class="finput" type="date" id="ca-due"/>
+      </div>
+    </div>
+    <button class="btn-full" onclick="createAssignment()">📌 Post Assignment</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="editProfileOverlay">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-title">Edit Profile</div>
+      <button class="modal-close" onclick="closeEditProfile()">✕</button>
+    </div>
+
+    <label class="flabel">Full Name</label>
+    <input class="finput" id="ep-fullname" placeholder="e.g. Jerome Mabalot"/>
+
+    <div style="display:flex;gap:12px;">
+      <div style="flex:1;">
+        <label class="flabel">Section</label>
+        <input class="finput" id="ep-section" placeholder="e.g. BSIT2"/>
+      </div>
+      <div style="flex:1;">
+        <label class="flabel">Year Level</label>
+        <select class="fselect" id="ep-year">
+          <option value="">Select</option>
+          <option>1st Year</option>
+          <option>2nd Year</option>
+          <option>3rd Year</option>
+          <option>4th Year</option>
+        </select>
+      </div>
+    </div>
+
+    <label class="flabel">Social Media Link</label>
+    <input class="finput" id="ep-social" placeholder="https://instagram.com/yourhandle"/>
+
+    <label class="flabel">Skills</label>
+    <div class="skill-chip-row" id="ep-skill-chips"></div>
+    <div class="skill-picker-wrap">
+      <button type="button" class="skill-add-btn" onclick="toggleSkillPicker()">+ Add Skill</button>
+      <div class="skill-picker" id="ep-skill-picker" style="display:none;"></div>
+    </div>
+
+    <button class="btn-full" style="margin-top:24px;" onclick="saveProfileEdits()">Save Changes</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PAGE INCLUDES
+     Each screen below lives in its own file and
+     is injected here at runtime by js/loader.js
+══════════════════════════════════════════ -->
+<div data-include="Pages/landing.html"></div>
+<div data-include="Pages/public-search.html"></div>
+<div data-include="Pages/public-profile.html"></div>
+<div data-include="Pages/public-work.html"></div>
+<div data-include="Pages/login.html"></div>
+<div data-include="Pages/signup-choice.html"></div>
+<div data-include="Pages/signup-student.html"></div>
+<div data-include="Pages/signup-prof.html"></div>
+<div data-include="Pages/verify-student.html"></div>
+<div data-include="Pages/verify-prof.html"></div>
+<div data-include="Pages/forgot-password.html"></div>
+<div data-include="Dashboard/student-dashboard.html"></div>
+<div data-include="Dashboard/professor-dashboard.html"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="js/loader.js"></script>
+<script src="js/app.js"></script>
+<script src="js/assignments.js"></script>
+<script src="js/grade-archives.js"></script>
+<script src="js/qr.js"></script>
+</body>
+</html>
