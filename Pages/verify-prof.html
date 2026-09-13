@@ -1,0 +1,27 @@
+<!-- ══════════════════════════════════════════
+     Email OTP Verification — Professor
+══════════════════════════════════════════ -->
+<div class="screen" id="s-verify-prof">
+  <div class="auth-wrap" style="align-items:center;justify-content:center;background:var(--surface);">
+    <div style="position:absolute;inset:0;pointer-events:none;overflow:hidden;opacity:.2;font-size:22px;display:flex;flex-wrap:wrap;gap:28px;padding:24px;align-content:flex-start;">
+      🎨✏️📐🖌️📷🎭🖼️🗂️📌✂️🖍️📷🎬🎵🎼🖥️📱💡🔮🎲🎯📚🔭🏆🎨✏️📐🖌️
+    </div>
+    <div class="auth-card" style="max-width:400px;text-align:center;">
+      <div style="margin-bottom:16px;cursor:pointer;color:var(--text3);text-align:left" onclick="go('s-signup-prof')">← back</div>
+      <div class="auth-card-title">Email Verification</div>
+      <p style="font-size:13px;color:var(--text3);margin:10px 0 6px;">We have sent the verification code to your email address</p>
+      <div class="otp-row" id="otp-prof">
+        <input class="otp-box" maxlength="1" oninput="otpNext(this)"/>
+        <input class="otp-box" maxlength="1" oninput="otpNext(this)"/>
+        <input class="otp-box" maxlength="1" oninput="otpNext(this)"/>
+        <input class="otp-box" maxlength="1" oninput="otpNext(this)"/>
+        <input class="otp-box" maxlength="1" oninput="otpNext(this)"/>
+        <input class="otp-box" maxlength="1" oninput="otpNext(this)"/>
+        <input class="otp-box" maxlength="1" oninput="otpNext(this)"/>
+        <input class="otp-box" maxlength="1" oninput="otpNext(this)"/>
+      </div>
+      <div class="resend-link">This code expires in <span class="timer-text" id="timer-p">60</span> seconds. <a onclick="resendCode('prof')">Resend Code</a></div>
+      <button class="btn-full" style="margin-top:20px" onclick="verifyProfOtp()">VERIFY &amp; SUBMIT</button>
+    </div>
+  </div>
+</div>
