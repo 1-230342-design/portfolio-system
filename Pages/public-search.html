@@ -1,0 +1,45 @@
+<div class="screen" id="s-public-search" style="position:relative;overflow:hidden;">
+<style>
+  .ps-decor{position:absolute;pointer-events:none;z-index:0;opacity:.55;}
+  .ps-decor-3{top:80px;right:20px;width:340px;}
+  .ps-decor-1{bottom:10px;left:40px;width:340px;}
+  .ps-decor-2{bottom:0;right:50px;width:380px;}
+</style>
+<img src="images/D3.png" alt="" class="ps-decor ps-decor-3"/>
+<img src="images/D1.png" alt="" class="ps-decor ps-decor-1"/>
+<img src="images/D2.png" alt="" class="ps-decor ps-decor-2"/>
+  <nav class="landing-nav" style="position:relative;z-index:1;">
+    <div class="landing-logo" style="cursor:pointer;display:flex;align-items:center;gap:8px;" onclick="go('s-landing')">
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:11px;">
+        <img src="images/logo.png" alt="Artfolio" class="site-logo-img" style="height:18px;">
+        <span style="width:1px;height:16px;background:var(--border2);"></span>
+        <span style="width:22px;height:22px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><img src="images/asia.png" alt="ASIATECH" class="site-logo-img" style="height:17px;"></span>
+      </div>
+      <span>Artfolio</span>
+    </div>
+    <div class="landing-nav-right">
+      <div class="search-bar-nav" style="cursor:text;">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="public-search-input-2" placeholder="Search Name or Student" style="border:none;outline:none;background:transparent;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--text);width:100%;" onkeydown="if(event.key==='Enter')runLandingSearch('public-search-input-2')"/>
+      </div>
+      <a onclick="browseAllStudents()" style="font-size:12px;color:var(--text3);cursor:pointer;text-decoration:underline;white-space:nowrap;">Browse All Students</a>
+      <button class="btn-login-nav" onclick="go('s-landing')">LOGIN</button>
+    </div>
+  </nav>
+  <div class="section-page" style="position:relative;z-index:1;">
+    <h2 style="font-size:32px;margin-bottom:8px;">Search Results</h2>
+    <p id="public-search-summary" style="margin-bottom:24px;">—</p>
+
+    <!-- STEP 1: Sections (tap a section to see the students enrolled in it) -->
+    <div id="public-search-sections">
+      <div class="students-list" id="public-search-results"></div>
+    </div>
+
+    <!-- STEP 2: Students inside one section (tap a student to view their public portfolio) -->
+    <div id="public-search-in-section" style="display:none">
+      <div style="margin-bottom:20px;cursor:pointer;color:var(--text3);font-size:13px" onclick="backToPublicSections()">← Back to Sections</div>
+      <div class="section-title" style="margin-bottom:14px;" id="pss-section-title">—</div>
+      <div class="students-list" id="public-search-section-students"></div>
+    </div>
+  </div>
+</div>
