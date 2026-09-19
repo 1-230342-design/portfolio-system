@@ -1206,8 +1206,10 @@ function closePublicWorkPreview(){
 //  AUTH — LOGIN
 // ══════════════════════════════════════════════════════
 async function doLogin(){
-  const raw  = document.getElementById('lp-login-email').value.trim();
-  const pass = document.getElementById('lp-login-pass').value;
+  const emailEl = document.getElementById('lp-login-email') || document.getElementById('login-user');
+  const passEl  = document.getElementById('lp-login-pass')  || document.getElementById('login-pass');
+  const raw  = emailEl ? emailEl.value.trim() : '';
+  const pass = passEl  ? passEl.value : '';
   if(!raw)  { showToast('⚠️ Please enter your email'); return; }
   if(!pass) { showToast('⚠️ Please enter your password'); return; }
   const email = raw.includes('@') ? raw : raw+'@asiatech.edu.ph';
@@ -1249,8 +1251,10 @@ async function doLogin(){
 }
 
 async function doLoginProf(){
-  const raw  = document.getElementById('lp-login-email').value.trim();
-  const pass = document.getElementById('lp-login-pass').value;
+  const emailEl = document.getElementById('lp-login-email') || document.getElementById('login-user');
+  const passEl  = document.getElementById('lp-login-pass')  || document.getElementById('login-pass');
+  const raw  = emailEl ? emailEl.value.trim() : '';
+  const pass = passEl  ? passEl.value : '';
   if(!raw)  { showToast('⚠️ Please enter your email'); return; }
   if(!pass) { showToast('⚠️ Please enter your password'); return; }
   const email = raw.includes('@') ? raw : raw+'@asiatech.edu.ph';

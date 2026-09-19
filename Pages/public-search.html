@@ -1,9 +1,12 @@
 <div class="screen" id="s-public-search" style="position:relative;overflow:hidden;">
 <style>
-  .ps-decor{position:absolute;pointer-events:none;z-index:0;opacity:.55;}
+  .ps-decor{position:absolute;pointer-events:none;z-index:0;opacity:.45;}
   .ps-decor-3{top:80px;right:20px;width:340px;}
   .ps-decor-1{bottom:10px;left:40px;width:340px;}
   .ps-decor-2{bottom:0;right:50px;width:380px;}
+  #s-public-search .section-page{padding-top:40px;}
+  #s-public-search h2{font-family:'Fraunces',serif;font-size:clamp(28px,4vw,36px);color:var(--dark);margin-bottom:8px;}
+  #s-public-search .section-title{font-family:'Fraunces',serif;font-size:20px;color:var(--dark);margin-bottom:14px;}
 </style>
 <img src="images/D3.png" alt="" class="ps-decor ps-decor-3"/>
 <img src="images/D1.png" alt="" class="ps-decor ps-decor-1"/>
@@ -27,8 +30,8 @@
     </div>
   </nav>
   <div class="section-page" style="position:relative;z-index:1;">
-    <h2 style="font-size:32px;margin-bottom:8px;">Search Results</h2>
-    <p id="public-search-summary" style="margin-bottom:24px;">—</p>
+    <h2>Search Results</h2>
+    <p id="public-search-summary" style="margin-bottom:28px;font-size:14px;color:var(--text3);">—</p>
 
     <!-- STEP 1: Sections (tap a section to see the students enrolled in it) -->
     <div id="public-search-sections">
@@ -37,8 +40,8 @@
 
     <!-- STEP 2: Students inside one section (tap a student to view their public portfolio) -->
     <div id="public-search-in-section" style="display:none">
-      <div style="margin-bottom:20px;cursor:pointer;color:var(--text3);font-size:13px" onclick="backToPublicSections()">← Back to Sections</div>
-      <div class="section-title" style="margin-bottom:14px;" id="pss-section-title">—</div>
+      <div style="margin-bottom:20px;cursor:pointer;color:var(--text3);font-size:13px;" onclick="backToPublicSections()">← Back to Sections</div>
+      <div class="section-title" id="pss-section-title">—</div>
       <div class="students-list" id="public-search-section-students"></div>
     </div>
   </div>
