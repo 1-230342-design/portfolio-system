@@ -2247,6 +2247,42 @@ async function unsubmitWorkFromPreview(){
   await unsubmitWork(id);
 }
 
+// ── DOWNLOAD WORK (student: save their own submission back to their device) ──
+// Works as a personal archive — the file comes straight from Cloudinary, so
+// the student always gets the exact original they uploaded, whatever its type
+// (image, video, PDF…). Fetched as a blob first so the browser saves it with
+// the work's title instead of just opening it in a new tab. If the fetch ever
+// fails (e.g. offline quirks), falls back to opening the file in a new tab.
+function downloadFileName(p){
+  const base = ((p && p.title) || 'artfolio-work').replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 60) || 'artfolio-work';
+  const m = (p && p.file && p.file.dataUrl || '').split('?')[0].match(/\.([a-zA-Z0-9]{2,5})$/);
+  return base + (m ? '.' + m[1].toLowerCase() : '');
+}
+async function downloadWork(itemId){
+  if(!currentUser) return;
+  const list = studentProjects[currentUser.id] || [];
+  const p = list.find(x => x.id === itemId);
+  if(!p || !p.file || !p.file.dataUrl){ showToast('⚠️ File not available for download'); return; }
+  showToast('⬇️ Downloading…');
+  try{
+    const res = await fetch(p.file.dataUrl, { mode: 'cors' });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = downloadFileName(p);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('✅ Download started!');
+  }catch(err){
+    console.warn('downloadWork blob fetch failed, opening in new tab:', err);
+    window.open(p.file.dataUrl, '_blank');
+  }
+}
+
 function renderProjectsPage(uid){
   const approvedEl = document.getElementById('approved-p');
   if(!approvedEl) return;
@@ -2272,6 +2308,9 @@ function renderProjectsPage(uid){
     const publicToggleHtml = p.status==='approved'
       ? `<button class="btn-outline" style="margin-top:10px;" onclick="event.stopPropagation();togglePublic('${p.id}')">${p.isPublic ? '🔒 Remove from Public' : '🌐 Add to Public'}</button>`
       : '';
+    // Every card gets a Download button — approved, pending, rejected, or
+    // withdrawn. It's the student's own file, so it's always theirs to keep.
+    const downloadBtnHtml = `<button class="btn-outline" style="margin-top:10px;" onclick="event.stopPropagation();downloadWork('${p.id}')">⬇️ Download</button>`;
     const rejectedHtml = (p.status==='rejected' && p.feedbackComment)
       ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
           <div style="font-size:12px;color:var(--red);font-weight:600;">Professor's Comment:</div>
@@ -2287,6 +2326,7 @@ function renderProjectsPage(uid){
         ${rejectedHtml}
         ${withdrawnNote}
         ${publicToggleHtml}
+        ${downloadBtnHtml}
         ${unsubmitBtn}
         ${deleteBtn}
       </div></div>`;
