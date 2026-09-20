@@ -439,6 +439,10 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 /* ── MODAL / EDIT PROFILE ── */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:center;justify-content:center;padding:20px;}
 .modal-overlay.open{display:flex;}
+/* The originality result must pop ABOVE the Attach Work / Upload modals that
+   are still open behind it — same z-index + earlier DOM position meant the
+   "100% Match Found" notice was hidden underneath and students never saw it. */
+#originalityCheckOverlay{z-index:6000;}
 .modal-box{background:#fff;border-radius:16px;padding:28px;width:100%;max-width:460px;max-height:88vh;overflow-y:auto;}
 .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}
 .modal-title{font-family:'Fraunces',serif;font-size:20px;color:var(--dark);}

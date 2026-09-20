@@ -336,11 +336,40 @@ async function createAssignment(){
 }
 
 async function deleteAssignment(id){
-  if(!confirm('Delete this assignment? Any student submissions already attached to it will remain in the system but will no longer show under Classwork.')) return;
+  if(!confirm('Delete this assignment? This ALSO permanently deletes every student submission attached to it — they will disappear from the students\' Classwork, My Projects, and grades. This cannot be undone.')) return;
   try{
+    showToast('🗑️ Deleting assignment and its submissions…');
+    // Find every student portfolio attached to this assignment, so the
+    // assignment vanishes from the students' dashboards too — not just from
+    // the professor's list. Previously these rows were left behind, so
+    // students kept seeing orphaned submissions for a deleted assignment.
+    const { data: ports, error: portErr } = await sb.from('portfolios').select('id').eq('assignment_id', id);
+    if(portErr) throw portErr;
+    const portIds = (ports || []).map(p => p.id);
+
+    if(portIds.length){
+      const { data: items } = await sb.from('portfolio_items').select('id, cloudinary_public_id').in('portfolio_id', portIds);
+      const itemIds = (items || []).map(i => i.id);
+
+      if(itemIds.length){
+        // FK rows first, otherwise the item delete is rejected.
+        await sb.from('similarity_logs').delete().in('checked_item_id', itemIds);
+        await sb.from('similarity_logs').delete().in('matched_item_id', itemIds);
+        const { error: itemErr } = await sb.from('portfolio_items').delete().in('portfolio_id', portIds);
+        if(itemErr) throw itemErr;
+        // Best-effort Cloudinary cleanup — never fails the whole delete.
+        (items || []).forEach(it => {
+          if(it.cloudinary_public_id) sb.functions.invoke('delete-cloudinary-asset', { body: { publicId: it.cloudinary_public_id } }).catch(()=>{});
+        });
+      }
+      await sb.from('feedback').delete().in('portfolio_id', portIds);
+      const { error: delPortErr } = await sb.from('portfolios').delete().in('id', portIds);
+      if(delPortErr) throw delPortErr;
+    }
+
     const { error } = await sb.from('assignments').delete().eq('id', id);
     if(error) throw error;
-    showToast('🗑️ Assignment deleted.');
+    showToast('🗑️ Assignment and its submissions deleted.');
     renderProfAssignmentsPage();
   }catch(err){
     console.error('deleteAssignment error:', err);
