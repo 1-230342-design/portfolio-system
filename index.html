@@ -280,11 +280,15 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-<script src="js/loader.js"></script>
-<script src="js/app.js"></script>
-<script src="js/assignments.js"></script>
-<script src="js/grade-archives.js"></script>
-<script src="js/qr.js"></script>
-<script src="js/similarity-ai.js"></script>
+<!-- ?v=3 cache-buster: bump this number every time the gate logic changes so
+     student/professor browsers can never keep running a stale cached copy of
+     the similarity block (a stale copy uploads first and never calls the RPC,
+     which is exactly how 99% duplicates kept sailing through). -->
+<script src="js/loader.js?v=3"></script>
+<script src="js/app.js?v=3"></script>
+<script src="js/assignments.js?v=3"></script>
+<script src="js/grade-archives.js?v=3"></script>
+<script src="js/qr.js?v=3"></script>
+<script src="js/similarity-ai.js?v=3"></script>
 </body>
 </html>

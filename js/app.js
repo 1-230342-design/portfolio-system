@@ -115,6 +115,11 @@ const SIMILARITY_FLAG_THRESHOLD = 0.93; // strong plagiarism warning at 93%+
 // similarity FLAG shown to the professor (runSimilarityCheck, further
 // down) — it just no longer blocks the upload by itself.
 const SIMILARITY_BLOCK_THRESHOLD = 0.90;
+// Bump this whenever the gate logic changes (keep in sync with the ?v=
+// cache-buster on the <script> tags in index.html). Printed to the console on
+// every page load so anyone can verify in F12 whether the browser is actually
+// running the pre-upload block or a stale cached copy without it.
+const ORIGINALITY_GATE_VERSION = 'v3-preupload-rpc';
 
 // ── PROFESSOR PERMISSIONS ──
 // Only professors from this department get full grading + approve/reject power.
@@ -536,28 +541,74 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
     // different background" (90%+) sailed straight through and got saved anyway. The
     // AI score was only ever used AFTER saving, to flag it for a professor to notice.
     const useAI = !!embedding && (typeof embeddingColumnAvailable === 'function') && await embeddingColumnAvailable();
-    let query = sb.from('portfolio_items').select('id, phash, imagga_tags, title, file_url, file_type, portfolios(assignment_id, student_id)' + (useAI ? ', embedding' : ''));
-    if(excludeItemId) query = query.neq('id', excludeItemId);
-    const { data: others, error } = await query;
-    if(error || !others || others.length === 0) return { bestScore: 0, best: null };
-
-    // Only compare against submissions attached to the SAME assignment. A
-    // plain "Upload Work" (no assignment — assignmentId is null) is only
-    // compared against other plain uploads, never against a different
-    // assignment's submissions, so unrelated classwork can't false-positive
-    // against each other just for existing in the same system.
-    //
-    // Also excludes the SAME student's own other items (e.g. a withdrawn
-    // submission still sitting in the table with status='draft'). Without this,
-    // unsubmitting and then re-attaching the exact same file matched the
-    // student's own earlier copy at ~100% and got blocked as "plagiarism" of
-    // themselves — resubmitting your own work should never be flagged at all.
     const targetAssignmentId = assignmentId || null;
-    const scoped = others.filter(o => {
-      const port = o.portfolios || {};
-      if(ownerStudentId && port.student_id === ownerStudentId) return false;
-      return (port.assignment_id || null) === targetAssignmentId;
-    });
+
+    // PREFERRED PATH — get_similarity_fingerprints() RPC (see
+    // supabase-similarity-rpc.sql, one-time setup in the SQL Editor).
+    // This gate runs in the STUDENT's browser, and when RLS restricts
+    // portfolio_items/portfolios to owners only, the direct table query below
+    // comes back EMPTY for a student — the gate compares against 0 candidates,
+    // scores 0%, and waves every duplicate through, while the professor (full
+    // read access) later sees the real 99% in the Review Panel. The RPC is
+    // SECURITY DEFINER so it bypasses RLS, but it only returns same-assignment
+    // fingerprints excluding the uploader's own work — nothing else.
+    let scoped = null;
+    try{
+      const { data: rpcRows, error: rpcErr } = await sb.rpc('get_similarity_fingerprints', {
+        p_assignment_id: targetAssignmentId,
+        p_owner_id:      ownerStudentId || null,
+        p_exclude_id:    excludeItemId || null
+      });
+      if(!rpcErr && Array.isArray(rpcRows)){
+        scoped = rpcRows.map(r => ({
+          id: r.item_id, phash: r.phash, embedding: useAI ? r.embedding : null,
+          title: r.title, file_url: r.file_url, file_type: r.file_type,
+          portfolios: { assignment_id: r.assignment_id, student_id: r.student_id }
+        }));
+        console.log('[originality] gate compared via RPC against ' + scoped.length + ' submission(s).');
+      } else if(rpcErr){
+        console.info('[originality] similarity RPC not available yet — run supabase-similarity-rpc.sql in the SQL Editor. Falling back to direct query. (' + (rpcErr.message || rpcErr) + ')');
+      }
+    }catch(rpcEx){
+      console.info('[originality] similarity RPC failed — falling back to direct query.', rpcEx);
+    }
+
+    if(!scoped){
+      // FALLBACK PATH — direct table read. Works for professors / open RLS,
+      // but is typically BLIND for students under owner-only RLS (returns no
+      // other-student rows). Kept so the gate still functions before the SQL
+      // setup above is run.
+      let query = sb.from('portfolio_items').select('id, phash, imagga_tags, title, file_url, file_type, portfolios(assignment_id, student_id)' + (useAI ? ', embedding' : ''));
+      if(excludeItemId) query = query.neq('id', excludeItemId);
+      const { data: others, error } = await query;
+      if(error || !others || others.length === 0){
+        console.warn('[originality] gate saw 0 existing submissions — nothing to compare against (if duplicates keep slipping through, this empty read is why: check RLS / run supabase-similarity-rpc.sql).');
+        return { bestScore: 0, best: null };
+      }
+
+      // Only compare against submissions attached to the SAME assignment. A
+      // plain "Upload Work" (no assignment — assignmentId is null) is only
+      // compared against other plain uploads, never against a different
+      // assignment's submissions, so unrelated classwork can't false-positive
+      // against each other just for existing in the same system.
+      //
+      // Also excludes the SAME student's own other items (e.g. a withdrawn
+      // submission still sitting in the table with status='draft'). Without this,
+      // unsubmitting and then re-attaching the exact same file matched the
+      // student's own earlier copy at ~100% and got blocked as "plagiarism" of
+      // themselves — resubmitting your own work should never be flagged at all.
+      scoped = others.filter(o => {
+        const port = o.portfolios || {};
+        if(ownerStudentId && port.student_id === ownerStudentId) return false;
+        return (port.assignment_id || null) === targetAssignmentId;
+      });
+      console.log('[originality] gate compared via direct query against ' + scoped.length + ' submission(s).');
+    }
+
+    if(!scoped.length){
+      console.warn('[originality] gate found no submissions in the same scope — passing (if this is wrong, check RLS / run supabase-similarity-rpc.sql).');
+      return { bestScore: 0, best: null };
+    }
 
     // CRITICAL: an older submission may not have its AI fingerprint yet — that
     // backfill normally only happens quietly in the background once a PROFESSOR
@@ -936,6 +987,14 @@ async function computeAndCacheSimilarity(itemId){
       return (port.assignment_id || null) === myAssignmentId;
     });
     if(!scopedOthers.length) return null; // nothing else in this assignment (or plain-upload pool) yet
+
+    // Same just-in-time backfill the pre-upload block check does
+    // (findBestSimilarityMatch): an older work with no AI fingerprint yet
+    // must be analysed right now, otherwise this review silently falls back
+    // to the basic hash and can show a different % than the upload gate saw.
+    if(useAI && typeof embEnsureForItems === 'function' && scopedOthers.length){
+      try{ await embEnsureForItems([self, ...scopedOthers]); }catch(e){ console.warn('[similarity] review backfill skipped:', e); }
+    }
 
     let best = null, bestScore = 0, bestDetail = null;
     const scored = [];
@@ -2433,32 +2492,36 @@ async function submitWork(){
   // subjectId is optional for multimedia-only systems — we proceed with null if no subjects are configured
   if(!pendingRawFile){ showToast('⚠️ Please select a file to upload'); return; }
   try{
-    // 1. Compute our own perceptual hash (client-side) and upload to Cloudinary in parallel
-    const [ourPhash, cloud] = await Promise.all([
-      computePerceptualHash(pendingRawFile),
-      uploadToCloudinary(pendingRawFile)
-    ]);
-    // 1b. Fetch Imagga tags for the uploaded image (via Edge Function — secret stays server-side).
-    // Only meaningful for images; fails quietly (empty array) for non-image files or if the
-    // Imagga quota/credentials aren't set up, so it never blocks the upload.
-    showToast('🏷️ Analyzing image content…');
-    const imaggaTags = (pendingRawFile.type && pendingRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
-    // 1b-2. AI fingerprint of what the image shows (js/similarity-ai.js) — null if unavailable, never blocks the upload.
+    // 1. Fingerprint locally first (dHash + AI embedding), then run the 90%+
+    // originality check BEFORE uploading to Cloudinary — a duplicate never
+    // leaves the browser, so no orphan file or DB row is ever created.
+    // The block check ignores Imagga tags (see SIMILARITY_BLOCK_THRESHOLD),
+    // so no Cloudinary URL is needed for this step.
     showToast('🧠 Comparing image content…');
-    const embedding = (typeof embFromFile === 'function') ? await embFromFile(pendingRawFile) : null;
+    const [ourPhash, embedding] = await Promise.all([
+      computePerceptualHash(pendingRawFile),
+      (typeof embFromFile === 'function') ? embFromFile(pendingRawFile) : Promise.resolve(null)
+    ]);
 
-    // 1c. Play the originality-check scanning animation while comparing
-    // against every existing submission; blocks outright if this is a 100%
-    // duplicate (same image and/or same AI tags as something already in
-    // the system) — checked BEFORE saving, so an exact re-upload never
-    // becomes a real submission at all, not just a flagged one the
-    // professor has to catch manually.
-    const isDuplicate = await runOriginalityCheckUI(ourPhash, imaggaTags, null, embedding, currentUser.id); // plain Upload Work — no assignment
+    // 1b. Play the originality-check scanning animation while comparing
+    // against every existing submission; blocks outright at 90%+ similarity
+    // — checked BEFORE uploading/saving, so a duplicate never becomes a
+    // real submission at all, not just a flagged one the professor has to
+    // catch manually.
+    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], null, embedding, currentUser.id); // plain Upload Work — no assignment
     if(isDuplicate){
       pendingRawFile = null; pendingUploadFile = null;
       document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
       return;
     }
+
+    // 1c. Clear — now upload to Cloudinary.
+    const cloud = await uploadToCloudinary(pendingRawFile);
+    // 1d. Fetch Imagga tags for the uploaded image (via Edge Function — secret stays server-side).
+    // Only meaningful for images; fails quietly (empty array) for non-image files or if the
+    // Imagga quota/credentials aren't set up. Tags never block — they only feed the post-save professor flag.
+    showToast('🏷️ Analyzing image content…');
+    const imaggaTags = (pendingRawFile.type && pendingRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
 
     showToast('💾 Saving to database…');
     // 2. Save to Supabase using real schema
@@ -3063,7 +3126,10 @@ async function renderReviewSimilarity(itemId, isRetry){
     document.getElementById('sim-by').textContent   = 'Submitted by '+ownerName;
     document.getElementById('sim-badge').textContent = pct+'% Match';
     // Say plainly which method produced this number (a silent fallback to the basic hash hid problems before).
-    if(top.method === 'ai'){
+    // NOTE: similarityBetween() returns 'ai+hash' for the normal AI path
+    // (AI blended with dHash) and 'ai' only when a phash is missing — both
+    // mean the AI comparison ran, so both must show the AI note.
+    if(top.method === 'ai' || top.method === 'ai+hash'){
       setSimMethodNote('🧠 AI image comparison (raw score '+(top.cos != null ? top.cos.toFixed(3) : '—')+')', false);
     } else {
       const why = (typeof embStatus === 'function') ? embStatus() : 'AI comparison OFF — js/similarity-ai.js was not loaded (check that the file is in your js/ folder and index.html includes it).';
@@ -3295,6 +3361,7 @@ async function restoreSession(){
 // Runs only after loader.js has injected every Page/Dashboard
 // fragment into the DOM, so getElementById calls above never race the fetch.
 async function initApp(){
+  console.log('[artfolio] originality gate ' + ORIGINALITY_GATE_VERSION + ' active — 90%+ similar images are blocked BEFORE upload (no Cloudinary file, no database row).');
   if(typeof checkForQrLink === 'function' && checkForQrLink()) return; // ?work=<id> in the URL — show that work's public page and stop here
   const openedFromAlert = handleAlertLink(); // ?action=changepw|keep from the login-alert email
   if(!openedFromAlert) await restoreSession();

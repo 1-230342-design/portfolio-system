@@ -183,27 +183,33 @@ async function submitAttachedWork(){
   if(!attachRawFile){ showToast('⚠️ Please select a file to attach'); return; }
 
   try{
-    // Same pipeline as the regular Upload Work flow: client-side dHash +
-    // Cloudinary upload in parallel, then Imagga tags, then save + similarity check.
-    const [ourPhash, cloud] = await Promise.all([
-      computePerceptualHash(attachRawFile),
-      uploadToCloudinary(attachRawFile)
-    ]);
-    showToast('🏷️ Analyzing image content…');
-    const imaggaTags = (attachRawFile.type && attachRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
-    // AI fingerprint of what the image shows (js/similarity-ai.js) — null if unavailable, never blocks the submission.
+    // BLOCK-BEFORE-UPLOAD: fingerprint the file locally (dHash + AI embedding)
+    // and run the 90%+ originality check BEFORE anything is uploaded to
+    // Cloudinary or saved to the database — so a duplicate never leaves the
+    // student's browser. The block check deliberately ignores Imagga tags
+    // (see SIMILARITY_BLOCK_THRESHOLD in app.js), so no Cloudinary URL is
+    // needed for this step.
     showToast('🧠 Comparing image content…');
-    const embedding = (typeof embFromFile === 'function') ? await embFromFile(attachRawFile) : null;
+    const [ourPhash, embedding] = await Promise.all([
+      computePerceptualHash(attachRawFile),
+      (typeof embFromFile === 'function') ? embFromFile(attachRawFile) : Promise.resolve(null)
+    ]);
 
     // Play the same originality-check scanning animation used by the regular
-    // Upload Work flow (app.js) — blocks outright on a 100% duplicate, so
+    // Upload Work flow (app.js) — blocks outright at 90%+ similarity, so
     // Classwork attachments can't be used to route around it.
-    const isDuplicate = await runOriginalityCheckUI(ourPhash, imaggaTags, assignment.id, embedding, currentUser.id);
+    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], assignment.id, embedding, currentUser.id);
     if(isDuplicate){
       attachRawFile = null;
       document.getElementById('aw-drop-text').textContent = 'Drop files here or click to upload';
       return;
     }
+
+    // Clear — now upload to Cloudinary, then fetch Imagga tags for the
+    // post-save professor flag (tags never block, they only inform review).
+    const cloud = await uploadToCloudinary(attachRawFile);
+    showToast('🏷️ Analyzing image content…');
+    const imaggaTags = (attachRawFile.type && attachRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
 
     showToast('💾 Saving submission…');
     const { item } = await saveAssignmentSubmission(currentUser.id, assignment, {
