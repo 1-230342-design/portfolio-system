@@ -1,0 +1,30 @@
+<!-- ══════════════════════════════════════════
+     Public Work Detail — opened by scanning a
+     work's QR code. No login required.
+══════════════════════════════════════════ -->
+<div class="screen" id="s-public-work">
+<style>
+  /* green header — same dark green as the landing page and dashboards */
+  #s-public-work .landing-nav{background:#173f28;border-bottom:none;}
+  #s-public-work .landing-nav .btn-login-nav{background:#fff;color:#173f28;box-shadow:none;}
+  #s-public-work .landing-nav .btn-login-nav:hover{background:#f4ecd2;box-shadow:none;}
+</style>
+  <nav class="landing-nav">
+    <div class="landing-logo" style="cursor:pointer;display:flex;align-items:center;gap:8px;color:#fff;" onclick="go('s-landing')">
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:11px;">
+        <span style="width:22px;height:22px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><img src="images/asia.png" alt="ASIATECH" class="site-logo-img" style="height:17px;"></span>
+        <span style="width:1px;height:16px;background:rgba(255,255,255,.24);"></span>
+        <img src="images/logo.png" alt="Artfolio" class="site-logo-img" style="height:18px;filter:brightness(0) invert(1);">
+      </div>
+      <span>Artfolio</span>
+    </div>
+    <div class="landing-nav-right">
+      <button class="btn-login-nav" onclick="go('s-landing')">LOGIN</button>
+    </div>
+  </nav>
+  <div class="section-page" style="max-width:640px;">
+    <div id="qw-body">
+      <div style="font-size:13px;color:var(--text3);padding:40px 0;text-align:center;">Loading…</div>
+    </div>
+  </div>
+</div>

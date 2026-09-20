@@ -1,0 +1,54 @@
+<div class="screen" id="s-public-search" style="position:relative;overflow:hidden;">
+<style>
+  .ps-decor{position:absolute;pointer-events:none;z-index:0;opacity:.55;}
+  .ps-decor-3{top:80px;right:20px;width:340px;}
+  /* --gap = the empty strip under the drawing's feet, measured from the image itself (see onload on the <img>).
+     Sliding the image down by exactly that much puts the feet right on the bottom edge of the page. */
+  .ps-decor-1{bottom:0;left:-40px;width:min(480px,38vw);opacity:.85;transform:translateY(var(--gap,8%));}
+  @media(max-width:900px){ .ps-decor-1{left:-30px;width:min(340px,58vw);opacity:.5;} }
+  @media(max-width:640px){ .ps-decor-1{left:-20px;width:240px;opacity:.35;} }
+
+  /* green header — same dark green as the landing page header */
+  #s-public-search .landing-nav{background:#173f28;border-bottom:none;}
+  #s-public-search .landing-nav .btn-login-nav{background:#fff;color:#173f28;box-shadow:none;}
+  #s-public-search .landing-nav .btn-login-nav:hover{background:#f4ecd2;box-shadow:none;}
+  #s-public-search .landing-nav .search-bar-nav:hover{border-color:#b8912a;}
+  .ps-decor-2{bottom:0;right:50px;width:380px;transform:translateY(var(--gap,3%));} /* --gap measured from the image on load, so the ground line sits on the bottom edge */
+</style>
+<img src="images/D3.png" alt="" class="ps-decor ps-decor-3"/>
+<img src="images/D1.png" alt="" class="ps-decor ps-decor-1" onload="(function(i){try{var c=document.createElement('canvas'),w=i.naturalWidth,h=i.naturalHeight;c.width=w;c.height=h;var x=c.getContext('2d');x.drawImage(i,0,0);var d=x.getImageData(0,0,w,h).data,y,k,p;for(y=h-1;y>=0;y--){for(k=0;k<w;k++){p=(y*w+k)*4;if(Math.abs(d[p]-d[0])+Math.abs(d[p+1]-d[1])+Math.abs(d[p+2]-d[2])+Math.abs(d[p+3]-d[3])>30){i.style.setProperty('--gap',((h-1-y)/h*100)+'%');return;}}}}catch(e){}})(this)"/>
+<img src="images/D2.png" alt="" class="ps-decor ps-decor-2" onload="(function(i){try{var c=document.createElement('canvas'),w=i.naturalWidth,h=i.naturalHeight;c.width=w;c.height=h;var x=c.getContext('2d');x.drawImage(i,0,0);var d=x.getImageData(0,0,w,h).data,y,k,p;for(y=h-1;y>=0;y--){for(k=0;k<w;k++){p=(y*w+k)*4;if(Math.abs(d[p]-d[0])+Math.abs(d[p+1]-d[1])+Math.abs(d[p+2]-d[2])+Math.abs(d[p+3]-d[3])>30){i.style.setProperty('--gap',((h-1-y)/h*100)+'%');return;}}}}catch(e){}})(this)"/>
+  <nav class="landing-nav" style="position:relative;z-index:1;">
+    <div class="landing-logo" style="cursor:pointer;display:flex;align-items:center;gap:8px;color:#fff;" onclick="go('s-landing')">
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:11px;">
+        <span style="width:22px;height:22px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><img src="images/asia.png" alt="ASIATECH" class="site-logo-img" style="height:17px;"></span>
+        <span style="width:1px;height:16px;background:rgba(255,255,255,.24);"></span>
+        <img src="images/logo.png" alt="Artfolio" class="site-logo-img" style="height:18px;filter:brightness(0) invert(1);">
+      </div>
+      <span>Artfolio</span>
+    </div>
+    <div class="landing-nav-right">
+      <div class="search-bar-nav" style="cursor:text;">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="public-search-input-2" placeholder="Search Name or Student" style="border:none;outline:none;background:transparent;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--text);width:100%;" onkeydown="if(event.key==='Enter')runLandingSearch('public-search-input-2')"/>
+      </div>
+      <button class="btn-login-nav" onclick="go('s-landing')">LOGIN</button>
+    </div>
+  </nav>
+  <div class="section-page" style="position:relative;z-index:1;">
+    <h2 style="font-size:32px;margin-bottom:8px;">Search Results</h2>
+    <p id="public-search-summary" style="margin-bottom:24px;">—</p>
+
+    <!-- STEP 1: Sections (tap a section to see the students enrolled in it) -->
+    <div id="public-search-sections">
+      <div class="students-list" id="public-search-results"></div>
+    </div>
+
+    <!-- STEP 2: Students inside one section (tap a student to view their public portfolio) -->
+    <div id="public-search-in-section" style="display:none">
+      <div style="margin-bottom:20px;cursor:pointer;color:var(--text3);font-size:13px" onclick="backToPublicSections()">← Back to Sections</div>
+      <div class="section-title" style="margin-bottom:14px;" id="pss-section-title">—</div>
+      <div class="students-list" id="public-search-section-students"></div>
+    </div>
+  </div>
+</div>
