@@ -1316,6 +1316,15 @@ async function openPublicProfile(userId){
     .maybeSingle();
   if(profErr || !profile){ showToast('❌ Could not load this profile.'); console.error(profErr); return; }
 
+  // The profile screen lives in Pages/public-profile.html — if that fragment
+  // failed to load, say so plainly instead of crashing on a null element and
+  // leaving the visitor stuck on "Loading portfolio…".
+  if(!document.getElementById('pp-name') || !document.getElementById('pp-works')){
+    console.error(`openPublicProfile aborted: s-public-profile is missing from the DOM (Pages/public-profile.html didn't load).`);
+    showToast('❌ Profile page failed to load. Please refresh and try again.');
+    return;
+  }
+
   document.getElementById('pp-name').textContent = profile.full_name || 'Student';
   const secYear = [profile.section, profile.year_level].filter(Boolean).join(' \u00b7 ');
   document.getElementById('pp-meta').innerHTML = [

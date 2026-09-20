@@ -1,13 +1,21 @@
 <!-- ══════════════════════════════════════════
-     Public Work Detail — opened by scanning a
-     work's QR code. No login required.
+     Public Student Portfolio — opened from public
+     search ("View Portfolio"). No login required.
+     Shows ONLY works the student marked public
+     (approved works only). No grades, no professor
+     comments — those stay private to the student.
+     NOTE: this file used to wrongly contain a copy of
+     the QR work screen (s-public-work), so the
+     s-public-profile screen openPublicProfile() looks
+     for never existed and every click died on a
+     "Loading portfolio…" toast. This is the real one.
 ══════════════════════════════════════════ -->
-<div class="screen" id="s-public-work">
+<div class="screen" id="s-public-profile">
 <style>
-  /* green header — same dark green as the landing page and dashboards */
-  #s-public-work .landing-nav{background:#173f28;border-bottom:none;}
-  #s-public-work .landing-nav .btn-login-nav{background:#fff;color:#173f28;box-shadow:none;}
-  #s-public-work .landing-nav .btn-login-nav:hover{background:#f4ecd2;box-shadow:none;}
+  /* green header — same dark green as the landing page and other public screens */
+  #s-public-profile .landing-nav{background:#173f28;border-bottom:none;}
+  #s-public-profile .landing-nav .btn-login-nav{background:#fff;color:#173f28;box-shadow:none;}
+  #s-public-profile .landing-nav .btn-login-nav:hover{background:#f4ecd2;box-shadow:none;}
 </style>
   <nav class="landing-nav">
     <div class="landing-logo" style="cursor:pointer;display:flex;align-items:center;gap:8px;color:#fff;" onclick="go('s-landing')">
@@ -22,9 +30,19 @@
       <button class="btn-login-nav" onclick="go('s-landing')">LOGIN</button>
     </div>
   </nav>
-  <div class="section-page" style="max-width:640px;">
-    <div id="qw-body">
-      <div style="font-size:13px;color:var(--text3);padding:40px 0;text-align:center;">Loading…</div>
+  <div class="section-page">
+    <div style="margin-bottom:20px;cursor:pointer;color:var(--text3);font-size:13px" onclick="go('s-public-search')">← Back to search</div>
+    <div class="portfolio-header">
+      <div class="portfolio-header-inner">
+        <div class="portfolio-avatar-lg" id="pp-avatar"></div>
+        <div class="portfolio-info">
+          <div class="portfolio-name" id="pp-name">—</div>
+          <div class="portfolio-meta" id="pp-meta">—</div>
+          <div class="portfolio-skills" id="pp-skills"></div>
+        </div>
+      </div>
     </div>
+    <div class="section-title" style="margin:18px 0 14px;">Public Works</div>
+    <div id="pp-works" class="portfolio-grid"></div>
   </div>
 </div>
