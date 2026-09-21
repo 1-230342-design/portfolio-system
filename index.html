@@ -146,6 +146,13 @@
       <div class="modal-title" id="sp-section-title">—</div>
       <button class="modal-close" onclick="closeSectionPreview()">✕</button>
     </div>
+    <div id="sp-freeze-note" style="font-size:12px;margin-bottom:12px;"></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+      <button class="filter-tab active" id="sp-view-details" onclick="switchPreviewView('details')">Details</button>
+      <button class="filter-tab" id="sp-view-summary" onclick="switchPreviewView('summary')">Summary</button>
+      <span style="flex:1;"></span>
+      <button class="btn-cancel" id="sp-freeze-btn" style="padding:8px 12px;" onclick="toggleFreeze()">🔒 Freeze Period</button>
+    </div>
     <div class="form-row" style="margin-bottom:16px;">
       <div>
         <label class="flabel">Grading Period</label>
@@ -160,9 +167,10 @@
            lines up with the dropdown itself, not the bottom of the whole label+field stack. -->
       <div>
         <label class="flabel" style="visibility:hidden;">Download</label>
-        <button class="btn-submit-work" style="width:100%;justify-content:center;margin:0;" onclick="downloadSectionSpreadsheet()">⬇ Download Spreadsheet</button>
+        <button class="btn-submit-work" style="width:100%;justify-content:center;margin:0;" onclick="downloadSectionSpreadsheet()">⬇ Download This View</button>
       </div>
     </div>
+    <button class="btn-outline" style="width:100%;justify-content:center;margin:0 0 16px;" onclick="downloadSemesterWorkbook()">⬇ Download Full Semester Workbook (4 periods + summary)</button>
     <div id="sp-table-wrap" style="max-height:400px;overflow-x:auto;overflow-y:auto;">
       <div style="font-size:13px;color:var(--text3);">Loading…</div>
     </div>
@@ -286,11 +294,11 @@
      student/professor browsers can never keep running a stale cached copy of
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
-<script src="js/loader.js?v=7"></script>
-<script src="js/app.js?v=7"></script>
-<script src="js/assignments.js?v=7"></script>
-<script src="js/grade-archives.js?v=7"></script>
-<script src="js/qr.js?v=7"></script>
-<script src="js/similarity-ai.js?v=7"></script>
+<script src="js/loader.js?v=8"></script>
+<script src="js/app.js?v=8"></script>
+<script src="js/assignments.js?v=8"></script>
+<script src="js/grade-archives.js?v=8"></script>
+<script src="js/qr.js?v=8"></script>
+<script src="js/similarity-ai.js?v=8"></script>
 </body>
 </html>

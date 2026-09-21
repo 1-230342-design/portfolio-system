@@ -3335,6 +3335,17 @@ async function saveGrade(){
   // when it was graded, even if they change sections afterward.
   const gradedItem = _profItems.find(x=>x.portfolioId===currentReview.portfolioId);
   const studentSection = (gradedItem && gradedItem.section) || null;
+  // Freeze lock — a frozen section + grading period can't be re-graded until
+  // a professor unfreezes it in Grade Archives. Fails open: if the freeze
+  // table was never set up, grading works exactly as before.
+  if(typeof isPeriodFrozen === 'function' && gradedItem && studentSection && gradedItem.gradingPeriod){
+    try{
+      if(await isPeriodFrozen(studentSection, gradedItem.gradingPeriod)){
+        showToast('🔒 This section + period is frozen — unfreeze it in Grade Archives to change grades.');
+        return;
+      }
+    }catch(e){ console.warn('[grade] freeze check skipped:', e); }
+  }
   try{
     const { error } = await sb.from('portfolios').update({
       creativity_score:  c1,
