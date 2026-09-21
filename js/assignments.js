@@ -81,7 +81,10 @@ async function renderAssignmentsPage(uid){
     const status = mine ? mine.status : 'none';
     const badgeCls   = status==='approved' ? 'badge-approved' : status==='rejected' ? 'badge-rejected' : (status==='submitted') ? 'badge-pending' : '';
     const badgeLabel = status==='none' ? 'Not submitted' : status==='draft' ? 'Withdrawn' : status;
-    const overdue    = a.due_date && new Date(a.due_date) < new Date() && status==='none';
+    // Deadline lock — once the due date+time passes, nobody can attach
+    // anything anymore (not first submissions, not resubmissions). Applies to
+    // every student regardless of their own status.
+    const pastDue = a.due_date && new Date(a.due_date) <= new Date();
 
     return `<div class="assignment-card">
       <div class="assignment-card-top">
@@ -92,9 +95,11 @@ async function renderAssignmentsPage(uid){
         <span class="upload-status-badge ${esc(badgeCls)}" style="position:static;white-space:nowrap;">${esc(badgeLabel)}</span>
       </div>
       ${a.instructions ? `<div class="assignment-instructions">${esc(a.instructions)}</div>` : ''}
-      ${overdue ? `<div class="assignment-overdue">⚠️ Past due date</div>` : ''}
+      ${pastDue ? `<div class="assignment-overdue">🔒 Submissions closed — past due (${fmtDateTime(a.due_date)})</div>` : ''}
       ${(mine && mine.final_grade!=null) ? `<div class="assignment-meta" style="margin-top:8px;"><strong style="color:var(--dark)">Grade: ${mine.final_grade}/100</strong></div>` : ''}
-      <button class="btn-submit-work" style="margin-top:12px;" onclick="openAttachWorkModal('${a.id}')">${mine ? '📎 Manage Submission' : '📎 Attach Work'}</button>
+      ${pastDue
+        ? `<button class="btn-submit-work" style="margin-top:12px;opacity:.5;cursor:not-allowed;" disabled>🔒 Closed</button>`
+        : `<button class="btn-submit-work" style="margin-top:12px;" onclick="openAttachWorkModal('${a.id}')">${mine ? '📎 Manage Submission' : '📎 Attach Work'}</button>`}
     </div>`;
   }).join('');
 }
@@ -103,6 +108,9 @@ async function renderAssignmentsPage(uid){
 function openAttachWorkModal(assignmentId){
   const a = _assignmentsCache.find(x => x.id === assignmentId);
   if(!a){ showToast('⚠️ Assignment not found'); return; }
+  // Deadline lock (first line of defence — the button is already disabled,
+  // but this stops anyone reaching the modal another way).
+  if(a.due_date && new Date(a.due_date) <= new Date()){ showToast('🔒 Submissions are closed — this assignment is past due.'); return; }
   currentAttachAssignmentId = assignmentId;
   attachRawFile = null;
   document.getElementById('aw-assignment-title').textContent = a.title;
@@ -176,6 +184,13 @@ async function submitAttachedWork(){
   if(!currentAttachAssignmentId){ showToast('⚠️ No assignment selected'); return; }
   const assignment = _assignmentsCache.find(a => a.id === currentAttachAssignmentId);
   if(!assignment){ showToast('⚠️ Assignment not found'); return; }
+  // Deadline lock (last line of defence — catches the case where the cutoff
+  // passed while the student had the modal open).
+  if(assignment.due_date && new Date(assignment.due_date) <= new Date()){
+    closeAttachWorkModal();
+    showToast('🔒 Submissions are closed — this assignment is past due.');
+    return;
+  }
 
   const title = document.getElementById('aw-title').value.trim();
   const desc  = document.getElementById('aw-desc').value.trim();
