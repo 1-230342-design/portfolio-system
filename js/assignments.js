@@ -87,7 +87,7 @@ async function renderAssignmentsPage(uid){
       <div class="assignment-card-top">
         <div>
           <div class="assignment-title">${esc(a.title)}</div>
-          <div class="assignment-meta">${a.grading_period ? esc(a.grading_period) : ''}${a.due_date ? (a.grading_period ? ' &middot; ' : '')+'Due '+fmtDate(a.due_date) : ''}</div>
+          <div class="assignment-meta">${a.grading_period ? esc(a.grading_period) : ''}${a.due_date ? (a.grading_period ? ' &middot; ' : '')+'Due '+fmtDateTime(a.due_date) : ''}</div>
         </div>
         <span class="upload-status-badge ${esc(badgeCls)}" style="position:static;white-space:nowrap;">${esc(badgeLabel)}</span>
       </div>
@@ -267,7 +267,7 @@ async function renderProfAssignmentsPage(){
       <div class="assignment-card-top">
         <div>
           <div class="assignment-title">${esc(a.title)}</div>
-          <div class="assignment-meta">${a.grading_period ? esc(a.grading_period) : ''}${a.due_date ? (a.grading_period ? ' &middot; ' : '')+'Due '+fmtDate(a.due_date) : ''}</div>
+          <div class="assignment-meta">${a.grading_period ? esc(a.grading_period) : ''}${a.due_date ? (a.grading_period ? ' &middot; ' : '')+'Due '+fmtDateTime(a.due_date) : ''}</div>
         </div>
         <div style="display:flex;gap:8px;flex-shrink:0;">
           <button class="btn-view-sm" onclick="toggleAssignmentSubmissions('${a.id}')">👁 ${c.total} Submission${c.total===1?'':'s'}</button>

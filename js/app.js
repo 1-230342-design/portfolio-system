@@ -163,6 +163,9 @@ function maskStudentId(id){
   return id.replace(/\d/g, d => (++seen <= 3) ? '•' : d);
 }
 function fmtDate(iso){ return iso ? new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'numeric'}) : '—'; }
+// Assignment deadlines carry a time too (datetime-local picker), so they get
+// their own formatter — e.g. "9/25/2026, 2:30 PM".
+function fmtDateTime(iso){ return iso ? new Date(iso).toLocaleString('en-US',{month:'numeric',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : '—'; }
 function formatBytes(b){ if(b<1024)return b+' B'; if(b<1024*1024)return (b/1024).toFixed(1)+' KB'; return (b/1024/1024).toFixed(1)+' MB'; }
 function fileIsImage(f){
   if(!f||!f.dataUrl) return false;
