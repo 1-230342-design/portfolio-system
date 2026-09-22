@@ -394,6 +394,10 @@ async function loadProjectsForStudent(userId){
         gradingPeriod: port.grading_period || '',
         assignmentId:  port.assignment_id || null,
         status:        port.status || 'draft',
+        // Personal gallery = draft portfolio that was NEVER submitted (submitted_at
+        // is NULL) — as opposed to 'draft' = withdrawn from review. Drives the
+        // "Personal" note/tab vs the "Withdrawn" note. See saveItemToSupabase().
+        neverSent:     (port.status || 'draft') === 'draft' && !port.submitted_at,
         file:{ name: item.title, dataUrl: item.file_url, mimeType: item.file_type, sizeBytes: item.file_size_bytes, isCloudinary:true },
         submittedAt:   port.submitted_at || item.uploaded_at,
         watermarked:   item.is_watermarked,
@@ -777,10 +781,36 @@ async function runSimilarityCheck(newItemId, newPhash, newTags, newEmbedding, as
 
 // Save uploaded item to Supabase using your real schema
 // Flow: find/create portfolio → insert portfolio_item
-async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPeriod, fileUrl, fileType, fileSize, cloudinaryId, phash, imaggaTags, embedding }){
+async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPeriod, fileUrl, fileType, fileSize, cloudinaryId, phash, imaggaTags, embedding, forReview = true }){
   // 1. Find or create a portfolio for this student + grading_period (subject is optional)
+  //
+  // PERSONAL vs REVIEW portfolios are kept strictly separate using the
+  // submitted_at marker — no schema change needed:
+  //   • personal gallery uploads live in a 'draft' portfolio whose
+  //     submitted_at is NULL (it was never sent anywhere);
+  //   • review/withdrawn portfolios ALWAYS have submitted_at set.
+  // The review lookup below excludes submitted_at-NULL rows, so sending a
+  // later work for review can never drag personal files into the review
+  // queue, and a personal save can never land in a submitted portfolio.
   let portfolioId;
-  let existingQuery = sb.from('portfolios').select('id, status').eq('student_id', userId).eq('grading_period', gradingPeriod);
+  if(!forReview){
+    let personalQuery = sb.from('portfolios').select('id').eq('student_id', userId).eq('grading_period', gradingPeriod)
+      .eq('status', 'draft').is('submitted_at', null);
+    if(subjectId) personalQuery = personalQuery.eq('subject_id', subjectId);
+    else personalQuery = personalQuery.is('subject_id', null);
+    const { data: personalPort } = await personalQuery.maybeSingle();
+    if(personalPort){
+      portfolioId = personalPort.id;
+    }else{
+      const newPersonal = { student_id: userId, grading_period: gradingPeriod, status: 'draft', submitted_at: null };
+      if(subjectId) newPersonal.subject_id = subjectId;
+      const { data: newPort, error: pe } = await sb.from('portfolios').insert([newPersonal]).select().single();
+      if(pe) throw pe;
+      portfolioId = newPort.id;
+    }
+  }else{
+  let existingQuery = sb.from('portfolios').select('id, status').eq('student_id', userId).eq('grading_period', gradingPeriod)
+    .not('submitted_at', 'is', null); // never touch personal-gallery portfolios (see above)
   if(subjectId) existingQuery = existingQuery.eq('subject_id', subjectId);
   else existingQuery = existingQuery.is('subject_id', null);
   const { data: existingPort } = await existingQuery.maybeSingle();
@@ -807,6 +837,7 @@ async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPerio
     if(pe) throw pe;
     portfolioId = newPort.id;
   }
+  } // end review-flow branch (personal branch resolved portfolioId above)
 
   // 2. Insert portfolio_item
   const itemRow = {
@@ -2055,7 +2086,9 @@ function renderNotifications(uid){
 function renderDashboard(uid){
   const list     = studentProjects[uid] || [];
   const approved = list.filter(p=>p.status==='approved');
-  const pending  = list.filter(p=>p.status==='submitted'||p.status==='draft');
+  // Personal-gallery works (neverSent) are not "pending review" — only count
+  // what actually sits in the professor's queue.
+  const pending  = list.filter(p=>p.status==='submitted');
   const totalEl  = document.getElementById('dash-total');
   if(!totalEl) return;
   totalEl.textContent = list.length;
@@ -2079,6 +2112,9 @@ function renderPortfolioPage(uid){
   const list      = studentProjects[uid] || [];
   const approved  = list.filter(p=>p.status==='approved');
   const publicOnes= approved.filter(p=>p.isPublic);
+  // Personal gallery — Upload Work saves that were never sent for review.
+  // Owner-only by construction (professors never see drafts anywhere).
+  const personal  = list.filter(p=>p.status==='draft' && p.neverSent);
 
   const cardHtml = p => {
     const thumb = fileIsImage(p.file) ? `<img class="pwork-thumb" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>` : `<div class="upload-thumb-placeholder" style="height:200px">${fileIsVideo(p.file)?'🎬':'🖼️'}</div>`;
@@ -2105,6 +2141,24 @@ function renderPortfolioPage(uid){
   };
   pub.innerHTML = publicOnes.length ? publicOnes.map(cardHtml).join('') : `<div class="empty-state"><p>Nothing public yet. Open an approved work and tap "Add to Public" so it shows up when people search for you.</p></div>`;
   document.getElementById('pt-approved').innerHTML = approved.length ? approved.map(cardHtml).join('') : `<div class="empty-state"><p>No approved works yet.</p></div>`;
+  const personalEl = document.getElementById('pt-personal');
+  if(personalEl){
+    const personalCardHtml = p => {
+      const thumb = fileIsImage(p.file) ? `<img class="pwork-thumb" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>` : `<div class="upload-thumb-placeholder" style="height:200px">${fileIsVideo(p.file)?'🎬':'🖼️'}</div>`;
+      return `<div class="pwork-card" style="position:relative;">${thumb}
+        <div class="pwork-overlay">
+          <button class="btn-view-project" onclick="viewStudentProject('${p.id}')">👁 View Project</button>
+          <button class="btn-view-project" onclick="event.stopPropagation();downloadWork('${p.id}')">⬇️ Download</button>
+        </div>
+        <span class="pwork-badge badge-pending" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;">📁 Personal</span>
+        <div class="pwork-info">
+          <div class="pwork-title">${esc(p.title)}</div>
+          <div class="pwork-cat">${esc(p.category)} · ${esc(p.gradingPeriod)}</div>
+          <div class="pwork-desc">${esc(p.desc||'')}</div>
+        </div></div>`;
+    };
+    personalEl.innerHTML = personal.length ? personal.map(personalCardHtml).join('') : `<div class="empty-state"><p>No personal works yet. Use Upload Work (without the review checkbox) to build your private gallery.</p></div>`;
+  }
 }
 
 // ── TOGGLE PUBLIC VISIBILITY (student: choose which approved works strangers can find via search) ──
@@ -2308,8 +2362,12 @@ function renderProjectsPage(uid){
     const unsubmitBtn = p.status==='submitted'
       ? `<button class="btn-cancel" style="margin-top:10px;width:100%;justify-content:center;" onclick="event.stopPropagation();unsubmitWork('${p.id}')">↩️ Unsubmit</button>`
       : '';
+    // Drafts come in two flavours (see saveItemToSupabase): personal-gallery
+    // works that were never sent anywhere, and works withdrawn from review.
     const withdrawnNote = p.status==='draft'
-      ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--orange);">↩️ Withdrawn from review. Upload again for the same grading period to resubmit, or delete it below.</div>`
+      ? (p.neverSent
+        ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text2);">📁 Personal gallery — only you can see this. It was never sent for review, so it can't be graded.</div>`
+        : `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--orange);">↩️ Withdrawn from review. Upload again for the same grading period to resubmit, or delete it below.</div>`)
       : '';
     const feedbackHtml = (p.status==='approved' && (p.finalGrade!=null || p.feedbackComment))
       ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
@@ -2466,6 +2524,8 @@ function portTab(el,tab){
   el.classList.add('active');
   document.getElementById('pt-public').style.display   = tab==='public'   ? 'grid':'none';
   document.getElementById('pt-approved').style.display = tab==='approved' ? 'grid':'none';
+  const personalEl = document.getElementById('pt-personal');
+  if(personalEl) personalEl.style.display = tab==='personal' ? 'grid':'none';
 }
 
 // ── PROJECT FILTER ──
@@ -2539,6 +2599,8 @@ function cancelUpload(){
   pendingRawFile=null; pendingUploadFile=null;
   document.getElementById('up-title').value='';
   document.getElementById('up-desc').value='';
+  const reviewBox = document.getElementById('up-send-review');
+  if(reviewBox) reviewBox.checked=false;
   document.getElementById('up-drop-text').textContent='Drop files here or click to upload';
   sPage('dashboard');
 }
@@ -2552,6 +2614,10 @@ async function submitWork(){
   if(!title)     { showToast('⚠️ Please enter a project title'); return; }
   // subjectId is optional for multimedia-only systems — we proceed with null if no subjects are configured
   if(!pendingRawFile){ showToast('⚠️ Please select a file to upload'); return; }
+  // Hybrid Upload Work: unchecked (default) = personal gallery only — saved to
+  // the student's portfolio, never sent to any professor, never graded.
+  // Checked = the old path — enters the professor review queue and can be graded.
+  const sendForReview = !!(document.getElementById('up-send-review') && document.getElementById('up-send-review').checked);
   try{
     // 1. Fingerprint locally first (dHash + AI embedding), then run the 90%+
     // originality check BEFORE uploading to Cloudinary — a duplicate never
@@ -2581,25 +2647,29 @@ async function submitWork(){
     // 1d. Fetch Imagga tags for the uploaded image (via Edge Function — secret stays server-side).
     // Only meaningful for images; fails quietly (empty array) for non-image files or if the
     // Imagga quota/credentials aren't set up. Tags never block — they only feed the post-save professor flag.
-    showToast('🏷️ Analyzing image content…');
-    const imaggaTags = (pendingRawFile.type && pendingRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
+    // Personal-gallery saves skip this (nothing for a professor to be informed about — saves quota too).
+    showToast(sendForReview ? '🏷️ Analyzing image content…' : '💾 Saving to your portfolio…');
+    const imaggaTags = (sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
 
-    showToast('💾 Saving to database…');
-    // 2. Save to Supabase using real schema
+    if(sendForReview) showToast('💾 Saving to database…');
+    // 2. Save to Supabase using real schema (personal = draft portfolio, never in review)
     const { item } = await saveItemToSupabase(currentUser.id, {
       title, desc, subjectId, gradingPeriod,
       fileUrl: cloud.url, fileType: pendingRawFile.type,
-      fileSize: pendingRawFile.size, cloudinaryId: cloud.publicId, phash: ourPhash, imaggaTags, embedding
+      fileSize: pendingRawFile.size, cloudinaryId: cloud.publicId, phash: ourPhash, imaggaTags, embedding,
+      forReview: sendForReview
     });
-    // 2b. Run similarity check against other students' uploads using our computed hash + tags
-    runSimilarityCheck(item.id, ourPhash, imaggaTags, embedding, null, currentUser.id); // plain Upload Work — no assignment
+    // 2b. Run similarity check against other students' uploads using our computed hash + tags.
+    // Review-bound only — a personal save has no professor to flag things to.
+    if(sendForReview) runSimilarityCheck(item.id, ourPhash, imaggaTags, embedding, null, currentUser.id); // plain Upload Work — no assignment
     // 3. Update local cache — resolve real subject name instead of leaving the raw UUID
     const subjMatch    = allSubjectsCache.find(s=>String(s.id)===String(subjectId));
     const categoryName = subjMatch ? (subjMatch.name||subjMatch.code) : 'General';
     const local = {
       id: item.id, portfolioId: item.portfolio_id,
       title, desc, category: categoryName, gradingPeriod,
-      status: 'submitted',
+      status: sendForReview ? 'submitted' : 'draft',
+      neverSent: !sendForReview, // personal gallery — never entered review (vs 'draft' = withdrawn from review)
       file:{ dataUrl: cloud.url, mimeType: pendingRawFile.type, sizeBytes: pendingRawFile.size, isCloudinary:true },
       cloudinaryPublicId: cloud.publicId,
       submittedAt: item.uploaded_at, rating:0, comment:''
@@ -2610,10 +2680,18 @@ async function submitWork(){
     pendingRawFile=null; pendingUploadFile=null;
     document.getElementById('up-title').value='';
     document.getElementById('up-desc').value='';
+    document.getElementById('up-send-review').checked=false;
     document.getElementById('up-drop-text').textContent='Drop files here or click to upload';
-    showToast('✅ Work submitted for professor review!');
-    await sPage('projects');
-    switchToProjectsTab('pending-p');
+    if(sendForReview){
+      showToast('✅ Work submitted for professor review!');
+      await sPage('projects');
+      switchToProjectsTab('pending-p');
+    }else{
+      showToast('✅ Saved to your personal portfolio!');
+      await sPage('portfolio');
+      const personalTab = document.getElementById('ptab-personal');
+      if(personalTab) portTab(personalTab, 'personal');
+    }
   }catch(err){
     console.error(err);
     showToast('❌ Upload failed: '+err.message);
@@ -2820,9 +2898,10 @@ async function viewStudentProfile(userId){
   const worksEl = document.getElementById('psd-works');
   worksEl.innerHTML = `<div style="font-size:13px;color:var(--text3);grid-column:1/-1;">Loading works…</div>`;
 
-  // Make sure we have this professor's full item list, then filter to this student
+  // Make sure we have this professor's full item list, then filter to this student.
+  // Drafts stay private to the student (personal gallery + withdrawn works).
   if(!_profItems || !_profItems.length) _profItems = await loadAllItemsForProfessor();
-  const works = _profItems.filter(p=>p.userId===userId);
+  const works = _profItems.filter(p=>p.userId===userId && p.status!=='draft');
 
   worksEl.innerHTML = works.length ? works.map(p=>{
     const thumb = fileIsImage(p.file) ? `<img class="project-thumb" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>` : `<div class="upload-thumb-placeholder" style="height:180px">${fileIsVideo(p.file)?'🎬':'🖼️'}</div>`;
@@ -3004,7 +3083,9 @@ function applyProfessorPermissions(){
 
 async function refreshProfViews(){
   _profItems = await loadAllItemsForProfessor();
-  const all      = _profItems;
+  // Drafts (withdrawn works + students' personal-gallery uploads) are never
+  // in review — hide them from every professor surface (stats, queues, lists).
+  const all      = _profItems.filter(p=>p.status!=='draft');
   const pending  = all.filter(p=>p.status==='submitted');
   const approved = all.filter(p=>p.status==='approved');
 
@@ -3042,7 +3123,7 @@ async function refreshProfViews(){
 function renderSubmissionsList(){
   const subList = document.getElementById('psub-list');
   if(!subList) return;
-  const all = _profItems;
+  const all = _profItems.filter(p=>p.status!=='draft'); // drafts are never in review
   const filtered = profFilterStatus==='all' ? all : all.filter(p=>p.status===profFilterStatus);
   subList.innerHTML = filtered.length ? filtered.map(submissionItemHtml).join('') : `<div class="empty-state"><p>No submissions in this category yet.</p></div>`;
 }

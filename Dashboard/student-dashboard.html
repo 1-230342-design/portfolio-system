@@ -136,17 +136,19 @@
         <div class="portfolio-tabs">
           <button class="ptab-btn active" onclick="portTab(this,'public')">Public</button>
           <button class="ptab-btn" onclick="portTab(this,'approved')">Approved Works</button>
+          <button class="ptab-btn" id="ptab-personal" onclick="portTab(this,'personal')">Personal</button>
         </div>
 
         <div id="pt-public" class="portfolio-grid"></div>
         <div id="pt-approved" class="portfolio-grid" style="display:none"></div>
+        <div id="pt-personal" class="portfolio-grid" style="display:none"></div>
       </div>
 
       <!-- UPLOAD WORK PAGE -->
       <div id="sp-upload" style="display:none">
         <div class="upload-page-card">
           <div class="upload-page-title">Upload New Work</div>
-          <div class="upload-page-sub">Share your creative work and get feedback from professors. Your file and details are saved to your account's database, so your professor can review them and they'll still be here next time you log in.</div>
+          <div class="upload-page-sub">Save creative work to your personal portfolio — always yours to keep and download. Tick the review box below only when you want a professor to review and grade it (Classwork assignments always go to review).</div>
           <input type="file" id="up-file-input" accept="image/*,.pdf,.psd,.blend,.mp4,.zip" style="display:none" onchange="handleUploadFileSelect(event)"/>
           <div class="drop-zone" id="up-drop-zone" onclick="document.getElementById('up-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--dark)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleUploadDrop(event)">
             <div class="drop-icon">
@@ -166,11 +168,15 @@
             <option value="prefinals">Pre-Finals</option>
             <option value="finals">Finals</option>
           </select>
+          <label style="display:flex;gap:10px;align-items:flex-start;margin:16px 0 4px;font-size:13px;color:var(--text2);cursor:pointer;">
+            <input type="checkbox" id="up-send-review" style="margin-top:3px;width:16px;height:16px;accent-color:var(--dark);"/>
+            <span><strong style="color:var(--dark);">Send to professor for review</strong><br><span style="font-size:12px;color:var(--text3);">Off (default) = saves to your Personal gallery only — no professor sees it, no grade. On = enters the review queue and can be graded.</span></span>
+          </label>
           <div class="form-actions">
             <button class="btn-cancel" onclick="cancelUpload()">✕ Cancel</button>
             <button class="btn-submit-work" onclick="submitWork()">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              Submit for Review
+              Save Work
             </button>
           </div>
         </div>

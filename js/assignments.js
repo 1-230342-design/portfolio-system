@@ -305,7 +305,7 @@ async function toggleAssignmentSubmissions(assignmentId){
   panel.classList.add('open');
   panel.innerHTML = `<div style="font-size:13px;color:var(--text3);">Loading submissions…</div>`;
   if(!_profItems || !_profItems.length) _profItems = await loadAllItemsForProfessor();
-  const items = _profItems.filter(p => p.assignmentId === assignmentId);
+  const items = _profItems.filter(p => p.assignmentId === assignmentId && p.status !== 'draft'); // withdrawn/personal stays private
   panel.innerHTML = items.length
     ? `<div class="submissions-list">${items.map(submissionItemHtml).join('')}</div>`
     : `<div style="font-size:13px;color:var(--text3);">No submissions yet for this assignment.</div>`;
