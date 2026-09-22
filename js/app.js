@@ -1651,8 +1651,11 @@ function handleAlertLink(){
     showToast('🔐 Tap "Send Reset Code" to choose a new password.');
     return true;
   }
+  // "It was me" — land on the public landing page only, never auto-enter
+  // a saved account session (same rule as the review-email button).
+  go('s-landing');
   showToast('👍 Got it — your password stays the same.');
-  return false;
+  return true;
 }
 
 // ══════════════════════════════════════════════════════
