@@ -838,6 +838,12 @@ function sendReviewNotification({ studentEmail, studentName, artworkTitle, decis
   console.log('[review email] app_url being sent:', appUrl);
   if(/localhost|127\.0\.0\.1/.test(appUrl)) console.warn('[review email] app_url is a LOCAL address — it will not open for students. Set APP_PUBLIC_URL to your deployed site.');
 
+  // The "View in Artfolio" button must land on the public landing page ONLY —
+  // never straight inside an account. The base URL alone auto-restores any
+  // saved session and walks right into the dashboard, so tag it with
+  // ?to=landing, which initApp honours by showing the landing page and
+  // skipping the session restore for that visit.
+  const landingUrl = appUrl + (appUrl.includes('?') ? '&' : '?') + 'to=landing';
   emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
     email:              studentEmail,
     student_name:       studentName || 'Student',
@@ -845,7 +851,7 @@ function sendReviewNotification({ studentEmail, studentName, artworkTitle, decis
     decision:           decision === 'approved' ? 'Approved' : 'Rejected',
     professor_comment:  comment || 'No comment provided.',
     final_grade:        finalGrade != null ? finalGrade+'/100' : 'Not yet graded',
-    app_url:            appUrl        // link for the "View in Artfolio" button in the email template ({{app_url}})
+    app_url:            landingUrl  // link for the "View in Artfolio" button in the email template ({{app_url}})
   }).then(()=>{
     console.log('Review notification sent to', studentEmail);
   }).catch(err=>{
@@ -3423,9 +3429,22 @@ async function restoreSession(){
 // ── APP BOOTSTRAP ──
 // Runs only after loader.js has injected every Page/Dashboard
 // fragment into the DOM, so getElementById calls above never race the fetch.
+// Email "View in Artfolio" links carry ?to=landing so they always open the
+// public landing page — never auto-enter a saved account session. Returns
+// true if it took over the screen (initApp then skips the session restore).
+function handleLandingLink(){
+  let params;
+  try{ params = new URLSearchParams(location.search); }catch(e){ return false; }
+  if(params.get('to') !== 'landing') return false;
+  history.replaceState(null, '', location.pathname); // clean the URL so a refresh restores the session normally
+  go('s-landing');
+  return true;
+}
+
 async function initApp(){
   console.log('[artfolio] originality gate ' + ORIGINALITY_GATE_VERSION + ' active — 90%+ similar images are blocked BEFORE upload (no Cloudinary file, no database row).');
   if(typeof checkForQrLink === 'function' && checkForQrLink()) return; // ?work=<id> in the URL — show that work's public page and stop here
+  if(handleLandingLink()) return; // ?to=landing from notification emails — landing page only, no auto-login
   const openedFromAlert = handleAlertLink(); // ?action=changepw|keep from the login-alert email
   if(!openedFromAlert) await restoreSession();
   populateSubjectDropdown();
