@@ -268,6 +268,8 @@ function openEditProfile(){
   document.getElementById('ep-section').value    = currentProfile.section || '';
   document.getElementById('ep-year').value       = currentProfile.year_level || '';
   document.getElementById('ep-social').value     = currentProfile.social_link || '';
+  const qrBox = document.getElementById('ep-show-qr');
+  if(qrBox) qrBox.checked = !!currentProfile.show_social_on_qr;
   editSkills = Array.isArray(currentProfile.skills) ? [...currentProfile.skills] : [];
   renderSkillChips();
   renderSkillPicker();
@@ -311,16 +313,27 @@ async function saveProfileEdits(){
   const section     = document.getElementById('ep-section').value.trim();
   const year_level  = document.getElementById('ep-year').value;
   const social_link = document.getElementById('ep-social').value.trim();
+  const showQrBox = document.getElementById('ep-show-qr');
+  const show_social_on_qr = showQrBox ? showQrBox.checked : false;
   if(!full_name){ showToast('⚠️ Please enter your full name.'); return; }
   showToast('💾 Saving profile…');
-  const { error } = await sb.from('user_profiles').update({
-    full_name, section, year_level, social_link, skills: editSkills
+  // The QR opt-in column needs supabase-qr-social.sql (run once). If it isn't
+  // there yet, save everything else instead of failing the whole profile edit.
+  let { error } = await sb.from('user_profiles').update({
+    full_name, section, year_level, social_link, skills: editSkills, show_social_on_qr
   }).eq('user_id', currentUser.id);
+  if(error && /show_social_on_qr/i.test(error.message || '')){
+    console.info('[profile] QR opt-in column missing — run supabase-qr-social.sql. Saving the rest of the profile.');
+    ({ error } = await sb.from('user_profiles').update({
+      full_name, section, year_level, social_link, skills: editSkills
+    }).eq('user_id', currentUser.id));
+  }
   if(error){ showToast('❌ '+error.message); return; }
   currentProfile.full_name   = full_name;
   currentProfile.section     = section;
   currentProfile.year_level  = year_level;
   currentProfile.social_link = social_link;
+  currentProfile.show_social_on_qr = show_social_on_qr;
   currentProfile.skills      = editSkills;
   const firstName = full_name.split(' ')[0] || 'Student';
   document.getElementById('s-sidebar-name').textContent = full_name;

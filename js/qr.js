@@ -109,7 +109,7 @@ async function loadPublicWorkFromQR(itemId){
 
     const { data: profile } = await sb
       .from('user_profiles')
-      .select('full_name, section, year_level')
+      .select('full_name, section, year_level, social_link, show_social_on_qr')
       .eq('user_id', portfolio.student_id)
       .maybeSingle();
 
@@ -122,6 +122,22 @@ async function loadPublicWorkFromQR(itemId){
     const fileObj = { dataUrl: item.file_url, mimeType: item.file_type };
     const isImg = fileIsImage(fileObj);
     const isVid = fileIsVideo(fileObj);
+    // Contact card vs description: the artist's social link replaces the
+    // description ONLY when they opted in (Edit Profile checkbox,
+    // show_social_on_qr). Default/off, or no link set = description as
+    // before, so nothing private ever leaks through a shared QR.
+    const artistName = (profile && profile.full_name) || 'Student';
+    const showSocial = !!(profile && profile.show_social_on_qr && profile.social_link);
+    const rawLink = showSocial ? profile.social_link.trim() : '';
+    const socialHref = rawLink && (/^https?:\/\//i.test(rawLink) ? rawLink : 'https://' + rawLink);
+    const underTitle = showSocial
+      ? `<div style="background:var(--surface);border-radius:14px;padding:20px;margin-top:6px;text-align:center;">
+          <div style="font-size:11px;letter-spacing:1.5px;font-weight:700;color:var(--text3);margin-bottom:6px;">📱 CONTACT THE ARTIST</div>
+          <div style="font-size:16px;font-weight:700;color:var(--dark);margin-bottom:12px;">${esc(artistName)}</div>
+          <a href="${esc(socialHref)}" target="_blank" rel="noopener" class="btn-submit-work" style="text-decoration:none;display:inline-flex;">${esc(rawLink)}</a>
+        </div>`
+      : `<p style="font-size:14px;color:var(--text2);line-height:1.7;">${esc(item.description || 'No description provided.')}</p>
+         <div style="font-size:12px;color:var(--text3);margin-top:14px;">by ${esc(artistName)}</div>`;
     el.innerHTML = `
       ${isImg
         ? `<img src="${esc(item.file_url)}" alt="${esc(item.title)}" style="width:100%;max-height:480px;object-fit:contain;border-radius:14px;background:var(--surface2);margin-bottom:20px;"/>`
@@ -129,7 +145,7 @@ async function loadPublicWorkFromQR(itemId){
           ? `<video src="${esc(item.file_url)}" controls style="width:100%;max-height:480px;border-radius:14px;background:#000;margin-bottom:20px;"></video>`
           : `<div class="upload-thumb-placeholder" style="height:240px;border-radius:14px;margin-bottom:20px;">🖼️</div>`}
       <h2 style="font-family:'Fraunces',serif;font-size:26px;color:var(--dark);margin-bottom:14px;">${esc(item.title)}</h2>
-      <p style="font-size:14px;color:var(--text2);line-height:1.7;">${esc(item.description || 'No description provided.')}</p>
+      ${underTitle}
     `;
   }catch(err){
     console.error('loadPublicWorkFromQR error:', err);
