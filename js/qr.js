@@ -151,7 +151,7 @@ async function loadPublicWorkFromQR(itemId){
       ? `<div style="background:var(--surface);border-radius:14px;padding:20px;margin-top:6px;text-align:center;">
           <div style="font-size:11px;letter-spacing:1.5px;font-weight:700;color:var(--text3);margin-bottom:6px;">📱 CONTACT THE ARTIST</div>
           <div style="font-size:16px;font-weight:700;color:var(--dark);margin-bottom:12px;">${esc(artistName)}</div>
-          <a href="${esc(socialHref)}" target="_blank" rel="noopener" class="btn-submit-work" style="text-decoration:none;display:inline-flex;">${esc(rawLink)}</a>
+          <a href="${esc(socialHref)}" target="_blank" rel="noopener" class="btn-submit-work" style="text-decoration:none;display:inline-flex;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-all;line-height:1.5;">${esc(rawLink)}</a>
         </div>`
       : `<p style="font-size:14px;color:var(--text2);line-height:1.7;">${esc(item.description || 'No description provided.')}</p>
          <div style="font-size:12px;color:var(--text3);margin-top:14px;">by ${esc(artistName)}</div>`;
