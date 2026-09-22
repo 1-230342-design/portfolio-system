@@ -107,11 +107,28 @@ async function loadPublicWorkFromQR(itemId){
     if(pe) throw pe;
     if(!portfolio){ renderPublicWorkNotFound(); return; }
 
+    // Base profile first (columns that always exist), then the QR opt-in
+    // columns separately — if supabase-qr-social.sql was never run, that
+    // second query fails and we simply fall back to the description instead
+    // of losing the whole profile (and the artist's name with it).
     const { data: profile } = await sb
       .from('user_profiles')
-      .select('full_name, section, year_level, social_link, show_social_on_qr')
+      .select('full_name, section, year_level')
       .eq('user_id', portfolio.student_id)
       .maybeSingle();
+    try{
+      const { data: qrOpt, error: qrErr } = await sb
+        .from('user_profiles')
+        .select('social_link, show_social_on_qr')
+        .eq('user_id', portfolio.student_id)
+        .maybeSingle();
+      if(!qrErr && qrOpt && profile){
+        profile.social_link = qrOpt.social_link;
+        profile.show_social_on_qr = qrOpt.show_social_on_qr;
+      }
+    }catch(optErr){
+      console.info('[qr] social opt-in unavailable — showing description. Run supabase-qr-social.sql to enable contact cards.');
+    }
 
     // Reuse the same file-type helpers app.js uses everywhere else, so this
     // page treats images/videos identically to the rest of the app instead
