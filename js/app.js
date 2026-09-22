@@ -1380,10 +1380,11 @@ async function openPublicProfile(userId){
 
   document.getElementById('pp-name').textContent = profile.full_name || 'Student';
   const secYear = [profile.section, profile.year_level].filter(Boolean).join(' \u00b7 ');
+  // No social link here on purpose — visitors get the artist's socials by
+  // scanning a work's QR (contact card), so the QR stays the reason to scan.
   document.getElementById('pp-meta').innerHTML = [
     esc(maskStudentId(profile.student_id) || 'Student ID not set'),
-    esc(secYear || 'Section · Year Level'),
-    profile.social_link ? `<a href="${esc(profile.social_link)}" target="_blank" rel="noopener">${esc(profile.social_link)}</a>` : '<span style="opacity:.6">No social link added</span>'
+    esc(secYear || 'Section · Year Level')
   ].join('<br>');
   const skills = Array.isArray(profile.skills) ? profile.skills : [];
   document.getElementById('pp-skills').innerHTML = skills.length
