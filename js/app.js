@@ -204,13 +204,34 @@ function togglePasswordVisibility(inputId, btnEl){
   }
 }
 // Supabase returns "Invalid login credentials" for both wrong email AND wrong
-// password (it never says which, for security) — show one clear, friendly
-// message for that case instead of the raw Supabase wording. Other auth
-// errors (e.g. email not confirmed, rate limited) still show their real message.
+// password (it never says which, for security — precise messages let strangers
+// probe which emails are registered). specificLoginErrorMessage() below refines
+// it when it safely can: if the email isn't in user_profiles, the EMAIL is
+// wrong; if it is, the PASSWORD is. When the lookup itself is inconclusive
+// (anonymous RLS block, or legacy profiles saved without an email), it falls
+// back to the generic message rather than guessing wrong. Other auth errors
+// (e.g. email not confirmed, rate limited) still show their real message.
 function loginErrorMessage(error){
   const msg = (error && error.message) || '';
   if(/invalid login credentials/i.test(msg)) return 'Invalid email or Password please try again.';
   return msg || 'Something went wrong. Please try again.';
+}
+async function isEmailRegistered(email){
+  try{
+    const { data, error } = await sb.from('user_profiles').select('user_id').eq('email', email).limit(1);
+    if(error) return null; // unknown — don't guess (likely an anonymous RLS block)
+    return !!(data && data.length);
+  }catch(e){
+    return null;
+  }
+}
+async function specificLoginErrorMessage(email, error){
+  const msg = (error && error.message) || '';
+  if(!/invalid login credentials/i.test(msg)) return msg || 'Something went wrong. Please try again.';
+  const registered = await isEmailRegistered(email);
+  if(registered === true)  return 'Incorrect password. Please try again.';
+  if(registered === false) return 'No account found with this email. Please check the email and try again.';
+  return 'Invalid email or Password please try again.';
 }
 
 // ══════════════════════════════════════════════════════
@@ -1820,7 +1841,7 @@ async function doLogin(){
     showToast('❌ Network error — could not reach Supabase. Check your internet connection or the Supabase project status.');
     return;
   }
-  if(error){ showToast('❌ '+loginErrorMessage(error)); sendLoginAlert(email, false); return; }
+  if(error){ showToast('❌ '+await specificLoginErrorMessage(email, error)); sendLoginAlert(email, false); return; }
   let profile = await getProfile(data.user.id);
   if(!profile){
     // Profile row is missing — this can happen if the OTP step was skipped or RLS blocked the insert.
@@ -1864,7 +1885,7 @@ async function doLoginProf(){
     showToast('❌ Network error — could not reach Supabase. Check your internet connection or the Supabase project status.');
     return;
   }
-  if(error){ showToast('❌ '+loginErrorMessage(error)); sendLoginAlert(email, false); return; }
+  if(error){ showToast('❌ '+await specificLoginErrorMessage(email, error)); sendLoginAlert(email, false); return; }
   const profile = await getProfile(data.user.id);
   if(!profile){ showToast('❌ Profile not found. Please contact your administrator to set up your account.'); return; }
   if(profile.role !== 'professor' && profile.role !== 'admin'){ showToast('❌ This is not a professor account. Please use the student login instead.'); return; }
