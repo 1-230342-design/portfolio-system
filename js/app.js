@@ -468,34 +468,92 @@ function loadImageFromFile(file){
   });
 }
 
+// Standard 64-bit difference hash from any drawable source (image element,
+// video element, canvas) shrunk to 9x8. Shared by the image and video paths
+// so both produce the same hex format the comparison code expects.
+function dhashFromDrawable(src, sw, sh){
+  const w = 9, h = 8; // 9 columns so we get 8 horizontal comparisons per row = 64 bits total
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(src, 0, 0, sw, sh, 0, 0, w, h);
+  const data = ctx.getImageData(0, 0, w, h).data;
+
+  const gray = [];
+  for(let i=0;i<data.length;i+=4){
+    gray.push(0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
+  }
+
+  let bits = '';
+  for(let row=0; row<h; row++){
+    for(let col=0; col<w-1; col++){
+      bits += (gray[row*w+col] > gray[row*w+col+1]) ? '1' : '0';
+    }
+  }
+  // bits.length === 64 → pack into 16 hex characters
+  let hex = '';
+  for(let i=0;i<bits.length;i+=4){
+    hex += parseInt(bits.substr(i,4), 2).toString(16);
+  }
+  return hex;
+}
+
+// One middle frame of a video, hashed like a still image — so re-uploaded or
+// lightly re-encoded videos join the same duplicate gate as images. No AI
+// embedding for video (MobileNet expects stills); identical-video copies are
+// caught by hash, and byte-identical ones by SHA-256 below.
+function computeVideoFrameHash(file){
+  return new Promise((resolve)=>{
+    let settled = false;
+    const done = (v)=>{ if(!settled){ settled = true; resolve(v); } };
+    const timer = setTimeout(()=>done(null), 8000); // never hang the upload on a bad file
+    try{
+      const url = URL.createObjectURL(file);
+      const vid = document.createElement('video');
+      vid.muted = true; vid.playsInline = true; vid.preload = 'auto';
+      const cleanup = ()=>{ clearTimeout(timer); URL.revokeObjectURL(url); vid.removeAttribute('src'); vid.load(); };
+      vid.onloadedmetadata = ()=>{
+        const t = (vid.duration && isFinite(vid.duration)) ? Math.min(1, vid.duration / 2) : 0;
+        const onSeeked = ()=>{
+          try{
+            if(!vid.videoWidth) throw new Error('no video dimensions');
+            done(dhashFromDrawable(vid, vid.videoWidth, vid.videoHeight));
+          }catch(e){ done(null); }
+          cleanup();
+        };
+        if(vid.readyState >= 2){ try{ vid.currentTime = t; }catch(e){ done(null); cleanup(); } }
+        vid.onseeked = onSeeked;
+        try{ vid.currentTime = t; }catch(e){ done(null); cleanup(); }
+      };
+      vid.onerror = ()=>{ cleanup(); done(null); };
+      vid.src = url;
+    }catch(e){ clearTimeout(timer); done(null); }
+  });
+}
+
+// Exact-file fingerprint (SHA-256 of the raw bytes) — works for EVERY file
+// type including PDF/ZIP/PSD/audio, where perceptual hashing is meaningless.
+// Catches byte-identical re-uploads no matter the type. Needs a secure
+// context (https/localhost); returns null elsewhere instead of breaking.
+async function computeSha256(file){
+  try{
+    if(!file || !window.crypto || !crypto.subtle || !file.arrayBuffer) return null;
+    const buf = await file.arrayBuffer();
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(err){
+    console.warn('computeSha256 skipped:', err);
+    return null;
+  }
+}
+
 async function computePerceptualHash(file){
-  if(!file || !file.type || !file.type.startsWith('image/')) return null; // only images can be hashed this way
+  if(!file || !file.type) return null;
+  if(file.type.startsWith('video/')) return computeVideoFrameHash(file); // videos join the gate via a middle frame
+  if(!file.type.startsWith('image/')) return null; // PDFs/ZIPs/etc rely on SHA-256 exact matching instead
   try{
     const img = await loadImageFromFile(file);
-    const w = 9, h = 8; // 9 columns so we get 8 horizontal comparisons per row = 64 bits total
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0, w, h);
-    const data = ctx.getImageData(0, 0, w, h).data;
-
-    const gray = [];
-    for(let i=0;i<data.length;i+=4){
-      gray.push(0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
-    }
-
-    let bits = '';
-    for(let row=0; row<h; row++){
-      for(let col=0; col<w-1; col++){
-        bits += (gray[row*w+col] > gray[row*w+col+1]) ? '1' : '0';
-      }
-    }
-    // bits.length === 64 → pack into 16 hex characters
-    let hex = '';
-    for(let i=0;i<bits.length;i+=4){
-      hex += parseInt(bits.substr(i,4), 2).toString(16);
-    }
-    return hex;
+    return dhashFromDrawable(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
   }catch(err){
     console.error('computePerceptualHash error:', err);
     return null;
@@ -552,8 +610,8 @@ function tagSimilarity(tagsA, tagsB){
 // below. Used BEFORE a submission is saved (submitWork / submitAttachedWork)
 // so a true 100% duplicate can be blocked outright, instead of only being
 // logged for the professor to notice after the fact.
-async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId, embedding, ownerStudentId){
-  if(!phash && !embedding) return { bestScore: 0, best: null }; // nothing to compare without a phash or an AI fingerprint
+async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId, embedding, ownerStudentId, sha256){
+  if(!phash && !embedding && !sha256) return { bestScore: 0, best: null }; // nothing to compare without a fingerprint of any kind
   try{
     // Pull the AI fingerprint column too, when this upload actually has one and the
     // column exists — previously this block check NEVER looked at the AI embedding at
@@ -582,6 +640,7 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
       if(!rpcErr && Array.isArray(rpcRows)){
         scoped = rpcRows.map(r => ({
           id: r.item_id, phash: r.phash, embedding: useAI ? r.embedding : null,
+          sha256: r.sha256 || null,
           title: r.title, file_url: r.file_url, file_type: r.file_type,
           portfolios: { assignment_id: r.assignment_id, student_id: r.student_id }
         }));
@@ -625,10 +684,8 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
       console.log('[originality] gate compared via direct query against ' + scoped.length + ' submission(s).');
     }
 
-    if(!scoped.length){
-      console.warn('[originality] gate found no submissions in the same scope — passing (if this is wrong, check RLS / run supabase-similarity-rpc.sql).');
-      return { bestScore: 0, best: null };
-    }
+    // NOTE: no early return on empty `scoped` here — the exact-file and
+    // cross-assignment checks below are scope-independent and must still run.
 
     // CRITICAL: an older submission may not have its AI fingerprint yet — that
     // backfill normally only happens quietly in the background once a PROFESSOR
@@ -643,6 +700,42 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
     // before deciding, so the block check sees the same picture a professor would.
     if(useAI && typeof embEnsureForItems === 'function' && scoped.length){
       await embEnsureForItems(scoped);
+    }
+
+    // EXACT-FILE check (all types): a byte-identical file already in this
+    // scope is an instant 100% block — this is what catches PDFs, ZIPs,
+    // PSDs and audio, where perceptual hashing is meaningless.
+    if(sha256){
+      const exact = scoped.find(o => o.sha256 && o.sha256 === sha256);
+      if(exact){
+        console.log('[originality] gate: exact file match — blocking.');
+        return { bestScore: 1, best: exact };
+      }
+    }
+
+    // CROSS-ASSIGNMENT check: pixel-identical work (≤1 of 64 hash bits
+    // different) sitting under a DIFFERENT assignment or plain Upload Work,
+    // from another student. Hash-only by design — the AI score is never
+    // consulted across scopes, so it can't false-positive on unrelated
+    // classwork. Needs get_cross_assignment_duplicates()
+    // (supabase-integrity-hardening.sql); skipped silently until that's run.
+    if(phash){
+      try{
+        const { data: crossRows, error: crossErr } = await sb.rpc('get_cross_assignment_duplicates', {
+          p_phash: phash,
+          p_owner_id: ownerStudentId || null,
+          p_assignment_id: targetAssignmentId
+        });
+        if(!crossErr && Array.isArray(crossRows) && crossRows.length){
+          console.log('[originality] gate: identical work found in another assignment — blocking.');
+          return { bestScore: 1, best: { id: crossRows[0].item_id, title: crossRows[0].title || 'Similar Item' } };
+        }
+      }catch(crossEx){ /* RPC missing — same-scope check below still applies */ }
+    }
+
+    if(!scoped.length){
+      console.warn('[originality] gate found no submissions in the same scope — passing (if this is wrong, check RLS / run supabase-similarity-rpc.sql).');
+      return { bestScore: 0, best: null };
     }
 
     // Same AI+hash blended comparison used everywhere else (js/similarity-ai.js
@@ -704,10 +797,10 @@ function animateOcPercent(targetPct, durationMs){
 // Runs the real duplicate check behind the scanning animation, then reveals
 // the result. Returns true if the submission must be BLOCKED (100% match),
 // false if it's clear to proceed with saving.
-async function runOriginalityCheckUI(phash, tags, assignmentId, embedding, ownerStudentId){
+async function runOriginalityCheckUI(phash, tags, assignmentId, embedding, ownerStudentId, sha256){
   showOriginalityScanning();
   const [{ bestScore, best }] = await Promise.all([
-    findBestSimilarityMatch(phash, tags, null, assignmentId, embedding, ownerStudentId),
+    findBestSimilarityMatch(phash, tags, null, assignmentId, embedding, ownerStudentId, sha256),
     new Promise(r => setTimeout(r, 300)) // floor so the ring is visible even on a fast connection
   ]);
   const pct = Math.round(bestScore * 100);
@@ -794,7 +887,7 @@ async function runSimilarityCheck(newItemId, newPhash, newTags, newEmbedding, as
 
 // Save uploaded item to Supabase using your real schema
 // Flow: find/create portfolio → insert portfolio_item
-async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPeriod, fileUrl, fileType, fileSize, cloudinaryId, phash, imaggaTags, embedding, forReview = true }){
+async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPeriod, fileUrl, fileType, fileSize, cloudinaryId, phash, imaggaTags, embedding, sha256, forReview = true }){
   // 1. Find or create a portfolio for this student + grading_period (subject is optional)
   //
   // PERSONAL vs REVIEW portfolios are kept strictly separate using the
@@ -867,7 +960,13 @@ async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPerio
     uploaded_at:     new Date().toISOString()
   };
   if(embedding) itemRow.embedding = embedding; // only sent when the AI comparison produced one (column may not exist otherwise)
-  const { data: item, error: ie } = await sb.from('portfolio_items').insert([itemRow]).select().single();
+  if(sha256) itemRow.sha256 = sha256; // needs supabase-integrity-hardening.sql — retried without it below
+  let { data: item, error: ie } = await sb.from('portfolio_items').insert([itemRow]).select().single();
+  if(ie && sha256 && /sha256/i.test(ie.message || '')){
+    console.info('[save] sha256 column missing — run supabase-integrity-hardening.sql. Saving without the exact-file fingerprint.');
+    delete itemRow.sha256;
+    ({ data: item, error: ie } = await sb.from('portfolio_items').insert([itemRow]).select().single());
+  }
   if(ie) throw ie;
 
   return { item, portfolioId };
@@ -2639,9 +2738,10 @@ async function submitWork(){
     // The block check ignores Imagga tags (see SIMILARITY_BLOCK_THRESHOLD),
     // so no Cloudinary URL is needed for this step.
     showToast('🧠 Comparing image content…');
-    const [ourPhash, embedding] = await Promise.all([
+    const [ourPhash, embedding, ourSha256] = await Promise.all([
       computePerceptualHash(pendingRawFile),
-      (typeof embFromFile === 'function') ? embFromFile(pendingRawFile) : Promise.resolve(null)
+      (typeof embFromFile === 'function') ? embFromFile(pendingRawFile) : Promise.resolve(null),
+      computeSha256(pendingRawFile) // exact-file fingerprint — catches PDFs/ZIPs/etc too
     ]);
 
     // 1b. Play the originality-check scanning animation while comparing
@@ -2649,7 +2749,7 @@ async function submitWork(){
     // — checked BEFORE uploading/saving, so a duplicate never becomes a
     // real submission at all, not just a flagged one the professor has to
     // catch manually.
-    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], null, embedding, currentUser.id); // plain Upload Work — no assignment
+    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], null, embedding, currentUser.id, ourSha256); // plain Upload Work — no assignment
     if(isDuplicate){
       pendingRawFile = null; pendingUploadFile = null;
       document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
@@ -2671,7 +2771,7 @@ async function submitWork(){
       title, desc, subjectId, gradingPeriod,
       fileUrl: cloud.url, fileType: pendingRawFile.type,
       fileSize: pendingRawFile.size, cloudinaryId: cloud.publicId, phash: ourPhash, imaggaTags, embedding,
-      forReview: sendForReview
+      sha256: ourSha256, forReview: sendForReview
     });
     // 2b. Run similarity check against other students' uploads using our computed hash + tags.
     // Review-bound only — a personal save has no professor to flag things to.

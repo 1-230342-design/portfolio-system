@@ -105,12 +105,13 @@ async function renderAssignmentsPage(uid){
 }
 
 // ── Attach-work modal (student) ──
-function openAttachWorkModal(assignmentId){
+async function openAttachWorkModal(assignmentId){
   const a = _assignmentsCache.find(x => x.id === assignmentId);
   if(!a){ showToast('⚠️ Assignment not found'); return; }
   // Deadline lock (first line of defence — the button is already disabled,
-  // but this stops anyone reaching the modal another way).
-  if(a.due_date && new Date(a.due_date) <= new Date()){ showToast('🔒 Submissions are closed — this assignment is past due.'); return; }
+  // but this stops anyone reaching the modal another way). Server clock wins
+  // over the device clock when the hardening SQL has been run.
+  if(await isAssignmentClosedNow(a)){ showToast('🔒 Submissions are closed — this assignment is past due.'); return; }
   currentAttachAssignmentId = assignmentId;
   attachRawFile = null;
   document.getElementById('aw-assignment-title').textContent = a.title;
@@ -173,10 +174,39 @@ async function saveAssignmentSubmission(userId, assignment, payload){
     cloudinary_public_id: payload.cloudinaryId || null, uploaded_at: new Date().toISOString()
   };
   if(payload.embedding) itemRow.embedding = payload.embedding; // only sent when the AI comparison produced one
-  const { data: item, error: ie } = await sb.from('portfolio_items').insert([itemRow]).select().single();
+  if(payload.sha256) itemRow.sha256 = payload.sha256; // needs supabase-integrity-hardening.sql — retried without it below
+  let { data: item, error: ie } = await sb.from('portfolio_items').insert([itemRow]).select().single();
+  if(ie && payload.sha256 && /sha256/i.test(ie.message || '')){
+    console.info('[save] sha256 column missing — run supabase-integrity-hardening.sql. Saving without the exact-file fingerprint.');
+    delete itemRow.sha256;
+    ({ data: item, error: ie } = await sb.from('portfolio_items').insert([itemRow]).select().single());
+  }
   if(ie) throw ie;
 
   return { item, portfolioId };
+}
+
+// Deadline truth from the DATABASE clock (supabase-integrity-hardening.sql).
+// Returns true = open, false = closed, null = unknown (SQL not run yet —
+// callers fall back to the device clock). Kills rewound-laptop-clock tricks
+// for the UI; the RLS policy behind it kills them for real.
+async function isAssignmentOpenServer(assignmentId){
+  if(!assignmentId) return null;
+  try{
+    const { data, error } = await sb.rpc('is_assignment_open', { p_assignment_id: assignmentId });
+    if(error) throw error;
+    return data === true;
+  }catch(e){
+    return null;
+  }
+}
+// One combined verdict: server truth wins when available, device clock otherwise.
+async function isAssignmentClosedNow(assignment){
+  if(!assignment || !assignment.due_date) return false;
+  const serverOpen = await isAssignmentOpenServer(assignment.id);
+  if(serverOpen === true) return false; // server says open — trust it over a wrong device clock
+  if(serverOpen === false) return true; // server says closed — rewound clocks can't help
+  return new Date(assignment.due_date) <= new Date();
 }
 
 async function submitAttachedWork(){
@@ -185,8 +215,8 @@ async function submitAttachedWork(){
   const assignment = _assignmentsCache.find(a => a.id === currentAttachAssignmentId);
   if(!assignment){ showToast('⚠️ Assignment not found'); return; }
   // Deadline lock (last line of defence — catches the case where the cutoff
-  // passed while the student had the modal open).
-  if(assignment.due_date && new Date(assignment.due_date) <= new Date()){
+  // passed while the student had the modal open). Server clock wins.
+  if(await isAssignmentClosedNow(assignment)){
     closeAttachWorkModal();
     showToast('🔒 Submissions are closed — this assignment is past due.');
     return;
@@ -205,15 +235,16 @@ async function submitAttachedWork(){
     // (see SIMILARITY_BLOCK_THRESHOLD in app.js), so no Cloudinary URL is
     // needed for this step.
     showToast('🧠 Comparing image content…');
-    const [ourPhash, embedding] = await Promise.all([
+    const [ourPhash, embedding, ourSha256] = await Promise.all([
       computePerceptualHash(attachRawFile),
-      (typeof embFromFile === 'function') ? embFromFile(attachRawFile) : Promise.resolve(null)
+      (typeof embFromFile === 'function') ? embFromFile(attachRawFile) : Promise.resolve(null),
+      computeSha256(attachRawFile) // exact-file fingerprint — catches PDFs/ZIPs/etc too
     ]);
 
     // Play the same originality-check scanning animation used by the regular
     // Upload Work flow (app.js) — blocks outright at 90%+ similarity, so
     // Classwork attachments can't be used to route around it.
-    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], assignment.id, embedding, currentUser.id);
+    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], assignment.id, embedding, currentUser.id, ourSha256);
     if(isDuplicate){
       attachRawFile = null;
       document.getElementById('aw-drop-text').textContent = 'Drop files here or click to upload';
@@ -229,7 +260,8 @@ async function submitAttachedWork(){
     showToast('💾 Saving submission…');
     const { item } = await saveAssignmentSubmission(currentUser.id, assignment, {
       title, desc, fileUrl: cloud.url, fileType: attachRawFile.type,
-      fileSize: attachRawFile.size, cloudinaryId: cloud.publicId, phash: ourPhash, imaggaTags, embedding
+      fileSize: attachRawFile.size, cloudinaryId: cloud.publicId, phash: ourPhash, imaggaTags, embedding,
+      sha256: ourSha256
     });
     runSimilarityCheck(item.id, ourPhash, imaggaTags, embedding, assignment.id, currentUser.id);
 
@@ -239,6 +271,14 @@ async function submitAttachedWork(){
     refreshStudentViews();
   }catch(err){
     console.error('submitAttachedWork error:', err);
+    // A row-level-security rejection on the portfolio insert means the
+    // database-clock deadline policy fired (closed assignment) — say so
+    // plainly instead of showing raw RLS wording.
+    if(/row-level security/i.test(err.message || '')){
+      closeAttachWorkModal();
+      showToast('🔒 Submissions are closed — this assignment is past due.');
+      return;
+    }
     showToast('❌ Submission failed: '+err.message);
   }
 }
