@@ -72,8 +72,12 @@
   #s-landing .lp-logo-sub{ font-size:11px; color:rgba(255,255,255,.6); margin-top:1px; }
   @media(max-width:640px){ #s-landing .lp-brandmark{ gap:10px; } #s-landing .lp-logo-sub{ display:none; } }
   #s-landing .lp-nav-links{ display:flex; gap:30px; font-size:13.5px; }
-  #s-landing .lp-nav-links a{ padding-bottom:5px; border-bottom:2px solid transparent; color:rgba(255,255,255,.72); cursor:pointer; }
-  #s-landing .lp-nav-links a.lp-active,#s-landing .lp-nav-links a:hover{ color:#fff; border-color:var(--lp-gold); }
+  #s-landing .lp-nav-links a{ position:relative; padding-bottom:5px; color:rgba(255,255,255,.72); cursor:pointer; transition:color .25s ease; }
+  #s-landing .lp-nav-links a::after{ content:''; position:absolute; left:0; right:0; bottom:0; height:2px; border-radius:2px; background:var(--lp-gold); transform:scaleX(0); transform-origin:left; transition:transform .3s ease; }
+  #s-landing .lp-nav-links a:hover{ color:#fff; }
+  #s-landing .lp-nav-links a:hover::after{ transform:scaleX(1); }
+  #s-landing .lp-nav-links a.lp-active{ color:#fff; }
+  #s-landing .lp-nav-links a.lp-active::after{ transform:scaleX(1); }
   #s-landing .lp-nav-right{ display:flex; align-items:center; gap:16px; }
   #s-landing .lp-browse-link{ font-size:12px; color:rgba(255,255,255,.72); text-decoration:underline; cursor:pointer; white-space:nowrap; }
   #s-landing .lp-browse-link:hover{ color:#fff; }
