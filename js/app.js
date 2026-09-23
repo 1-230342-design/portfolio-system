@@ -1221,12 +1221,16 @@ async function getPortfolioOwnerName(portfolioId){
 // ══════════════════════════════════════════════════════
 //  NAVIGATION
 // ══════════════════════════════════════════════════════
-function showSection(sec){
-  document.getElementById('sec-about').style.display    = sec==='about'    ? 'block':'none';
-  document.getElementById('sec-features').style.display = sec==='features' ? 'block':'none';
-  document.querySelectorAll('.landing-nav-links a').forEach(a=>{
-    a.classList.toggle('active', a.getAttribute('onclick').includes(sec));
-  });
+// Landing nav: smooth-scroll to a section AND move the gold underline to the
+// clicked link. (The old showSection() toggled a nav class that no longer
+// exists, so Home's underline could never leave — now scrollLandingTo owns it.)
+function scrollLandingTo(id, el){
+  const t = document.getElementById(id);
+  if(t) t.scrollIntoView({ behavior:'smooth', block:'start' });
+  if(el && el.tagName === 'A'){
+    document.querySelectorAll('#s-landing .lp-nav-links a').forEach(a=>a.classList.remove('lp-active'));
+    el.classList.add('lp-active');
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1237,11 +1241,6 @@ function showSection(sec){
 //  reads that populate the hero showcase mosaic + Explore grid
 //  with real public/approved student work — no fake demo data.
 // ══════════════════════════════════════════════════════
-function scrollLandingTo(id){
-  const el = document.getElementById(id);
-  if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
-}
-
 // The hero login card has its OWN input ids (lp-login-email/pass) so it can't
 // collide with the real login screen's ids — this just copies the values over
 // and calls the exact same doLogin()/doLoginProf() everything else uses, so
