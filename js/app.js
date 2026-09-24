@@ -818,8 +818,26 @@ function animateOcPercent(targetPct, durationMs){
 // Runs the real duplicate check behind the scanning animation, then reveals
 // the result. Returns true if the submission must be BLOCKED (100% match),
 // false if it's clear to proceed with saving.
-async function runOriginalityCheckUI(phash, tags, assignmentId, embedding, ownerStudentId, sha256){
+// Human label for what's being checked — the scanning modal and toasts say
+// "video" for videos, "image" for images, and plain "file" otherwise.
+function similarityKindLabel(mimeType){
+  if(mimeType && mimeType.startsWith('video/')) return 'video';
+  if(mimeType && mimeType.startsWith('image/')) return 'image';
+  return 'file';
+}
+async function runOriginalityCheckUI(phash, tags, assignmentId, embedding, ownerStudentId, sha256, kind){
   showOriginalityScanning();
+  // Label the scan for what's actually uploading ("Checking Video
+  // Similarity…" vs "Checking Image Similarity…") instead of always saying image.
+  const k = kind === 'video' ? 'video' : kind === 'file' ? 'file' : 'image';
+  const titleEl = document.getElementById('oc-scan-title');
+  const subEl = document.getElementById('oc-scan-sub');
+  if(titleEl) titleEl.textContent = k === 'file' ? 'Checking Originality…' : `Checking ${k === 'video' ? 'Video' : 'Image'} Similarity…`;
+  if(subEl) subEl.textContent = k === 'video'
+    ? 'Comparing video frames against every submission already in the system'
+    : k === 'image'
+      ? 'Comparing image content against every submission already in the system'
+      : 'Comparing your file against every submission already in the system';
   const [{ bestScore, best }] = await Promise.all([
     findBestSimilarityMatch(phash, tags, null, assignmentId, embedding, ownerStudentId, sha256),
     new Promise(r => setTimeout(r, 300)) // floor so the ring is visible even on a fast connection
@@ -2757,7 +2775,8 @@ async function submitWork(){
     // leaves the browser, so no orphan file or DB row is ever created.
     // The block check ignores Imagga tags (see SIMILARITY_BLOCK_THRESHOLD),
     // so no Cloudinary URL is needed for this step.
-    showToast('🧠 Comparing image content…');
+    const uploadKind = similarityKindLabel(pendingRawFile.type);
+    showToast(uploadKind === 'video' ? '🎬 Comparing video content…' : uploadKind === 'image' ? '🧠 Comparing image content…' : '🧠 Comparing file content…');
     const [ourPhash, embedding, ourSha256] = await Promise.all([
       computePerceptualHash(pendingRawFile),
       (typeof embFromFile === 'function') ? embFromFile(pendingRawFile) : Promise.resolve(null),
@@ -2769,7 +2788,7 @@ async function submitWork(){
     // — checked BEFORE uploading/saving, so a duplicate never becomes a
     // real submission at all, not just a flagged one the professor has to
     // catch manually.
-    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], null, embedding, currentUser.id, ourSha256); // plain Upload Work — no assignment
+    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], null, embedding, currentUser.id, ourSha256, uploadKind); // plain Upload Work — no assignment
     if(isDuplicate){
       pendingRawFile = null; pendingUploadFile = null;
       document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';

@@ -234,7 +234,8 @@ async function submitAttachedWork(){
     // student's browser. The block check deliberately ignores Imagga tags
     // (see SIMILARITY_BLOCK_THRESHOLD in app.js), so no Cloudinary URL is
     // needed for this step.
-    showToast('🧠 Comparing image content…');
+    const attachKind = (typeof similarityKindLabel === 'function') ? similarityKindLabel(attachRawFile.type) : 'image';
+    showToast(attachKind === 'video' ? '🎬 Comparing video content…' : attachKind === 'image' ? '🧠 Comparing image content…' : '🧠 Comparing file content…');
     const [ourPhash, embedding, ourSha256] = await Promise.all([
       computePerceptualHash(attachRawFile),
       (typeof embFromFile === 'function') ? embFromFile(attachRawFile) : Promise.resolve(null),
@@ -244,7 +245,7 @@ async function submitAttachedWork(){
     // Play the same originality-check scanning animation used by the regular
     // Upload Work flow (app.js) — blocks outright at 90%+ similarity, so
     // Classwork attachments can't be used to route around it.
-    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], assignment.id, embedding, currentUser.id, ourSha256);
+    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], assignment.id, embedding, currentUser.id, ourSha256, attachKind);
     if(isDuplicate){
       attachRawFile = null;
       document.getElementById('aw-drop-text').textContent = 'Drop files here or click to upload';
