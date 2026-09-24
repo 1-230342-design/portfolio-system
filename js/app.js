@@ -456,18 +456,64 @@ async function loadProjectsForStudent(userId){
   return studentProjects[userId];
 }
 
-// Upload to Cloudinary
-async function uploadToCloudinary(file){
-  const fd = new FormData();
-  fd.append('file', file);
-  fd.append('upload_preset', CLOUDINARY_PRESET);
-  fd.append('folder', 'artfolio');
-  
-  showToast('☁️ Uploading to Cloudinary…');
-  const res  = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`,{ method:'POST', body:fd });
-  const data = await res.json();
-  if(data.error) throw new Error(data.error.message);
-  return { url: data.secure_url, publicId: data.public_id, bytes: data.bytes, format: data.format };
+// Upload to Cloudinary with LIVE progress (XMLHttpRequest — fetch can't report
+// upload progress). onProgress(0–100) fires as bytes leave the browser; callers
+// paint it onto their submit button so students see it's still working and
+// don't close the window mid-upload.
+function uploadToCloudinary(file, onProgress){
+  return new Promise((resolve, reject)=>{
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', CLOUDINARY_PRESET);
+    fd.append('folder', 'artfolio');
+
+    showToast('☁️ Uploading to Cloudinary…');
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/auto/upload`);
+    xhr.upload.onprogress = (e)=>{
+      if(e.lengthComputable && typeof onProgress === 'function'){
+        try{ onProgress(Math.round(e.loaded / e.total * 100)); }catch(_){}
+      }
+    };
+    xhr.onload = ()=>{
+      let data = {};
+      try{ data = JSON.parse(xhr.responseText); }catch(e){ reject(new Error('Upload failed: unreadable server response.')); return; }
+      if(xhr.status < 200 || xhr.status >= 300 || data.error){
+        reject(new Error((data.error && data.error.message) || ('Upload failed (HTTP '+xhr.status+').')));
+        return;
+      }
+      resolve({ url: data.secure_url, publicId: data.public_id, bytes: data.bytes, format: data.format });
+    };
+    xhr.onerror   = ()=>reject(new Error('Network error during upload — check your connection and try again.'));
+    xhr.ontimeout = ()=>reject(new Error('Upload timed out — try a smaller file or a faster connection.'));
+    xhr.send(fd);
+  });
+}
+
+// Locks a submit button onto live upload progress ("⏳ Uploading… 42% (keep
+// this window open)") and always restores it afterwards — success or failure —
+// so it can never get stuck disabled.
+async function withUploadProgress(btnId, fn){
+  const btn = btnId ? document.getElementById(btnId) : null;
+  const orig = btn ? btn.innerHTML : null;
+  const paint = (pct)=>{
+    if(!btn) return;
+    btn.disabled = true;
+    btn.style.opacity = '.65';
+    btn.style.cursor = 'wait';
+    btn.innerHTML = `⏳ Uploading… ${pct}% <span style="font-size:11px;font-weight:400;">(keep this window open)</span>`;
+  };
+  paint(0);
+  try{
+    return await fn(paint);
+  }finally{
+    if(btn){
+      btn.disabled = false;
+      btn.style.opacity = '';
+      btn.style.cursor = '';
+      if(orig != null) btn.innerHTML = orig;
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -2795,8 +2841,8 @@ async function submitWork(){
       return;
     }
 
-    // 1c. Clear — now upload to Cloudinary.
-    const cloud = await uploadToCloudinary(pendingRawFile);
+    // 1c. Clear — now upload to Cloudinary, with live % on the Save button.
+    const cloud = await withUploadProgress('up-submit-btn', (paint)=>uploadToCloudinary(pendingRawFile, paint));
     // 1d. Fetch Imagga tags for the uploaded image (via Edge Function — secret stays server-side).
     // Only meaningful for images; fails quietly (empty array) for non-image files or if the
     // Imagga quota/credentials aren't set up. Tags never block — they only feed the post-save professor flag.

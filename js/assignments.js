@@ -252,9 +252,10 @@ async function submitAttachedWork(){
       return;
     }
 
-    // Clear — now upload to Cloudinary, then fetch Imagga tags for the
-    // post-save professor flag (tags never block, they only inform review).
-    const cloud = await uploadToCloudinary(attachRawFile);
+    // Clear — now upload to Cloudinary (live % on the Submit button), then
+    // fetch Imagga tags for the post-save professor flag (tags never block,
+    // they only inform review).
+    const cloud = await withUploadProgress('aw-submit-btn', (paint)=>uploadToCloudinary(attachRawFile, paint));
     showToast('🏷️ Analyzing image content…');
     const imaggaTags = (attachRawFile.type && attachRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
 
