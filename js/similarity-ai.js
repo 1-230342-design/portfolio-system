@@ -292,8 +292,12 @@ async function embFromImageElement(img){
 }
 
 // For a file a student is uploading right now (no network needed for the image).
+// Routes by type: images take the crop-views path, videos take the multi-frame
+// path below, anything else (PDF/ZIP/…) returns null and relies on SHA-256.
 async function embFromFile(file){
-  if(!file || !file.type || !file.type.startsWith('image/')) return null;
+  if(!file || !file.type) return null;
+  if(file.type.startsWith('video/')) return embFromVideoFile(file);
+  if(!file.type.startsWith('image/')) return null;
   if(!(await embeddingColumnAvailable())) return null;
   if(!(await ensureEmbeddingModel())) return null;
   const url = URL.createObjectURL(file);
@@ -310,7 +314,10 @@ async function embFromFile(file){
 
 // For an already-uploaded work (loaded from Cloudinary). Asks Cloudinary for a
 // 512px-wide copy so the download is small; if that fails, uses the original.
-async function embFromUrl(fileUrl){
+// Pass isVideo=true for video rows (Cloudinary serves them the same way, but
+// they need a <video> element with seeking instead of an <img>).
+async function embFromUrl(fileUrl, isVideo){
+  if(isVideo) return embFromVideoUrl(fileUrl);
   const candidates = [];
   if(fileUrl.indexOf('/image/upload/') > -1) candidates.push(fileUrl.replace('/image/upload/', '/image/upload/c_limit,w_512/'));
   candidates.push(fileUrl);
@@ -324,6 +331,121 @@ async function embFromUrl(fileUrl){
     }
   }
   return null;
+}
+
+// ── VIDEO SIMILARITY ──
+// A video is fingerprinted as K evenly-spread frames (10%…90% of duration),
+// each analysed exactly like a still image. Stored as "<model>v<k>" (e.g.
+// "mnv2v5") so video fingerprints NEVER compare against image fingerprints —
+// similarityBetween() requires equal tags, and mismatched tags fall back to
+// the hash, exactly as before. Two uploads of the same video (even
+// re-encoded, trimmed at the edges, or with different posters) score ~99%;
+// different videos score low. Frame-vs-frame, same-position average — the
+// same math as the image crop views, just across time instead of across crops.
+const EMB_VFRAMES = 5;
+const EMB_VFRAME_TIMEOUT = 30000; // whole-video budget — never hang an upload or backfill on a bad file
+
+function embVideoTag(){ return _embTag + 'v' + EMB_VFRAMES; }
+function embIsCurrentVideo(str){
+  return !!(str && _embTag && str.indexOf(embVideoTag() + ':') === 0);
+}
+
+function embVideoFrameCanvas(vid){
+  const vw = vid.videoWidth, vh = vid.videoHeight;
+  const scale = Math.min(1, EMB_MAX_SIDE / Math.max(vw, vh));
+  const c = document.createElement('canvas');
+  c.width  = Math.max(1, Math.round(vw * scale));
+  c.height = Math.max(1, Math.round(vh * scale));
+  c.getContext('2d').drawImage(vid, 0, 0, c.width, c.height);
+  return c;
+}
+
+function embSeek(vid, t, ms){
+  return new Promise((resolve, reject)=>{
+    const timer = setTimeout(()=>reject(new Error('seek timeout')), ms || 6000);
+    const onSeeked = ()=>{
+      clearTimeout(timer);
+      vid.removeEventListener('seeked', onSeeked);
+      resolve();
+    };
+    vid.addEventListener('seeked', onSeeked);
+    try{ vid.currentTime = t; }
+    catch(e){ clearTimeout(timer); vid.removeEventListener('seeked', onSeeked); reject(e); }
+  });
+}
+
+async function embFramesFromVideoElement(vid){
+  const model = await ensureEmbeddingModel();
+  if(!model) return null;
+  if(!vid.videoWidth) throw new Error('video has no dimensions yet');
+  const dur = (vid.duration && isFinite(vid.duration) && vid.duration > 0) ? vid.duration : 0;
+  const vectors = [];
+  for(let i=0; i<EMB_VFRAMES; i++){
+    const frac = EMB_VFRAMES === 1 ? 0.5 : 0.1 + (0.8 * i / (EMB_VFRAMES - 1));
+    await embSeek(vid, dur * frac);
+    const t = model.infer(embVideoFrameCanvas(vid), true);
+    vectors.push(await t.data());
+    t.dispose();
+  }
+  return embEncodeSet(embVideoTag(), vectors);
+}
+
+function embLoadVideo(src, cors){
+  return new Promise((resolve, reject)=>{
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    if(cors) v.crossOrigin = 'anonymous'; // Cloudinary allows this; needed so the canvas isn't "tainted"
+    v.onloadedmetadata = ()=>resolve(v);
+    v.onerror = ()=>reject(new Error('video failed to load'));
+    v.src = src;
+  });
+}
+
+function embWithTimeout(promise, ms){
+  let timer;
+  const timeout = new Promise((_, reject)=>{ timer = setTimeout(()=>reject(new Error('video analysis timeout')), ms); });
+  return Promise.race([promise, timeout]).finally(()=>clearTimeout(timer));
+}
+
+function embCleanupVideo(vid, url){
+  try{
+    if(url) URL.revokeObjectURL(url);
+    vid.removeAttribute('src'); vid.load();
+    vid.remove();
+  }catch(e){}
+}
+
+// A video file a student is uploading right now.
+async function embFromVideoFile(file){
+  if(!(await embeddingColumnAvailable())) return null;
+  if(!(await ensureEmbeddingModel())) return null;
+  const url = URL.createObjectURL(file);
+  let vid = null;
+  try{
+    vid = await embLoadVideo(url, false);
+    return await embWithTimeout(embFramesFromVideoElement(vid), EMB_VFRAME_TIMEOUT);
+  }catch(err){
+    console.warn('[AI similarity] could not analyse video file:', err && err.message);
+    return null;
+  }finally{
+    if(vid) embCleanupVideo(vid, url); else URL.revokeObjectURL(url);
+  }
+}
+
+// An already-uploaded video (loaded from Cloudinary URL).
+async function embFromVideoUrl(fileUrl){
+  if(!(await embeddingColumnAvailable())) return null;
+  if(!(await ensureEmbeddingModel())) return null;
+  let vid = null;
+  try{
+    vid = await embLoadVideo(fileUrl, true);
+    return await embWithTimeout(embFramesFromVideoElement(vid), EMB_VFRAME_TIMEOUT);
+  }catch(err){
+    console.warn('[AI similarity] could not analyse video URL:', err && err.message);
+    return null;
+  }finally{
+    if(vid) embCleanupVideo(vid, null);
+  }
 }
 
 // ── back-fill: give older works (uploaded before this feature) an embedding ──
@@ -346,9 +468,15 @@ async function embEnsureForItems(rows){
   const need = [];
   rows.forEach(r=>{
     if(!r || !r.file_url) return;
-    if(embIsCurrent(r.embedding)) return;
-    if(_embMemCache[r.id] && embIsCurrent(_embMemCache[r.id])){ r.embedding = _embMemCache[r.id]; return; }
-    if(!fileIsImage({ dataUrl: r.file_url, mimeType: r.file_type })) return; // videos/PDFs can't be compared
+    const f = { dataUrl: r.file_url, mimeType: r.file_type };
+    const isVid = fileIsVideo(f);
+    // Videos carry a v-tagged fingerprint, images a c-tagged one — each side
+    // is only "current" against its own kind. PDFs/ZIPs still can't be
+    // compared (they rely on SHA-256 exact matching instead).
+    const isCurrent = isVid ? embIsCurrentVideo : embIsCurrent;
+    if(isCurrent(r.embedding)) return;
+    if(_embMemCache[r.id] && isCurrent(_embMemCache[r.id])){ r.embedding = _embMemCache[r.id]; return; }
+    if(!fileIsImage(f) && !isVid) return;
     need.push(r);
   });
   if(!need.length) return;
@@ -356,7 +484,8 @@ async function embEnsureForItems(rows){
   const batch = need.slice(0, EMB_BACKFILL_MAX);
   for(let i=0;i<batch.length;i++){
     const r = batch[i];
-    const e = await embFromUrl(r.file_url);
+    const isVid = fileIsVideo({ dataUrl: r.file_url, mimeType: r.file_type });
+    const e = await embFromUrl(r.file_url, isVid);
     if(!e) continue;
     r.embedding = e;
     _embMemCache[r.id] = e;
