@@ -398,10 +398,12 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
   box-shadow:var(--shadow);
 }
 .upload-card:hover{transform:translateY(-2px);}
-.upload-thumb{width:100%;height:130px;object-fit:cover;display:block;}
+/* Recent Uploads shows the WHOLE artwork letterboxed (contain) — cover was
+   beheading every portrait piece into an unrecognisable strip. */
+.upload-thumb{width:100%;height:170px;object-fit:contain;display:block;background:var(--surface2);}
 video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{background:var(--surface2);}
 .upload-thumb-placeholder{
-  width:100%;height:130px;
+  width:100%;height:170px;
   background:var(--surface2);display:flex;align-items:center;
   justify-content:center;font-size:36px;
 }
