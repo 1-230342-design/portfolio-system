@@ -46,32 +46,44 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
 /* ── LOGIN PAINT WIPE ──
-   Full-screen green brush sweep on sign-in: covers left→right with a gold
-   brush-tip edge, the dashboard swaps underneath mid-cover, then the paint
-   slides off and dissolves. pointer-events:none throughout so it can never
+   A literal brush sweeps across the whole screen laying green paint down,
+   "Artfolio" rises on the wet paint, then brush and paint dissolve together
+   to reveal the dashboard. pointer-events:none throughout so it can never
    trap clicks; purely cosmetic, skips cleanly if anything fails. */
 #paintWipe{
   position:fixed;inset:0;z-index:9998;pointer-events:none;
-  background:linear-gradient(120deg,#0c2015 0%,#1e4a30 60%,#2a5f3c 100%);
-  transform:scaleX(0);transform-origin:left center;opacity:0;
-  display:flex;align-items:center;justify-content:center;
+  opacity:0;overflow:hidden;
 }
-#paintWipe::after{ /* gold brush tip trailing the cover edge */
-  content:'';position:absolute;top:0;bottom:0;right:0;width:6px;
-  background:linear-gradient(var(--gold),var(--gold-dark));
-  box-shadow:0 0 28px rgba(201,162,39,.85);
+#paintWipe .paint-fill{
+  position:absolute;inset:0;
+  background:linear-gradient(120deg,#0c2015 0%,#1e4a30 60%,#2a5f3c 100%);
+  transform:scaleX(0);transform-origin:left center;
+}
+#paintWipe .paint-brush{
+  position:absolute;top:42%;left:-140px;
+  font-size:clamp(64px,10vw,110px);line-height:1;
+  transform:translateY(-50%) rotate(-25deg);
+  filter:drop-shadow(0 10px 18px rgba(0,0,0,.45));
 }
 #paintWipe .paint-word{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-family:'Fraunces',serif;font-size:clamp(38px,7vw,64px);color:#fff;
   letter-spacing:1px;opacity:0;transform:translateY(12px);
 }
-#paintWipe.wipe-in{opacity:1;animation:paintCover .55s cubic-bezier(.7,0,.3,1) forwards;}
-#paintWipe.wipe-in .paint-word{animation:paintWordIn .5s ease .25s forwards;}
-#paintWipe.wipe-out{opacity:1;transform:scaleX(1);transform-origin:right center;animation:paintGone .6s cubic-bezier(.7,0,.3,1) forwards;}
-#paintWipe.wipe-out .paint-word{opacity:0;}
-@keyframes paintCover{from{transform:scaleX(0);}to{transform:scaleX(1);}}
+#paintWipe.wipe-in{opacity:1;}
+#paintWipe.wipe-in .paint-fill{animation:paintFill .85s cubic-bezier(.6,0,.35,1) forwards;}
+#paintWipe.wipe-in .paint-brush{animation:brushSweep .85s cubic-bezier(.6,0,.35,1) forwards;}
+#paintWipe.wipe-in .paint-word{animation:paintWordIn .45s ease .7s forwards;}
+#paintWipe.wipe-out{opacity:1;animation:paintDissolve .55s ease forwards;}
+#paintWipe.wipe-out .paint-brush,#paintWipe.wipe-out .paint-word{display:none;}
+@keyframes brushSweep{
+  0%{left:-140px;transform:translateY(-50%) rotate(-25deg);}
+  50%{transform:translateY(-60%) rotate(-12deg);}
+  100%{left:calc(100% + 60px);transform:translateY(-50%) rotate(-25deg);}
+}
+@keyframes paintFill{from{transform:scaleX(0);}to{transform:scaleX(1);}}
 @keyframes paintWordIn{to{opacity:1;transform:translateY(0);}}
-@keyframes paintGone{0%{transform:scaleX(1);opacity:1;}70%{opacity:1;}100%{transform:scaleX(0);opacity:0;}}
+@keyframes paintDissolve{from{opacity:1;filter:blur(0);}to{opacity:0;filter:blur(6px);}}
 
 .landing-nav{
   display:flex;align-items:center;justify-content:space-between;
