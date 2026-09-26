@@ -2273,46 +2273,78 @@ function flyToUploadWork(btn){
     btn.style.whiteSpace = 'nowrap';
     btn.style.color = 'transparent'; // label fades as it folds (restored later)
 
-    const FOLD_W = 56, FOLD_H = 56;
+    // Paper crane the button unfolds into (white origami bird, drawn inline so
+    // it needs no image file). Wings carry their own flap animation.
+    const craneSvg = `<svg viewBox="0 0 120 120" width="46" height="46" aria-hidden="true">`
+      + `<style>.pbird-wing{transform-box:fill-box;transform-origin:50% 100%;animation:pbirdFlap .28s ease-in-out infinite alternate;}`
+      + `@keyframes pbirdFlap{from{transform:scaleY(1);}to{transform:scaleY(.5);}}</style>`
+      + `<polygon points="60,55 12,76 58,68" fill="#d9d4c2"/>`
+      + `<polygon points="60,55 78,18 66,56" fill="#ffffff"/>`
+      + `<polygon points="78,18 88,21 77,28" fill="#ffffff"/>`
+      + `<circle cx="79" cy="22" r="2.4" fill="#173626"/>`
+      + `<polygon class="pbird-wing" points="60,55 102,28 70,62" fill="#f6f3e9"/>`
+      + `<polygon points="60,55 96,96 62,66" fill="#e3ddc9"/>`
+      + `<ellipse cx="60" cy="60" rx="8" ry="6" fill="#ffffff"/>`
+      + `</svg>`;
+    const BALL = 46;
     let swapped = false;
-    const dur = 1150, start = performance.now();
+    const dur = 1500, start = performance.now();
     const lerp = (a, z, e)=>a + (z - a) * e;
     function frame(now){
       const p = Math.min(1, (now - start) / dur);
-      if(p < 0.28){
-        // PHASE 1 — fold: shrink centered into a circle, label vanishing.
-        const e = p / 0.28;
-        const w = lerp(b.width, FOLD_W, e), h = lerp(b.height, FOLD_H, e);
+      if(p < 0.22){
+        // PHASE 1 — sheet of paper: collapse centered into a small white square.
+        const e = p / 0.22;
+        const w = lerp(b.width, 64, e), h = lerp(b.height, 64, e);
         btn.style.left = (cx0 - w/2) + 'px';
         btn.style.top  = (cy0 - h/2) + 'px';
         btn.style.width = w + 'px';
         btn.style.height = h + 'px';
         btn.style.padding = '0';
-        btn.style.borderRadius = '50%';
+        btn.style.border = 'none';
+        btn.style.borderRadius = '6px';
+        btn.style.background = '#f4f0e3';
+        btn.style.backgroundImage = 'none';
+        btn.style.boxShadow = '0 6px 16px rgba(0,0,0,.25)';
+      }else if(p < 0.42){
+        // PHASE 2 — crumple: shaking paper ball with crease texture.
+        const e = (p - 0.22) / 0.20;
+        const jx = Math.sin(p * 95) * 3.5, jy = Math.cos(p * 81) * 3.5;
+        const w = lerp(64, BALL, e), h = lerp(64, BALL, e);
+        btn.style.left = (cx0 - w/2 + jx) + 'px';
+        btn.style.top  = (cy0 - h/2 + jy) + 'px';
+        btn.style.width = w + 'px';
+        btn.style.height = h + 'px';
+        btn.style.borderRadius = '48% 52% 55% 45%/52% 46% 54% 48%';
+        btn.style.background = '#efe9d8';
+        btn.style.backgroundImage = 'repeating-linear-gradient(45deg,rgba(0,0,0,.07) 0 2px,transparent 2px 5px),repeating-linear-gradient(-30deg,rgba(0,0,0,.05) 0 3px,transparent 3px 6px)';
+        btn.style.transform = `rotate(${Math.sin(p * 70) * 14}deg) scale(${1 - 0.08 * e})`;
       }else{
-        // PHASE 2 — the button IS the bird now: swap guts once, then fly.
+        // PHASE 3 — unfold: the ball pops open into a paper crane, then flies.
         if(!swapped){
           swapped = true;
-          btn.innerHTML = '🐦';
-          btn.style.color = '';
-          btn.style.fontSize = '26px';
-          btn.style.lineHeight = '1';
+          btn.innerHTML = craneSvg;
+          btn.style.background = 'transparent';
+          btn.style.backgroundImage = 'none';
+          btn.style.boxShadow = 'none';
+          btn.style.borderRadius = '50%';
           btn.style.display = 'flex';
           btn.style.alignItems = 'center';
           btn.style.justifyContent = 'center';
-          btn.style.background = 'var(--dark-grad)';
+          btn.style.filter = 'drop-shadow(0 8px 14px rgba(0,0,0,.35))';
         }
-        const e = (p - 0.28) / 0.72;
+        const e = (p - 0.42) / 0.58;
         const ee = 1 - Math.pow(1 - e, 2);
         const x = (1-ee)*(1-ee)*cx0 + 2*(1-ee)*ee*cx + ee*ee*x1;
         const y = (1-ee)*(1-ee)*cy0 + 2*(1-ee)*ee*cy + ee*ee*y1;
-        const flap = Math.sin(e * 16) * 12;
-        const s = 1 - 0.45 * ee;
-        btn.style.left = (x - FOLD_W/2) + 'px';
-        btn.style.top  = (y - FOLD_H/2) + 'px';
-        btn.style.width = FOLD_W + 'px';
-        btn.style.height = FOLD_H + 'px';
-        btn.style.transform = `rotate(${flap}deg) scale(${s})`;
+        const wob = Math.sin(e * 16) * 10;
+        const pop = 1 + 0.3 * Math.sin(Math.min(1, e / 0.16) * Math.PI); // unfold pop
+        const s = (1 - 0.45 * ee) * pop;
+        btn.style.left = (x - BALL/2) + 'px';
+        btn.style.top  = (y - BALL/2) + 'px';
+        btn.style.width = BALL + 'px';
+        btn.style.height = BALL + 'px';
+        btn.style.transform = `rotate(${wob}deg) scale(${s})`;
       }
       if(p < 1){ requestAnimationFrame(frame); return; }
       restore(cssBak, htmlBak);
