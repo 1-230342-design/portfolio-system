@@ -232,6 +232,24 @@ function togglePasswordVisibility(inputId, btnEl){
 // (anonymous RLS block, or legacy profiles saved without an email), it falls
 // back to the generic message rather than guessing wrong. Other auth errors
 // (e.g. email not confirmed, rate limited) still show their real message.
+// Green paint sweep across the whole screen on sign-in: covers, swaps the
+// screen underneath mid-cover, then slides off and dissolves. next() runs
+// while the paint hides everything, so the swap is invisible.
+function playLoginWipe(next){
+  const w = document.getElementById('paintWipe');
+  if(!w){ next(); return; }
+  try{
+    w.classList.remove('wipe-out');
+    w.classList.add('wipe-in');
+    setTimeout(()=>{
+      try{ next(); }catch(e){ console.warn('paint wipe next() failed:', e); }
+      w.classList.remove('wipe-in');
+      w.classList.add('wipe-out');
+      setTimeout(()=>w.classList.remove('wipe-out'), 700);
+    }, 600);
+  }catch(e){ next(); }
+}
+
 function loginErrorMessage(error){
   const msg = (error && error.message) || '';
   if(/invalid login credentials/i.test(msg)) return 'Invalid email or Password please try again.';
@@ -1946,8 +1964,7 @@ async function doLogin(){
   document.getElementById('s-sidebar-name').textContent  = profile.full_name || email;
   document.getElementById('s-welcome-name').textContent  = 'Welcome Back, '+firstName+'!';
   renderPortfolioHeader();
-  go('s-student');
-  sPage('dashboard');
+  playLoginWipe(()=>{ go('s-student'); sPage('dashboard'); });
   showToast('✅ Signed in as '+profile.full_name);
   sendLoginAlert(email, true);
   await loadProjectsForStudent(data.user.id);
@@ -1977,8 +1994,7 @@ async function doLoginProf(){
   currentProfile = profile;
   document.getElementById('p-sidebar-name').textContent = profile.full_name||'';
   setAvatar('p-sidebar-avatar', profile.full_name);
-  go('s-professor');
-  pPage('p-dashboard');
+  playLoginWipe(()=>{ go('s-professor'); pPage('p-dashboard'); });
   showToast('✅ Signed in as '+profile.full_name);
   sendLoginAlert(email, true);
   refreshProfViews();
@@ -2091,7 +2107,7 @@ async function verifyStudentOtp(){
   document.getElementById('s-sidebar-name').textContent = profile?.full_name||'';
   document.getElementById('s-welcome-name').textContent = 'Welcome Back, '+firstName+'!';
   renderPortfolioHeader();
-  go('s-student'); sPage('dashboard');
+  playLoginWipe(()=>{ go('s-student'); sPage('dashboard'); });
   await loadProjectsForStudent(data.user.id);
   refreshStudentViews();
   populateSubjectDropdown();
@@ -2126,7 +2142,7 @@ async function verifyProfOtp(){
   currentProfile = profile;
   document.getElementById('p-sidebar-name').textContent = profile?.full_name||'';
   setAvatar('p-sidebar-avatar', profile?.full_name);
-  go('s-professor'); pPage('p-dashboard');
+  playLoginWipe(()=>{ go('s-professor'); pPage('p-dashboard'); });
   refreshProfViews();
   applyProfessorPermissions();
   showToast('✅ Account verified! Welcome, '+(profile?.full_name||'Professor')+'.');
