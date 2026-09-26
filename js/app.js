@@ -182,12 +182,16 @@ function fileIsVideo(f){
 function cardThumbHtml(p, frameCls, phCls, phStyle){
   if(p && p.file && (fileIsImage(p.file) || fileIsVideo(p.file))){
     const isVid = fileIsVideo(p.file);
+    // On load, the frame learns the artwork's real shape (portrait vs
+    // landscape) so CSS can give portraits a tall stage and keep landscapes
+    // wide. Square row-thumbs ignore it via CSS (no .is-portrait rule).
+    const tagOrientation = `this.parentElement.classList.add(this.naturalHeight>this.naturalWidth||this.videoHeight>this.videoWidth?'is-portrait':'is-landscape')`;
     const bg  = isVid
       ? `<video class="thumb-ambient-bg" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline></video>`
       : `<img class="thumb-ambient-bg" src="${esc(p.file.dataUrl)}" alt="" aria-hidden="true"/>`;
     const main = isVid
-      ? `<video class="thumb-ambient-main" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline disablepictureinpicture style="pointer-events:none;" oncontextmenu="return false;"></video>`
-      : `<img class="thumb-ambient-main" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>`;
+      ? `<video class="thumb-ambient-main" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline disablepictureinpicture style="pointer-events:none;" oncontextmenu="return false;" onloadedmetadata="${tagOrientation}"></video>`
+      : `<img class="thumb-ambient-main" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}" onload="${tagOrientation}"/>`;
     return `<div class="thumb-ambient ${frameCls}">${bg}${main}</div>`;
   }
   return `<div class="${phCls}"${phStyle ? ` style="${phStyle}"` : ''}>🖼️</div>`;
