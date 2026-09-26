@@ -250,6 +250,24 @@ function playLoginWipe(next){
   }catch(e){ next(); }
 }
 
+// Logout mirror of playLoginWipe: green pours in from the RIGHT, the landing
+// page swaps underneath mid-cover, then the paint slides off left and
+// dissolves. Wired to both sidebar Logout buttons.
+function playLogoutWipe(next){
+  const w = document.getElementById('paintWipe');
+  if(!w){ next(); return; }
+  try{
+    w.classList.remove('wipe-in', 'wipe-out', 'wipe-out-l');
+    w.classList.add('wipe-in-r');
+    setTimeout(()=>{
+      try{ next(); }catch(e){ console.warn('logout wipe next() failed:', e); }
+      w.classList.remove('wipe-in-r');
+      w.classList.add('wipe-out-l');
+      setTimeout(()=>w.classList.remove('wipe-out-l'), 700);
+    }, 600);
+  }catch(e){ next(); }
+}
+
 function loginErrorMessage(error){
   const msg = (error && error.message) || '';
   if(/invalid login credentials/i.test(msg)) return 'Invalid email or Password please try again.';

@@ -68,6 +68,13 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 #paintWipe.wipe-in{opacity:1;animation:paintCover .55s cubic-bezier(.7,0,.3,1) forwards;}
 #paintWipe.wipe-in .paint-word{animation:paintWordIn .5s ease .25s forwards;}
 #paintWipe.wipe-out{opacity:1;transform:scaleX(1);transform-origin:right center;animation:paintGone .6s cubic-bezier(.7,0,.3,1) forwards;}
+/* Logout mirror: paint pours in from the RIGHT, swaps to landing underneath,
+   then slides off left and dissolves. */
+#paintWipe.wipe-in-r{opacity:1;transform-origin:right center;animation:paintCover .55s cubic-bezier(.7,0,.3,1) forwards;}
+#paintWipe.wipe-in-r .paint-word{animation:paintWordIn .5s ease .25s forwards;}
+#paintWipe.wipe-out-l{opacity:1;transform:scaleX(1);transform-origin:left center;animation:paintGoneL .6s cubic-bezier(.7,0,.3,1) forwards;}
+#paintWipe.wipe-out-l .paint-word{opacity:0;}
+@keyframes paintGoneL{0%{transform:scaleX(1);opacity:1;}70%{opacity:1;}100%{transform:scaleX(0);opacity:0;}}
 #paintWipe.wipe-out .paint-word{opacity:0;}
 @keyframes paintCover{from{transform:scaleX(0);}to{transform:scaleX(1);}}
 @keyframes paintWordIn{to{opacity:1;transform:translateY(0);}}
