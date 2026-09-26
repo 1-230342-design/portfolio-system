@@ -2230,51 +2230,99 @@ async function sPage(page){
   refreshStudentViews();
 }
 
-// Origami bird courier: the dashboard "Upload New Work" button folds into a
-// bird and flaps along an arc into the sidebar's Upload Work item, which
-// pulses gold on landing — then the Upload page opens. Purely cosmetic:
+// Origami bird courier: the dashboard "Upload New Work" button ITSELF folds
+// into a circle, swaps its label for a bird mid-fold, flaps along an arc into
+// the sidebar's Upload Work item (gold pulse on landing), then the Upload page
+// opens and the button is restored pixel-perfect. Purely cosmetic:
 // reduced-motion, missing elements, or any error skips straight to the page.
 function flyToUploadWork(btn){
   const goNow = ()=>sPage('upload');
+  const restore = (cssBak, htmlBak)=>{
+    try{
+      if(btn){
+        btn.style.cssText = cssBak || '';
+        if(htmlBak != null) btn.innerHTML = htmlBak;
+      }
+    }catch(e){}
+  };
+  let cssBak = '', htmlBak = null;
   try{
-    const target = document.querySelector('#s-student .snav-item');
-    const uploadItem = target && target.parentElement
-      ? Array.from(target.parentElement.querySelectorAll('.snav-item')).find(a=>(a.getAttribute('onclick')||'').includes("'upload'"))
+    const firstNav = document.querySelector('#s-student .snav-item');
+    const uploadItem = firstNav && firstNav.parentElement
+      ? Array.from(firstNav.parentElement.querySelectorAll('.snav-item')).find(a=>(a.getAttribute('onclick')||'').includes("'upload'"))
       : null;
     if(!btn || !btn.getBoundingClientRect || !uploadItem) { goNow(); return; }
     const t = uploadItem.getBoundingClientRect();
     if(!t.width && !t.height){ goNow(); return; } // sidebar hidden/collapsed (mobile)
     if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches){ goNow(); return; }
+
     const b = btn.getBoundingClientRect();
-    const x0 = b.left + b.width/2, y0 = b.top + b.height/2;
+    cssBak = btn.style.cssText;
+    htmlBak = btn.innerHTML;
+    const cx0 = b.left + b.width/2, cy0 = b.top + b.height/2;
     const x1 = t.left + t.width/2, y1 = t.top + t.height/2;
-    const cx = (x0 + x1)/2, cy = Math.min(y0, y1) - 150; // arc apex above both ends
-    const bird = document.createElement('div');
-    bird.setAttribute('aria-hidden', 'true');
-    bird.textContent = '🐦';
-    bird.style.cssText = 'position:fixed;left:0;top:0;z-index:9999;pointer-events:none;font-size:30px;line-height:1;';
-    document.body.appendChild(bird);
-    btn.style.transition = 'transform .18s ease';
-    btn.style.transform = 'scale(.92)'; // the "fold"
-    const dur = 950, start = performance.now();
+    const cx = (cx0 + x1)/2, cy = Math.min(cy0, y1) - 150; // arc apex above both ends
+
+    // Pin the live button in place so the layout doesn't jump, then drive
+    // every frame manually (fold → swap → fly) in one rAF loop.
+    btn.style.position = 'fixed';
+    btn.style.zIndex = '9999';
+    btn.style.margin = '0';
+    btn.style.pointerEvents = 'none';
+    btn.style.overflow = 'hidden';
+    btn.style.whiteSpace = 'nowrap';
+    btn.style.color = 'transparent'; // label fades as it folds (restored later)
+
+    const FOLD_W = 56, FOLD_H = 56;
+    let swapped = false;
+    const dur = 1150, start = performance.now();
+    const lerp = (a, z, e)=>a + (z - a) * e;
     function frame(now){
       const p = Math.min(1, (now - start) / dur);
-      const e = 1 - Math.pow(1 - p, 2);
-      const x = (1-e)*(1-e)*x0 + 2*(1-e)*e*cx + e*e*x1;
-      const y = (1-e)*(1-e)*y0 + 2*(1-e)*e*cy + e*e*y1;
-      const flap = Math.sin(p * 16) * 12;
-      const s = 1 - 0.45 * e;
-      bird.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%) rotate(${flap}deg) scale(${s})`;
+      if(p < 0.28){
+        // PHASE 1 — fold: shrink centered into a circle, label vanishing.
+        const e = p / 0.28;
+        const w = lerp(b.width, FOLD_W, e), h = lerp(b.height, FOLD_H, e);
+        btn.style.left = (cx0 - w/2) + 'px';
+        btn.style.top  = (cy0 - h/2) + 'px';
+        btn.style.width = w + 'px';
+        btn.style.height = h + 'px';
+        btn.style.padding = '0';
+        btn.style.borderRadius = '50%';
+      }else{
+        // PHASE 2 — the button IS the bird now: swap guts once, then fly.
+        if(!swapped){
+          swapped = true;
+          btn.innerHTML = '🐦';
+          btn.style.color = '';
+          btn.style.fontSize = '26px';
+          btn.style.lineHeight = '1';
+          btn.style.display = 'flex';
+          btn.style.alignItems = 'center';
+          btn.style.justifyContent = 'center';
+          btn.style.background = 'var(--dark-grad)';
+        }
+        const e = (p - 0.28) / 0.72;
+        const ee = 1 - Math.pow(1 - e, 2);
+        const x = (1-ee)*(1-ee)*cx0 + 2*(1-ee)*ee*cx + ee*ee*x1;
+        const y = (1-ee)*(1-ee)*cy0 + 2*(1-ee)*ee*cy + ee*ee*y1;
+        const flap = Math.sin(e * 16) * 12;
+        const s = 1 - 0.45 * ee;
+        btn.style.left = (x - FOLD_W/2) + 'px';
+        btn.style.top  = (y - FOLD_H/2) + 'px';
+        btn.style.width = FOLD_W + 'px';
+        btn.style.height = FOLD_H + 'px';
+        btn.style.transform = `rotate(${flap}deg) scale(${s})`;
+      }
       if(p < 1){ requestAnimationFrame(frame); return; }
-      bird.remove();
-      btn.style.transform = '';
+      restore(cssBak, htmlBak);
       uploadItem.style.transition = 'box-shadow .3s ease';
       uploadItem.style.boxShadow = '0 0 0 3px rgba(201,162,39,.75)';
       setTimeout(()=>{ uploadItem.style.boxShadow = ''; }, 650);
       goNow();
     }
     requestAnimationFrame(frame);
-  }catch(err){ goNow(); }
+  }catch(err){ restore(cssBak, htmlBak); goNow(); }
 }
 
 function refreshStudentViews(){
