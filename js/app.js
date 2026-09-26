@@ -2277,10 +2277,12 @@ function flyToUploadWork(btn){
     // lines, drawn inline so it needs no image file). The raised wing flaps.
     const craneSvg = `<svg viewBox="0 0 120 120" width="68" height="68" aria-hidden="true">`
       + `<style>.pbird-wing{transform-box:fill-box;transform-origin:50% 100%;animation:pbirdFlap .4s ease-in-out infinite alternate;}`
-      + `@keyframes pbirdFlap{from{transform:scaleY(1);}to{transform:scaleY(.55);}}</style>`
+      + `.pbird-wing2{transform-box:fill-box;transform-origin:50% 0%;animation:pbirdFlap2 .4s ease-in-out -.2s infinite alternate;}`
+      + `@keyframes pbirdFlap{from{transform:scaleY(1);}to{transform:scaleY(.55);}}`
+      + `@keyframes pbirdFlap2{from{transform:scaleY(.6);}to{transform:scaleY(1);}}</style>`
       + `<polygon points="58,62 16,50 56,68" fill="#cfc8b2"/>`
       + `<polygon points="58,64 18,74 60,70" fill="#d9d4c2"/>`
-      + `<polygon points="58,56 88,90 64,64" fill="#e7e1cf"/>`
+      + `<polygon class="pbird-wing2" points="58,56 88,90 64,64" fill="#e7e1cf"/>`
       + `<polygon points="52,52 70,54 66,72 50,68" fill="#ffffff"/>`
       + `<line x1="52" y1="52" x2="66" y2="72" stroke="#d9d4c2" stroke-width="1.4"/>`
       + `<polygon points="62,54 74,20 69,19 57,52" fill="#ffffff"/>`
@@ -2290,7 +2292,7 @@ function flyToUploadWork(btn){
       + `<line x1="58" y1="56" x2="98" y2="16" stroke="#d9d4c2" stroke-width="1.4"/>`
       + `</svg>`;
     const BALL = 72;
-    let swapped = false;
+    let swapped = false, lastSpark = 0;
     const dur = 2100, start = performance.now();
     const lerp = (a, z, e)=>a + (z - a) * e;
     function frame(now){
@@ -2310,18 +2312,27 @@ function flyToUploadWork(btn){
         btn.style.backgroundImage = 'none';
         btn.style.boxShadow = '0 6px 16px rgba(0,0,0,.25)';
       }else if(p < 0.34){
-        // PHASE 2 — crumple: shaking paper ball with crease texture.
+        // PHASE 2 — crumple in three beats: corners tuck (square→round),
+        // then a squash-and-stretch shake that gets faster and tighter as
+        // creases darken, ending in a spun-tight ball.
         const e = (p - 0.18) / 0.16;
-        const jx = Math.sin(p * 95) * 3.5, jy = Math.cos(p * 81) * 3.5;
+        const freq = lerp(38, 105, e), amp = lerp(1.5, 4.5, e);
+        const jx = Math.sin(p * freq) * amp, jy = Math.cos(p * (freq - 14)) * amp;
         const w = lerp(68, BALL, e), h = lerp(68, BALL, e);
+        const squashX = 1 + 0.09 * Math.sin(e * Math.PI * 4) * (1 - e * 0.4);
+        const squashY = 1 - 0.09 * Math.sin(e * Math.PI * 4) * (1 - e * 0.4);
         btn.style.left = (cx0 - w/2 + jx) + 'px';
         btn.style.top  = (cy0 - h/2 + jy) + 'px';
         btn.style.width = w + 'px';
         btn.style.height = h + 'px';
-        btn.style.borderRadius = '48% 52% 55% 45%/52% 46% 54% 48%';
+        btn.style.borderRadius = e < 0.45
+          ? `${6 + 20 * e}px`
+          : (e < 0.75 ? '42% 58% 50% 50%/55% 45% 55% 45%' : '48% 52% 55% 45%/52% 46% 54% 48%');
         btn.style.background = '#efe9d8';
-        btn.style.backgroundImage = 'repeating-linear-gradient(45deg,rgba(0,0,0,.07) 0 2px,transparent 2px 5px),repeating-linear-gradient(-30deg,rgba(0,0,0,.05) 0 3px,transparent 3px 6px)';
-        btn.style.transform = `rotate(${Math.sin(p * 70) * 14}deg) scale(${1 - 0.08 * e})`;
+        btn.style.backgroundImage = e < 0.5
+          ? 'repeating-linear-gradient(45deg,rgba(0,0,0,.05) 0 2px,transparent 2px 6px)'
+          : 'repeating-linear-gradient(45deg,rgba(0,0,0,.09) 0 2px,transparent 2px 5px),repeating-linear-gradient(-30deg,rgba(0,0,0,.07) 0 3px,transparent 3px 6px),repeating-linear-gradient(90deg,rgba(0,0,0,.05) 0 1px,transparent 1px 4px)';
+        btn.style.transform = `rotate(${e * e * 26 + Math.sin(p * 70) * 8 * (1 - e)}deg) scale(${squashX},${squashY})`;
       }else{
         // PHASE 3 — unfold: the ball pops open into a paper crane, then flies.
         if(!swapped){
@@ -2338,16 +2349,38 @@ function flyToUploadWork(btn){
         }
         const e = (p - 0.34) / 0.66;
         const ee = 1 - Math.pow(1 - e, 3); // gentle ease-out for a slow glide
-        const x = (1-ee)*(1-ee)*cx0 + 2*(1-ee)*ee*cx + ee*ee*x1;
-        const y = (1-ee)*(1-ee)*cy0 + 2*(1-ee)*ee*cy + ee*ee*y1;
-        const wob = Math.sin(e * 10) * 7; // slow, graceful sway (was frantic)
+        const bez = (t)=> (1-t)*(1-t)*cx0 + 2*(1-t)*t*cx + t*t*x1;
+        const bezY = (t)=> (1-t)*(1-t)*cy0 + 2*(1-t)*t*cy + t*t*y1;
+        const x = bez(ee);
+        // Glide bob: layered sine soars/falls on top of the arc path.
+        const y = bezY(ee) + Math.sin(e * Math.PI * 3) * 16 * (1 - e * 0.6);
+        // Banking: nose follows the actual flight direction from the path
+        // derivative instead of wobbling at random.
+        const dx = bez(Math.min(1, ee + 0.02)) - x, dy = bezY(Math.min(1, ee + 0.02)) - bezY(ee);
+        const bank = Math.max(-28, Math.min(28, Math.atan2(dy, dx) * 57.3 * 0.55));
         const pop = 1 + 0.3 * Math.sin(Math.min(1, e / 0.12) * Math.PI); // unfold pop
         const s = (1 - 0.35 * ee) * pop; // stays bigger throughout
         btn.style.left = (x - BALL/2) + 'px';
         btn.style.top  = (y - BALL/2) + 'px';
         btn.style.width = BALL + 'px';
         btn.style.height = BALL + 'px';
-        btn.style.transform = `rotate(${wob}deg) scale(${s})`;
+        btn.style.transform = `rotate(${bank}deg) scale(${s})`;
+        // Gold sparkle trail — a fading mote every ~130ms of flight.
+        if(now - lastSpark > 130){
+          lastSpark = now;
+          try{
+            const mote = document.createElement('div');
+            mote.setAttribute('aria-hidden', 'true');
+            mote.style.cssText = `position:fixed;left:${x + (Math.random()*24-12)}px;top:${y + 18 + Math.random()*10}px;width:7px;height:7px;border-radius:50%;background:radial-gradient(circle,#ffe9a8 0%,#c9a227 70%);box-shadow:0 0 8px rgba(201,162,39,.9);z-index:9998;pointer-events:none;`;
+            document.body.appendChild(mote);
+            const anim = mote.animate(
+              [{ opacity: 1, transform: 'translateY(0) scale(1)' }, { opacity: 0, transform: 'translateY(26px) scale(.3)' }],
+              { duration: 650, easing: 'ease-out' }
+            );
+            anim.onfinish = ()=>mote.remove();
+            setTimeout(()=>{ try{ mote.remove(); }catch(_){} }, 800);
+          }catch(_){}
+        }
       }
       if(p < 1){ requestAnimationFrame(frame); return; }
       restore(cssBak, htmlBak);
