@@ -2230,6 +2230,53 @@ async function sPage(page){
   refreshStudentViews();
 }
 
+// Origami bird courier: the dashboard "Upload New Work" button folds into a
+// bird and flaps along an arc into the sidebar's Upload Work item, which
+// pulses gold on landing — then the Upload page opens. Purely cosmetic:
+// reduced-motion, missing elements, or any error skips straight to the page.
+function flyToUploadWork(btn){
+  const goNow = ()=>sPage('upload');
+  try{
+    const target = document.querySelector('#s-student .snav-item');
+    const uploadItem = target && target.parentElement
+      ? Array.from(target.parentElement.querySelectorAll('.snav-item')).find(a=>(a.getAttribute('onclick')||'').includes("'upload'"))
+      : null;
+    if(!btn || !btn.getBoundingClientRect || !uploadItem) { goNow(); return; }
+    const t = uploadItem.getBoundingClientRect();
+    if(!t.width && !t.height){ goNow(); return; } // sidebar hidden/collapsed (mobile)
+    if(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches){ goNow(); return; }
+    const b = btn.getBoundingClientRect();
+    const x0 = b.left + b.width/2, y0 = b.top + b.height/2;
+    const x1 = t.left + t.width/2, y1 = t.top + t.height/2;
+    const cx = (x0 + x1)/2, cy = Math.min(y0, y1) - 150; // arc apex above both ends
+    const bird = document.createElement('div');
+    bird.setAttribute('aria-hidden', 'true');
+    bird.textContent = '🐦';
+    bird.style.cssText = 'position:fixed;left:0;top:0;z-index:9999;pointer-events:none;font-size:30px;line-height:1;';
+    document.body.appendChild(bird);
+    btn.style.transition = 'transform .18s ease';
+    btn.style.transform = 'scale(.92)'; // the "fold"
+    const dur = 950, start = performance.now();
+    function frame(now){
+      const p = Math.min(1, (now - start) / dur);
+      const e = 1 - Math.pow(1 - p, 2);
+      const x = (1-e)*(1-e)*x0 + 2*(1-e)*e*cx + e*e*x1;
+      const y = (1-e)*(1-e)*y0 + 2*(1-e)*e*cy + e*e*y1;
+      const flap = Math.sin(p * 16) * 12;
+      const s = 1 - 0.45 * e;
+      bird.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%) rotate(${flap}deg) scale(${s})`;
+      if(p < 1){ requestAnimationFrame(frame); return; }
+      bird.remove();
+      btn.style.transform = '';
+      uploadItem.style.transition = 'box-shadow .3s ease';
+      uploadItem.style.boxShadow = '0 0 0 3px rgba(201,162,39,.75)';
+      setTimeout(()=>{ uploadItem.style.boxShadow = ''; }, 650);
+      goNow();
+    }
+    requestAnimationFrame(frame);
+  }catch(err){ goNow(); }
+}
+
 function refreshStudentViews(){
   if(!currentUser) return;
   const uid = currentUser.id;
