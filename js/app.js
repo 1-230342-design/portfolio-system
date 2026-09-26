@@ -175,6 +175,14 @@ function fileIsVideo(f){
   if(!f||!f.dataUrl) return false;
   return /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|$)/i.test(f.dataUrl)||(f.mimeType&&f.mimeType.startsWith('video/'));
 }
+// Card thumbnail used by every list in the app: real images → <img>, real
+// videos → a muted first-frame <video> (metadata only — no full download, no
+// autoplay, clicks pass through to the card), anything else → 🖼️ placeholder.
+function cardThumbHtml(p, imgCls, phCls, phStyle){
+  if(p && p.file && fileIsImage(p.file)) return `<img class="${imgCls}" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>`;
+  if(p && p.file && fileIsVideo(p.file)) return `<video class="${imgCls}" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline disablepictureinpicture style="pointer-events:none;" oncontextmenu="return false;"></video>`;
+  return `<div class="${phCls}"${phStyle ? ` style="${phStyle}"` : ''}>🖼️</div>`;
+}
 function readFileAsDataUrl(file){
   return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(new Error('read failed')); r.readAsDataURL(file); });
 }
@@ -1610,7 +1618,7 @@ async function openPublicProfile(userId){
     });
 
     worksEl.innerHTML = _publicProfileWorks.length ? _publicProfileWorks.map((p,i)=>{
-      const thumb = fileIsImage(p.file) ? `<img class="pwork-thumb" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>` : `<div class="upload-thumb-placeholder" style="height:200px">${fileIsVideo(p.file)?'🎬':'🖼️'}</div>`;
+      const thumb = cardThumbHtml(p, 'pwork-thumb', 'upload-thumb-placeholder', 'height:200px');
       return `<div class="pwork-card" onclick="viewPublicWork(${i})">${thumb}
         <div class="pwork-overlay"><button class="btn-view-project">👁 View Project</button></div>
         <div class="pwork-info">
@@ -2296,7 +2304,7 @@ function renderDashboard(uid){
   const recent = list.slice(0,3);
   document.getElementById('dash-recent-uploads').innerHTML = recent.length
     ? recent.map(p=>{
-        const thumb = fileIsImage(p.file) ? `<img class="upload-thumb" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>` : `<div class="upload-thumb-placeholder">${fileIsVideo(p.file)?'🎬':'🖼️'}</div>`;
+        const thumb = cardThumbHtml(p, 'upload-thumb', 'upload-thumb-placeholder', '');
         const badge = p.status==='approved'?'approved':p.status==='rejected'?'rejected':'pending';
         return `<div class="upload-card">${thumb}<span class="upload-status-badge badge-${badge}">${p.status}</span></div>`;
       }).join('')
@@ -2314,7 +2322,7 @@ function renderPortfolioPage(uid){
   const personal  = list.filter(p=>p.status==='draft' && p.neverSent);
 
   const cardHtml = p => {
-    const thumb = fileIsImage(p.file) ? `<img class="pwork-thumb" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>` : `<div class="upload-thumb-placeholder" style="height:200px">${fileIsVideo(p.file)?'🎬':'🖼️'}</div>`;
+    const thumb = cardThumbHtml(p, 'pwork-thumb', 'upload-thumb-placeholder', 'height:200px');
     const toggleLabel = p.isPublic ? '🔒 Remove from Public' : '🌐 Add to Public';
     // QR shows automatically (no button/click needed) the moment a work is public —
     // it's just a goqr.me image URL, so no async call required to render it.
@@ -2341,7 +2349,7 @@ function renderPortfolioPage(uid){
   const personalEl = document.getElementById('pt-personal');
   if(personalEl){
     const personalCardHtml = p => {
-      const thumb = fileIsImage(p.file) ? `<img class="pwork-thumb" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>` : `<div class="upload-thumb-placeholder" style="height:200px">${fileIsVideo(p.file)?'🎬':'🖼️'}</div>`;
+      const thumb = cardThumbHtml(p, 'pwork-thumb', 'upload-thumb-placeholder', 'height:200px');
       return `<div class="pwork-card" style="position:relative;">${thumb}
         <div class="pwork-overlay">
           <button class="btn-view-project" onclick="viewStudentProject('${p.id}')">👁 View Project</button>
@@ -2551,7 +2559,7 @@ function renderProjectsPage(uid){
   if(!approvedEl) return;
   const list = studentProjects[uid] || [];
   const cardHtml = p => {
-    const thumb = fileIsImage(p.file) ? `<img class="project-thumb" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>` : `<div class="upload-thumb-placeholder" style="height:180px">${fileIsVideo(p.file)?'🎬':'🖼️'}</div>`;
+    const thumb = cardThumbHtml(p, 'project-thumb', 'upload-thumb-placeholder', 'height:180px');
     const canDelete = p.status !== 'approved' && p.status !== 'submitted'; // pending works are unsubmitted first, not deleted outright; approved works have nothing left to undo
     const deleteBtn = canDelete
       ? `<button class="btn-cancel" style="margin-top:10px;width:100%;color:var(--red);border-color:rgba(244,67,54,.4);justify-content:center;" onclick="event.stopPropagation();deleteWork('${p.id}')">🗑️ Delete Submission</button>`
@@ -3103,7 +3111,7 @@ async function viewStudentProfile(userId){
   const works = _profItems.filter(p=>p.userId===userId && p.status!=='draft');
 
   worksEl.innerHTML = works.length ? works.map(p=>{
-    const thumb = fileIsImage(p.file) ? `<img class="project-thumb" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>` : `<div class="upload-thumb-placeholder" style="height:180px">${fileIsVideo(p.file)?'🎬':'🖼️'}</div>`;
+    const thumb = cardThumbHtml(p, 'project-thumb', 'upload-thumb-placeholder', 'height:180px');
     const badge = p.status==='approved'?'badge-approved':p.status==='rejected'?'badge-rejected':'badge-pending';
     return `<div class="project-card" style="position:relative;cursor:pointer;" onclick="openReviewById('${p.id}')">
       <span class="upload-status-badge ${badge}" style="position:absolute;top:8px;right:8px;z-index:1;">${p.status}</span>
@@ -3335,7 +3343,7 @@ function profFilterTab(el, status){
 }
 
 function submissionItemHtml(p){
-  const thumb = fileIsImage(p.file) ? `<img class="sub-thumb" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>` : `<div class="sub-thumb-placeholder">${fileIsVideo(p.file)?'🎬':'🖼️'}</div>`;
+  const thumb = cardThumbHtml(p, 'sub-thumb', 'sub-thumb-placeholder', '');
   const badge = p.status==='approved'?'badge-approved':p.status==='rejected'?'badge-rejected':'badge-pending';
   // Rejected items can pile up as clutter — give the professor a quick way to clear
   // them out. Icon-only so it sits next to Review without pushing the row wider.
