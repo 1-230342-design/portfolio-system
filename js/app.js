@@ -2273,29 +2273,32 @@ function flyToUploadWork(btn){
     btn.style.whiteSpace = 'nowrap';
     btn.style.color = 'transparent'; // label fades as it folds (restored later)
 
-    // Paper crane the button unfolds into (white origami bird, drawn inline so
-    // it needs no image file). Wings carry their own flap animation.
-    const craneSvg = `<svg viewBox="0 0 120 120" width="46" height="46" aria-hidden="true">`
-      + `<style>.pbird-wing{transform-box:fill-box;transform-origin:50% 100%;animation:pbirdFlap .28s ease-in-out infinite alternate;}`
-      + `@keyframes pbirdFlap{from{transform:scaleY(1);}to{transform:scaleY(.5);}}</style>`
-      + `<polygon points="60,55 12,76 58,68" fill="#d9d4c2"/>`
-      + `<polygon points="60,55 78,18 66,56" fill="#ffffff"/>`
-      + `<polygon points="78,18 88,21 77,28" fill="#ffffff"/>`
-      + `<circle cx="79" cy="22" r="2.4" fill="#173626"/>`
-      + `<polygon class="pbird-wing" points="60,55 102,28 70,62" fill="#f6f3e9"/>`
-      + `<polygon points="60,55 96,96 62,66" fill="#e3ddc9"/>`
-      + `<ellipse cx="60" cy="60" rx="8" ry="6" fill="#ffffff"/>`
+    // Paper crane the button unfolds into (layered origami bird with fold
+    // lines, drawn inline so it needs no image file). The raised wing flaps.
+    const craneSvg = `<svg viewBox="0 0 120 120" width="68" height="68" aria-hidden="true">`
+      + `<style>.pbird-wing{transform-box:fill-box;transform-origin:50% 100%;animation:pbirdFlap .4s ease-in-out infinite alternate;}`
+      + `@keyframes pbirdFlap{from{transform:scaleY(1);}to{transform:scaleY(.55);}}</style>`
+      + `<polygon points="58,62 16,50 56,68" fill="#cfc8b2"/>`
+      + `<polygon points="58,64 18,74 60,70" fill="#d9d4c2"/>`
+      + `<polygon points="58,56 88,90 64,64" fill="#e7e1cf"/>`
+      + `<polygon points="52,52 70,54 66,72 50,68" fill="#ffffff"/>`
+      + `<line x1="52" y1="52" x2="66" y2="72" stroke="#d9d4c2" stroke-width="1.4"/>`
+      + `<polygon points="62,54 74,20 69,19 57,52" fill="#ffffff"/>`
+      + `<polygon points="74,20 84,22 73,27" fill="#ffffff"/>`
+      + `<circle cx="76" cy="23" r="2.2" fill="#173626"/>`
+      + `<polygon class="pbird-wing" points="58,56 98,16 72,60" fill="#fbf8ee"/>`
+      + `<line x1="58" y1="56" x2="98" y2="16" stroke="#d9d4c2" stroke-width="1.4"/>`
       + `</svg>`;
-    const BALL = 46;
+    const BALL = 72;
     let swapped = false;
-    const dur = 1500, start = performance.now();
+    const dur = 2100, start = performance.now();
     const lerp = (a, z, e)=>a + (z - a) * e;
     function frame(now){
       const p = Math.min(1, (now - start) / dur);
-      if(p < 0.22){
+      if(p < 0.18){
         // PHASE 1 — sheet of paper: collapse centered into a small white square.
-        const e = p / 0.22;
-        const w = lerp(b.width, 64, e), h = lerp(b.height, 64, e);
+        const e = p / 0.18;
+        const w = lerp(b.width, 68, e), h = lerp(b.height, 68, e);
         btn.style.left = (cx0 - w/2) + 'px';
         btn.style.top  = (cy0 - h/2) + 'px';
         btn.style.width = w + 'px';
@@ -2306,11 +2309,11 @@ function flyToUploadWork(btn){
         btn.style.background = '#f4f0e3';
         btn.style.backgroundImage = 'none';
         btn.style.boxShadow = '0 6px 16px rgba(0,0,0,.25)';
-      }else if(p < 0.42){
+      }else if(p < 0.34){
         // PHASE 2 — crumple: shaking paper ball with crease texture.
-        const e = (p - 0.22) / 0.20;
+        const e = (p - 0.18) / 0.16;
         const jx = Math.sin(p * 95) * 3.5, jy = Math.cos(p * 81) * 3.5;
-        const w = lerp(64, BALL, e), h = lerp(64, BALL, e);
+        const w = lerp(68, BALL, e), h = lerp(68, BALL, e);
         btn.style.left = (cx0 - w/2 + jx) + 'px';
         btn.style.top  = (cy0 - h/2 + jy) + 'px';
         btn.style.width = w + 'px';
@@ -2333,13 +2336,13 @@ function flyToUploadWork(btn){
           btn.style.justifyContent = 'center';
           btn.style.filter = 'drop-shadow(0 8px 14px rgba(0,0,0,.35))';
         }
-        const e = (p - 0.42) / 0.58;
-        const ee = 1 - Math.pow(1 - e, 2);
+        const e = (p - 0.34) / 0.66;
+        const ee = 1 - Math.pow(1 - e, 3); // gentle ease-out for a slow glide
         const x = (1-ee)*(1-ee)*cx0 + 2*(1-ee)*ee*cx + ee*ee*x1;
         const y = (1-ee)*(1-ee)*cy0 + 2*(1-ee)*ee*cy + ee*ee*y1;
-        const wob = Math.sin(e * 16) * 10;
-        const pop = 1 + 0.3 * Math.sin(Math.min(1, e / 0.16) * Math.PI); // unfold pop
-        const s = (1 - 0.45 * ee) * pop;
+        const wob = Math.sin(e * 10) * 7; // slow, graceful sway (was frantic)
+        const pop = 1 + 0.3 * Math.sin(Math.min(1, e / 0.12) * Math.PI); // unfold pop
+        const s = (1 - 0.35 * ee) * pop; // stays bigger throughout
         btn.style.left = (x - BALL/2) + 'px';
         btn.style.top  = (y - BALL/2) + 'px';
         btn.style.width = BALL + 'px';
