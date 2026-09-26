@@ -56,7 +56,9 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 }
 #paintWipe .paint-fill{
   position:absolute;inset:0;
-  background:linear-gradient(120deg,#0c2015 0%,#1e4a30 60%,#2a5f3c 100%);
+  background:
+    repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 2px,transparent 2px 8px),
+    linear-gradient(120deg,#0c2015 0%,#1e4a30 60%,#2a5f3c 100%);
   transform:scaleX(0);transform-origin:left center;
 }
 #paintWipe .paint-brush{
@@ -71,15 +73,23 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
   letter-spacing:1px;opacity:0;transform:translateY(12px);
 }
 #paintWipe.wipe-in{opacity:1;}
-#paintWipe.wipe-in .paint-fill{animation:paintFill .85s cubic-bezier(.6,0,.35,1) forwards;}
-#paintWipe.wipe-in .paint-brush{animation:brushSweep .85s cubic-bezier(.6,0,.35,1) forwards;}
-#paintWipe.wipe-in .paint-word{animation:paintWordIn .45s ease .7s forwards;}
+#paintWipe.wipe-in .paint-fill{animation:paintFill 1s cubic-bezier(.55,.06,.45,.94) forwards;}
+#paintWipe.wipe-in .paint-brush{animation:brushScrub 1s cubic-bezier(.55,.06,.45,.94) forwards;}
+#paintWipe.wipe-in .paint-word{animation:paintWordIn .45s ease .85s forwards;}
 #paintWipe.wipe-out{opacity:1;animation:paintDissolve .55s ease forwards;}
 #paintWipe.wipe-out .paint-brush,#paintWipe.wipe-out .paint-word{display:none;}
-@keyframes brushSweep{
-  0%{left:-140px;transform:translateY(-50%) rotate(-25deg);}
-  50%{transform:translateY(-60%) rotate(-12deg);}
-  100%{left:calc(100% + 60px);transform:translateY(-50%) rotate(-25deg);}
+/* Real scrubbing: the brush zigzags down-up across the screen, wrist flicking
+   with every stroke, while the paint edge tracks its horizontal progress. */
+@keyframes brushScrub{
+  0%{left:-140px;top:46%;transform:translateY(-50%) rotate(-25deg);}
+  12%{left:8%;top:33%;transform:translateY(-50%) rotate(-6deg);}
+  25%{left:24%;top:57%;transform:translateY(-50%) rotate(-33deg);}
+  38%{left:40%;top:35%;transform:translateY(-50%) rotate(-6deg);}
+  50%{left:55%;top:59%;transform:translateY(-50%) rotate(-33deg);}
+  63%{left:68%;top:37%;transform:translateY(-50%) rotate(-6deg);}
+  76%{left:80%;top:57%;transform:translateY(-50%) rotate(-31deg);}
+  88%{left:92%;top:43%;transform:translateY(-50%) rotate(-14deg);}
+  100%{left:calc(100% + 60px);top:46%;transform:translateY(-50%) rotate(-25deg);}
 }
 @keyframes paintFill{from{transform:scaleX(0);}to{transform:scaleX(1);}}
 @keyframes paintWordIn{to{opacity:1;transform:translateY(0);}}

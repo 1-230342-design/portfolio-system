@@ -246,7 +246,7 @@ function playLoginWipe(next){
       w.classList.remove('wipe-in');
       w.classList.add('wipe-out');
       setTimeout(()=>w.classList.remove('wipe-out'), 650);
-    }, 950);
+    }, 1150);
   }catch(e){ next(); }
 }
 
