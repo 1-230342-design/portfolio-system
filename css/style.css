@@ -189,13 +189,33 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 .btn-outline.pending{border-color:var(--border);color:var(--text3);}
 /* Download — deep green with a gold touch (My Projects cards + preview) */
 .btn-download{
-  width:100%;padding:13px;background:linear-gradient(135deg,var(--dark2),var(--dark));
-  color:#fff;border:1.5px solid var(--gold);border-radius:999px;
-  font-size:14px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;
-  cursor:pointer;transition:all .2s;margin-top:10px;
-  display:flex;align-items:center;justify-content:center;gap:6px;
+  position:relative;overflow:hidden;
+  width:100%;padding:13px 14px;background:linear-gradient(120deg,#0e2a1b 0%,#1e4a30 55%,#2a5f3c 100%);
+  color:#fff;border:1px solid var(--gold);border-radius:999px;
+  font-size:14px;font-weight:700;letter-spacing:.3px;font-family:'Plus Jakarta Sans',sans-serif;
+  cursor:pointer;margin-top:10px;
+  display:flex;align-items:center;justify-content:center;gap:9px;
+  box-shadow:0 8px 20px rgba(12,32,21,.35),inset 0 1px 0 rgba(255,255,255,.14);
+  transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
 }
-.btn-download:hover{filter:brightness(1.15);box-shadow:0 8px 18px rgba(201,162,39,.28);}
+.btn-download:hover{transform:translateY(-1px);filter:brightness(1.12);box-shadow:0 12px 26px rgba(12,32,21,.42),0 0 0 3px rgba(201,162,39,.20);}
+.btn-download:active{transform:translateY(0) scale(.99);}
+.btn-download::after{ /* light sheen sweeping across on hover */
+  content:'';position:absolute;top:0;bottom:0;left:-90px;width:60px;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.28),transparent);
+  transform:skewX(-20deg);transition:left .55s ease;pointer-events:none;
+}
+.btn-download:hover::after{left:calc(100% + 90px);}
+.btn-download .dl-ico{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:50%;flex-shrink:0;
+  background:linear-gradient(135deg,var(--gold),var(--gold-dark));
+  color:#173626;font-size:12px;font-weight:800;line-height:1;
+  box-shadow:0 2px 6px rgba(0,0,0,.3);
+}
+/* Danger-outline (Unsubmit / Delete Submission) — red tint that deepens on hover */
+.btn-cancel.btn-danger{border-color:rgba(244,67,54,.45);color:var(--red);background:rgba(244,67,54,.05);}
+.btn-cancel.btn-danger:hover{background:rgba(244,67,54,.13);border-color:var(--red);color:var(--red);}
 .or-div{text-align:center;font-size:12px;color:var(--text3);margin:12px 0;}
 .forgot-link{text-align:right;font-size:12px;color:var(--text3);cursor:pointer;margin-top:-10px;margin-bottom:16px;}
 .forgot-link:hover{color:var(--accent);text-decoration:underline;}
