@@ -245,8 +245,8 @@ function playLoginWipe(next){
       try{ next(); }catch(e){ console.warn('paint wipe next() failed:', e); }
       w.classList.remove('wipe-in');
       w.classList.add('wipe-out');
-      setTimeout(()=>w.classList.remove('wipe-out'), 650);
-    }, 1150);
+      setTimeout(()=>w.classList.remove('wipe-out'), 700);
+    }, 600);
   }catch(e){ next(); }
 }
 
