@@ -2565,7 +2565,7 @@ function renderProjectsPage(uid){
       ? `<button class="btn-cancel" style="margin-top:10px;width:100%;color:var(--red);border-color:rgba(244,67,54,.4);justify-content:center;" onclick="event.stopPropagation();deleteWork('${p.id}')">🗑️ Delete Submission</button>`
       : '';
     const unsubmitBtn = p.status==='submitted'
-      ? `<button class="btn-cancel" style="margin-top:10px;width:100%;justify-content:center;" onclick="event.stopPropagation();unsubmitWork('${p.id}')">↩️ Unsubmit</button>`
+      ? `<button class="btn-cancel" style="margin-top:10px;width:100%;color:var(--red);border-color:rgba(244,67,54,.4);justify-content:center;" onclick="event.stopPropagation();unsubmitWork('${p.id}')">↩️ Unsubmit</button>`
       : '';
     // Drafts come in two flavours (see saveItemToSupabase): personal-gallery
     // works that were never sent anywhere, and works withdrawn from review.
@@ -2585,7 +2585,7 @@ function renderProjectsPage(uid){
       : '';
     // Every card gets a Download button — approved, pending, rejected, or
     // withdrawn. It's the student's own file, so it's always theirs to keep.
-    const downloadBtnHtml = `<button class="btn-outline" style="margin-top:10px;" onclick="event.stopPropagation();downloadWork('${p.id}')">⬇️ Download</button>`;
+    const downloadBtnHtml = `<button class="btn-download" onclick="event.stopPropagation();downloadWork('${p.id}')">⬇️ Download</button>`;
     const rejectedHtml = (p.status==='rejected' && p.feedbackComment)
       ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
           <div style="font-size:12px;color:var(--red);font-weight:600;">Professor's Comment:</div>
@@ -2741,7 +2741,7 @@ function projTab(el,tab){
     const el2=document.getElementById(id);
     if(!el2) return;
     if(id!==tab){ el2.style.display='none'; return; }
-    el2.style.display = (id==='approved-p'||id==='pending-p') ? 'grid' : 'block';
+    el2.style.display = (id==='grades-p') ? 'block' : 'grid';
   });
 }
 
