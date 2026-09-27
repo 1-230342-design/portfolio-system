@@ -1508,11 +1508,65 @@ async function browseAllStudents(){
   }
   if(error){ console.error('browse students error:', error); showToast('❌ '+error.message); return; }
 
+  // The official section roster (same table that feeds sign-up + archives),
+  // so sections show even when nobody has enrolled in them yet.
+  let sections = [];
+  try{
+    const { data: secRows } = await sb.from('sections').select('name').order('name');
+    sections = (secRows || []).map(r => r.name).filter(Boolean);
+  }catch(secErr){ console.warn('browse sections lookup skipped:', secErr); }
+
   document.getElementById('public-search-summary').textContent =
     (data && data.length) ? `${data.length} enrolled student${data.length===1?'':'s'}` : `No enrolled students found.`;
 
-  renderStudentResults(data);
+  renderBrowseSections(data || [], sections);
   go('s-public-search');
+}
+
+// Browse mode: one box per OFFICIAL section (sections table) with its live
+// headcount — including zeros. Students whose profile section matches nothing
+// in the roster fall into a "No Section" catch-all at the end. Tapping any
+// box drills in via openPublicSection; empty ones say so instead of hiding.
+function renderBrowseSections(students, sectionNames){
+  _publicSearchData = students || [];
+
+  const sectionsView  = document.getElementById('public-search-sections');
+  const inSectionView = document.getElementById('public-search-in-section');
+  if(sectionsView)  sectionsView.style.display  = 'block';
+  if(inSectionView) inSectionView.style.display = 'none';
+  currentPublicSectionName = null;
+
+  const resultsEl = document.getElementById('public-search-results');
+  const counts = {};
+  _publicSearchData.forEach(s=>{
+    const key = s.section || 'No Section';
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  // Roster order (alphabetical), then any student sections missing from the
+  // roster, then the "No Section" catch-all last.
+  const roster = [...new Set(sectionNames || [])].sort((a, b)=>a.localeCompare(b));
+  const extras = Object.keys(counts).filter(k=>k !== 'No Section' && !roster.includes(k)).sort((a, b)=>a.localeCompare(b));
+  const names = [...roster, ...extras];
+  if(counts['No Section']) names.push('No Section');
+
+  if(!names.length){
+    resultsEl.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No sections yet.</div>`;
+    return;
+  }
+
+  resultsEl.innerHTML = names.map(name=>{
+    const count = counts[name] || 0;
+    const safeName = esc(name).replace(/'/g,"\\'");
+    const sub = count ? `${count} student${count===1?'':'s'}` : 'No students yet — be the first to enroll';
+    return `<div class="section-group" onclick="openPublicSection('${safeName}')">
+      <div class="section-group-info">
+        <div class="section-name">${esc(name)}</div>
+        <div class="section-year">${sub}</div>
+      </div>
+      <button class="btn-view-sm" onclick="event.stopPropagation();openPublicSection('${safeName}')">👁 View</button>
+    </div>`;
+  }).join('');
 }
 
 // Shared renderer for both search results and the full browse list —
@@ -1589,7 +1643,7 @@ function openPublicSection(name){
       </div>
       <button class="btn-view-sm" onclick="event.stopPropagation();openPublicProfile('${s.user_id}')">👁 View Portfolio</button>
     </div>`;
-  }).join('') : `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No students in this section.</div>`;
+  }).join('') : `<div class="empty-state"><p>There's no student enrolled in this section yet.</p></div>`;
 }
 
 function backToPublicSections(){
