@@ -448,12 +448,10 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 .project-thumb-frame{height:180px;}
 .pwork-thumb-frame{height:200px;}
 .sub-thumb-frame{width:56px;height:56px;border-radius:8px;flex-shrink:0;}
-/* Orientation-aware frames — tagged by the artwork's real shape on load, so
-   portraits get a tall stage (no giant side bars) and landscapes stay wide.
-   Small-row thumbs stay square no matter what. */
-.pwork-thumb-frame.is-portrait{height:340px;}
-.project-thumb-frame.is-portrait{height:300px;}
-.upload-thumb-frame.is-portrait{height:260px;}
+/* Uniform frames — every card in a grid is exactly the same outer size (tidy
+   rows, no ragged edges). Artworks inside always show WHOLE via contain-fit
+   over their own ambient glow, so nothing is ever cropped. */
+.pwork-thumb-frame,.project-thumb-frame,.upload-thumb-frame{height:190px;}
 .upload-thumb-frame,.project-thumb-frame,.pwork-thumb-frame{width:100%;}
 .thumb-ambient-bg{position:absolute;inset:-12%;width:124%;height:124%;object-fit:cover;filter:blur(22px) brightness(.92) saturate(1.35);pointer-events:none;}
 /* Absolutely pinned to all four frame edges with contain-fit: the media can no
