@@ -439,7 +439,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 /* Per-work ambient background: a blurred, enlarged copy of the artwork glows
    behind the full piece (Spotify/YouTube style) — each card gets its own
    colours, no canvas/CORS tricks needed, pure CSS. */
-.thumb-ambient{position:relative;overflow:hidden;background:var(--surface2);}
+.thumb-ambient{position:relative;overflow:hidden;background:var(--surface2);display:flex;align-items:center;justify-content:center;}
 .upload-thumb-frame{height:170px;}
 .project-thumb-frame{height:180px;}
 .pwork-thumb-frame{height:200px;}
@@ -452,7 +452,10 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 .upload-thumb-frame.is-portrait{height:260px;}
 .upload-thumb-frame,.project-thumb-frame,.pwork-thumb-frame{width:100%;}
 .thumb-ambient-bg{position:absolute;inset:-12%;width:124%;height:124%;object-fit:cover;filter:blur(22px) brightness(.92) saturate(1.35);pointer-events:none;}
-.thumb-ambient-main{position:relative;width:100%;height:100%;object-fit:contain;display:block;}
+/* Flex-centered with max caps (never forced 100%x100%) so every shape sits
+   dead-center with symmetric letterboxing — no more top-stuck media with a
+   white slab underneath. Small files keep natural size instead of stretching. */
+.thumb-ambient-main{position:relative;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;}
 video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{background:var(--surface2);}
 .upload-thumb-placeholder{
   width:100%;height:170px;

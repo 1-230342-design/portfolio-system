@@ -9,6 +9,7 @@
 // ══════════════════════════════════════════════════════
 
 let _assignmentsCache        = [];   // last-loaded list of assignments (shared by both roles)
+let _myAssignmentPorts       = {};   // student's own portfolios keyed by assignment_id (for Unsubmit)
 let currentAttachAssignmentId = null; // assignment the student is currently attaching work to
 let attachRawFile             = null; // File object staged for that attachment
 
@@ -63,6 +64,7 @@ async function renderAssignmentsPage(uid){
 
   const byAssignment = {};
   myPorts.forEach(p => { byAssignment[p.assignment_id] = p; });
+  _myAssignmentPorts = byAssignment;
 
   const badge = document.getElementById('assign-badge');
   if(badge){
@@ -118,12 +120,46 @@ async function openAttachWorkModal(assignmentId){
   document.getElementById('aw-title').value = a.title;
   document.getElementById('aw-desc').value  = '';
   document.getElementById('aw-drop-text').textContent = 'Drop files here or click to upload';
+  // Offer Unsubmit only when this student actually has a live (submitted)
+  // entry to pull back — withdrawing flips it to draft, which drops it from
+  // the professor's assignment panel instantly. Re-attaching later (before
+  // the deadline) flips it straight back to submitted.
+  const mine = _myAssignmentPorts[assignmentId];
+  const unBtn = document.getElementById('aw-unsubmit-btn');
+  if(unBtn) unBtn.style.display = (mine && mine.status === 'submitted') ? 'flex' : 'none';
   document.getElementById('attachWorkOverlay').classList.add('open');
 }
 function closeAttachWorkModal(){
   document.getElementById('attachWorkOverlay').classList.remove('open');
+  const unBtn = document.getElementById('aw-unsubmit-btn');
+  if(unBtn) unBtn.style.display = 'none';
   currentAttachAssignmentId = null;
   attachRawFile = null;
+}
+// Student pulls their assignment entry back from professor review. The row
+// isn't deleted — status flips to draft so it vanishes from every professor
+// surface immediately, and the student can attach again until the deadline.
+async function unsubmitAssignment(){
+  if(!currentUser || !currentAttachAssignmentId) return;
+  const mine = _myAssignmentPorts[currentAttachAssignmentId];
+  if(!mine){ showToast('⚠️ No submission to unsubmit'); return; }
+  if(mine.status !== 'submitted'){ showToast('⚠️ Only a submitted entry can be unsubmitted.'); return; }
+  if(!confirm('Unsubmit your work for this assignment? It will be pulled back from professor review. You can attach again any time before the deadline.')) return;
+  showToast('↩️ Unsubmitting…');
+  try{
+    const { error } = await sb.from('portfolios').update({
+      status: 'draft',
+      updated_at: new Date().toISOString()
+    }).eq('id', mine.id);
+    if(error) throw error;
+    closeAttachWorkModal();
+    showToast('✅ Unsubmitted — pulled back from review. Attach again before the deadline to resubmit.');
+    await loadProjectsForStudent(currentUser.id);
+    refreshStudentViews(); // re-renders Classwork (badge flips to Withdrawn) + projects
+  }catch(err){
+    console.error('unsubmitAssignment error:', err);
+    showToast('❌ Error: '+err.message);
+  }
 }
 function handleAttachFileSelect(e){
   attachRawFile = e.target.files && e.target.files[0];
@@ -346,7 +382,9 @@ async function toggleAssignmentSubmissions(assignmentId){
 
   panel.classList.add('open');
   panel.innerHTML = `<div style="font-size:13px;color:var(--text3);">Loading submissions…</div>`;
-  if(!_profItems || !_profItems.length) _profItems = await loadAllItemsForProfessor();
+  // Always reload (never trust the cache here) so a just-unsubmitted entry
+  // vanishes from the professor's list the moment they open the panel.
+  _profItems = await loadAllItemsForProfessor();
   const items = _profItems.filter(p => p.assignmentId === assignmentId && p.status !== 'draft'); // withdrawn/personal stays private
   panel.innerHTML = items.length
     ? `<div class="submissions-list">${items.map(submissionItemHtml).join('')}</div>`
