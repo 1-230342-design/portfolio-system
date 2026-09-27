@@ -1,0 +1,3 @@
+# Local-only files — never deploy. MM FILES holds real class lists (student
+# names + numbers); publishing them would violate the Data Privacy Act.
+MM FILES/
