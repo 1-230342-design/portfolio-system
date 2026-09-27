@@ -186,19 +186,26 @@
       <div class="modal-title">Attach Work — <span id="aw-assignment-title" style="font-weight:400;">—</span></div>
       <button class="modal-close" onclick="closeAttachWorkModal()">✕</button>
     </div>
-    <input type="file" id="aw-file-input" accept="image/*,.pdf,.psd,.blend,.mp4,.zip" style="display:none" onchange="handleAttachFileSelect(event)"/>
-    <div class="drop-zone" id="aw-drop-zone" style="padding:32px 16px;" onclick="document.getElementById('aw-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--dark)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleAttachDrop(event)">
-      <div class="drop-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      </div>
-      <div class="drop-text" id="aw-drop-text">Drop files here or click to upload</div>
+    <!-- MODE 1 — manage: shown when a live submission exists. Unsubmit only, no attach form. -->
+    <div id="aw-manage-box" style="display:none;">
+      <div id="aw-manage-info"></div>
+      <button class="btn-cancel btn-danger" id="aw-unsubmit-btn" style="width:100%;justify-content:center;margin-top:14px;" onclick="unsubmitAssignment()">↩️ Unsubmit Submission</button>
     </div>
-    <label class="flabel">Title *</label>
-    <input class="finput" id="aw-title" placeholder="Give your submission a title"/>
-    <label class="flabel">Description</label>
-    <textarea class="comment-area" id="aw-desc" rows="3" placeholder="Notes for your professor (optional)…"></textarea>
-    <button class="btn-full" id="aw-submit-btn" onclick="submitAttachedWork()">📎 Submit Attachment</button>
-    <button class="btn-cancel btn-danger" id="aw-unsubmit-btn" style="display:none;width:100%;justify-content:center;margin-top:10px;" onclick="unsubmitAssignment()">↩️ Unsubmit Submission</button>
+    <!-- MODE 2 — attach: shown when nothing is submitted yet, or right after an unsubmit. -->
+    <div id="aw-attach-form">
+      <input type="file" id="aw-file-input" accept="image/*,.pdf,.psd,.blend,.mp4,.zip" style="display:none" onchange="handleAttachFileSelect(event)"/>
+      <div class="drop-zone" id="aw-drop-zone" style="padding:32px 16px;" onclick="document.getElementById('aw-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--dark)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleAttachDrop(event)">
+        <div class="drop-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <div class="drop-text" id="aw-drop-text">Drop files here or click to upload</div>
+      </div>
+      <label class="flabel">Title *</label>
+      <input class="finput" id="aw-title" placeholder="Give your submission a title"/>
+      <label class="flabel">Description</label>
+      <textarea class="comment-area" id="aw-desc" rows="3" placeholder="Notes for your professor (optional)…"></textarea>
+      <button class="btn-full" id="aw-submit-btn" onclick="submitAttachedWork()">📎 Submit Attachment</button>
+    </div>
   </div>
 </div>
 
@@ -302,11 +309,11 @@
      student/professor browsers can never keep running a stale cached copy of
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
-<script src="js/loader.js?v=32"></script>
-<script src="js/app.js?v=32"></script>
-<script src="js/assignments.js?v=32"></script>
-<script src="js/grade-archives.js?v=32"></script>
-<script src="js/qr.js?v=32"></script>
-<script src="js/similarity-ai.js?v=32"></script>
+<script src="js/loader.js?v=33"></script>
+<script src="js/app.js?v=33"></script>
+<script src="js/assignments.js?v=33"></script>
+<script src="js/grade-archives.js?v=33"></script>
+<script src="js/qr.js?v=33"></script>
+<script src="js/similarity-ai.js?v=33"></script>
 </body>
 </html>
