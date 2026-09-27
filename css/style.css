@@ -426,7 +426,11 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 .view-all:hover{color:var(--accent);}
 
 /* RECENT UPLOADS GRID */
-.uploads-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px;}
+/* align-items:start — cards keep their own artwork-driven heights. The default
+   (stretch) forced every card in a row as tall as the tallest one, leaving
+   white slabs under shorter thumbs that looked like broken layout. */
+.uploads-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:28px;align-items:start;}
+.projects-grid,.portfolio-grid{align-items:start;}
 .upload-card{
   background:var(--white);border-radius:12px;overflow:hidden;
   position:relative;cursor:pointer;transition:transform .2s;
