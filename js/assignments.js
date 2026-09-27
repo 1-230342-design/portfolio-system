@@ -111,17 +111,15 @@ async function renderAssignmentsPage(uid){
 //    Unsubmit button only. No attach form — one job per screen.
 //  • ATTACH mode (nothing submitted yet, or right after an unsubmit): the
 //    drop zone + title + notes + Submit Attachment.
-// Withdrawing is always allowed (even past the deadline — pulling back is
-// harmless); attaching is still locked once the cutoff passes.
+// Past the deadline the entry is FROZEN — no attaching AND no withdrawing.
+// Server clock wins over the device clock when the hardening SQL is run.
 async function openAttachWorkModal(assignmentId){
   const a = _assignmentsCache.find(x => x.id === assignmentId);
   if(!a){ showToast('⚠️ Assignment not found'); return; }
   const mine = _myAssignmentPorts[assignmentId];
   const hasLive = !!(mine && mine.status === 'submitted');
-  // Deadline lock stops ATTACHING (first line of defence — the button is
-  // already disabled too). Managing/withdrawing a live entry stays open.
-  // Server clock wins over the device clock when the hardening SQL is run.
-  if(!hasLive && await isAssignmentClosedNow(a)){ showToast('🔒 Submissions are closed — this assignment is past due.'); return; }
+  // Deadline lock (first line of defence — the button is already disabled too).
+  if(await isAssignmentClosedNow(a)){ showToast('🔒 Submissions are closed — this assignment is past due. Entries can no longer be changed.'); return; }
   currentAttachAssignmentId = assignmentId;
   attachRawFile = null;
   document.getElementById('aw-assignment-title').textContent = a.title;
@@ -184,6 +182,12 @@ async function unsubmitAssignment(){
   if(!mine){ showToast('⚠️ No submission to unsubmit'); return; }
   if(mine.status !== 'submitted'){ showToast('⚠️ Only a submitted entry can be unsubmitted.'); return; }
   if(!confirm('Unsubmit your work for this assignment? It will be pulled back from professor review.')) return;
+  // Frozen is frozen — if the cutoff passed while the modal sat open, refuse.
+  if(assignment && await isAssignmentClosedNow(assignment)){
+    closeAttachWorkModal();
+    showToast('🔒 Submissions are closed — this assignment is past due. Entries can no longer be changed.');
+    return;
+  }
   showToast('↩️ Unsubmitting…');
   try{
     const { error } = await sb.from('portfolios').update({
@@ -194,11 +198,6 @@ async function unsubmitAssignment(){
     mine.status = 'draft'; // keep the local cache truthful for the mode switch below
     await loadProjectsForStudent(currentUser.id);
     refreshStudentViews(); // background badge flips to Withdrawn
-    if(assignment && await isAssignmentClosedNow(assignment)){
-      closeAttachWorkModal();
-      showToast('✅ Unsubmitted — pulled back from review. The deadline has passed, so no new file can be attached.');
-      return;
-    }
     showAttachMode(assignment || { title: '' });
     showToast('✅ Unsubmitted! Attach your new file below.');
   }catch(err){
