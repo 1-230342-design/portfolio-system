@@ -180,21 +180,31 @@ function fileIsVideo(f){
 // ambient background. Videos are muted first-frame only (metadata, no
 // autoplay); clicks pass through to the card. Anything else → 🖼️ placeholder.
 function cardThumbHtml(p, frameCls, phCls, phStyle){
+  // Geometry is INLINE (not stylesheet-dependent): base + portrait heights
+  // per frame kind, flex centering, absolute-pinned media. This renders
+  // correctly even under a stale cached stylesheet — the classes only add
+  // polish (blur, radius) on top.
+  const baseH = { 'upload-thumb-frame': 170, 'project-thumb-frame': 180, 'pwork-thumb-frame': 200, 'sub-thumb-frame': 56 }[frameCls] || 180;
+  const portH = { 'upload-thumb-frame': 260, 'project-thumb-frame': 300, 'pwork-thumb-frame': 340, 'sub-thumb-frame': 56 }[frameCls] || 260;
+  const frameStyle = frameCls === 'sub-thumb-frame'
+    ? `position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;width:56px;height:56px;flex-shrink:0;border-radius:8px;background:#eef0ea;`
+    : `position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;width:100%;height:${baseH}px;background:#eef0ea;`;
+  const bgStyle = `position:absolute;inset:-12%;width:124%;height:124%;object-fit:cover;filter:blur(22px) brightness(.92) saturate(1.35);pointer-events:none;`;
+  const mainStyle = `position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;`;
   if(p && p.file && (fileIsImage(p.file) || fileIsVideo(p.file))){
     const isVid = fileIsVideo(p.file);
-    // On load, the frame learns the artwork's real shape (portrait vs
-    // landscape) so CSS can give portraits a tall stage and keep landscapes
-    // wide. Square row-thumbs ignore it via CSS (no .is-portrait rule).
-    const tagOrientation = `this.parentElement.classList.add(this.naturalHeight>this.naturalWidth||this.videoHeight>this.videoWidth?'is-portrait':'is-landscape')`;
+    // On load the frame learns the artwork's real shape and resizes inline:
+    // portraits get the tall stage, landscapes keep the base height.
+    const tagOrientation = `var f=this.parentElement,por=this.naturalHeight>this.naturalWidth||this.videoHeight>this.videoWidth;f.classList.add(por?'is-portrait':'is-landscape');f.style.height=(por?f.dataset.hp:f.dataset.h)+'px'`;
     const bg  = isVid
-      ? `<video class="thumb-ambient-bg" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline></video>`
-      : `<img class="thumb-ambient-bg" src="${esc(p.file.dataUrl)}" alt="" aria-hidden="true"/>`;
+      ? `<video class="thumb-ambient-bg" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline style="${bgStyle}"></video>`
+      : `<img class="thumb-ambient-bg" src="${esc(p.file.dataUrl)}" alt="" aria-hidden="true" style="${bgStyle}"/>`;
     const main = isVid
-      ? `<video class="thumb-ambient-main" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline disablepictureinpicture style="pointer-events:none;" oncontextmenu="return false;" onloadedmetadata="${tagOrientation}"></video>`
-      : `<img class="thumb-ambient-main" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}" onload="${tagOrientation}"/>`;
-    return `<div class="thumb-ambient ${frameCls}">${bg}${main}</div>`;
+      ? `<video class="thumb-ambient-main" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline disablepictureinpicture style="${mainStyle}pointer-events:none;" oncontextmenu="return false;" onloadedmetadata="${tagOrientation}"></video>`
+      : `<img class="thumb-ambient-main" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}" style="${mainStyle}" onload="${tagOrientation}"/>`;
+    return `<div class="thumb-ambient ${frameCls}" style="${frameStyle}" data-h="${baseH}" data-hp="${portH}">${bg}${main}</div>`;
   }
-  return `<div class="${phCls}"${phStyle ? ` style="${phStyle}"` : ''}>🖼️</div>`;
+  return `<div class="${phCls}" style="display:flex;align-items:center;justify-content:center;width:100%;height:${baseH}px;background:#eef0ea;font-size:36px;">🖼️</div>`;
 }
 function readFileAsDataUrl(file){
   return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(new Error('read failed')); r.readAsDataURL(file); });
