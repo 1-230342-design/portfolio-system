@@ -58,7 +58,9 @@ async function sendCustomOtp(email){
     const { error: dbErr } = await sb.from('otp_codes').insert([{ email, code, expires_at: expiresAt }]);
     if(dbErr) throw dbErr;
     if(typeof emailjs === 'undefined') throw new Error('EmailJS not loaded');
-    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_OTP_TEMPLATE_ID, { to_email: email, code });
+    // Shared template, so fill its subject line sensibly: without this the
+    // subject arrives as "Security alert:  on your Artfolio account" (blank).
+    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_OTP_TEMPLATE_ID, { to_email: email, code, status: 'New verification code' });
     return true;
   }catch(err){
     console.error('sendCustomOtp error:', err);
