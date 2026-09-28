@@ -144,8 +144,9 @@
   #s-landing .lp-section-heading{ font-size:26px; margin:0 0 36px; max-width:520px; }
   /* features layout — all cards stacked on the LEFT, seal parked on the RIGHT */
   #s-landing .lp-features-layout{ max-width:1240px; margin:0 auto; display:grid; grid-template-columns:1.25fr .75fr; gap:28px; align-items:start; position:relative; z-index:1; }
-  #s-landing .lp-features-seal{ position:sticky; top:100px; display:flex; align-items:center; justify-content:center; padding:32px 16px; }
+  #s-landing .lp-features-seal{ position:sticky; top:100px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:28px; padding:32px 16px; }
   #s-landing .lp-features-seal img{ width:100%; max-width:340px; height:auto; object-fit:contain; }
+  #s-landing .lp-features-seal img.lp-seal-ccs{ max-width:260px; }
   #s-landing .lp-feature-grid{ max-width:none; margin:0; display:grid; grid-template-columns:1fr; gap:14px; }
   #s-landing .lp-feature-grid .lp-feature-card{ grid-column:auto !important; }
   @media(max-width:900px){
@@ -318,6 +319,7 @@
     </div>
     <aside class="lp-features-seal">
       <img src="images/logo.png" alt="Artfolio logo" onerror="this.style.outline='3px dashed red';this.style.background='yellow';this.alt='⚠️ image not found: images/logo.png';"/>
+      <img class="lp-seal-ccs" src="images/CCSIT.png" alt="CCSIT seal" onerror="this.style.outline='3px dashed red';this.style.background='yellow';this.alt='⚠️ image not found: images/CCSIT.png';"/>
     </aside>
   </div>
 </section>
