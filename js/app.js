@@ -39,11 +39,27 @@ if(typeof emailjs !== 'undefined') emailjs.init(EMAILJS_PUBLIC_KEY);
 //   3. In EmailJS, create a second email template (separate from the review-
 //      notification one) with template variables {{to_email}} and {{code}},
 //      then paste its Template ID below.
-// Free-plan note: EmailJS only allows 2 templates, so signup codes SHARE the
-// login-alert template (template_rzqc89l), which carries an optional {{code}}
-// line at the bottom of its white card. Login alerts send no code (line sits
-// quietly empty); OTP sends fill it in bold. No separate OTP template needed.
-const EMAILJS_OTP_TEMPLATE_ID = 'template_rzqc89l';
+// Signup codes go through a SECOND EmailJS account dedicated to OTP (the main
+// account's 2-template free limit couldn't host a codes template). Its sends
+// use their own key/service/template below; everything else (review mails,
+// login alerts) stays on the main account. See sendOtpEmail(): the SDK holds
+// one active key at a time, so each OTP send switches keys and switches back.
+const EMAILJS_OTP_PUBLIC_KEY  = 'qLRKe9yhCZUb1ywUX';
+const EMAILJS_OTP_SERVICE_ID  = 'service_y98mhx9';
+const EMAILJS_OTP_TEMPLATE_ID = 'template_nvq6kcs';
+
+// Sends via the OTP account, then restores the main account key so later
+// sends (review/login alerts) keep working. All app sends are sequential
+// awaits, so the global key swap can't race.
+async function sendOtpEmail(email, code){
+  if(typeof emailjs === 'undefined') throw new Error('EmailJS not loaded');
+  emailjs.init(EMAILJS_OTP_PUBLIC_KEY);
+  try{
+    await emailjs.send(EMAILJS_OTP_SERVICE_ID, EMAILJS_OTP_TEMPLATE_ID, { to_email: email, code });
+  }finally{
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+  }
+}
 
 function generateOtpCode(){
   return String(Math.floor(10000000 + Math.random()*90000000)); // 8 digits — matches the 8 otp-box inputs already in the UI
@@ -59,10 +75,7 @@ async function sendCustomOtp(email){
   try{
     const { error: dbErr } = await sb.rpc('request_otp', { p_email: email, p_code: code, p_expires_at: expiresAt });
     if(dbErr) throw dbErr;
-    if(typeof emailjs === 'undefined') throw new Error('EmailJS not loaded');
-    // Shared template, so fill its subject line sensibly: without this the
-    // subject arrives as "Security alert:  on your Artfolio account" (blank).
-    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_OTP_TEMPLATE_ID, { to_email: email, code, status: 'New verification code' });
+    await sendOtpEmail(email, code);
     return true;
   }catch(err){
     console.error('sendCustomOtp error:', err);
