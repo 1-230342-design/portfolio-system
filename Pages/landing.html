@@ -142,7 +142,17 @@
   @media(max-width:900px){ #s-landing .lp-features-watermark{ width:320px; height:320px; } }
   @media(max-width:640px){ #s-landing .lp-features-watermark{ display:none; } }
   #s-landing .lp-section-heading{ font-size:26px; margin:0 0 36px; max-width:520px; }
-  #s-landing .lp-feature-grid{ max-width:1240px; margin:0 auto; display:grid; grid-template-columns:repeat(6,1fr); gap:14px; }
+  /* features layout — all cards stacked on the LEFT, seal parked on the RIGHT */
+  #s-landing .lp-features-layout{ max-width:1240px; margin:0 auto; display:grid; grid-template-columns:1.25fr .75fr; gap:28px; align-items:start; position:relative; z-index:1; }
+  #s-landing .lp-features-seal{ position:sticky; top:100px; display:flex; align-items:center; justify-content:center; padding:32px 16px; }
+  #s-landing .lp-features-seal img{ width:100%; max-width:340px; height:auto; object-fit:contain; }
+  #s-landing .lp-feature-grid{ max-width:none; margin:0; display:grid; grid-template-columns:1fr; gap:14px; }
+  #s-landing .lp-feature-grid .lp-feature-card{ grid-column:auto !important; }
+  @media(max-width:900px){
+    #s-landing .lp-features-layout{ grid-template-columns:1fr; }
+    #s-landing .lp-features-seal{ position:static; padding:8px 16px 0; }
+    #s-landing .lp-features-seal img{ max-width:220px; }
+  }
   #s-landing .lp-feature-card{ background:rgba(237,240,225,.6); backdrop-filter:blur(2px); border-radius:var(--lp-r-md); padding:26px 24px; transition:background .2s; position:relative; z-index:1; }
   #s-landing .lp-feature-card:hover{ background:rgba(226,240,230,.72); }
   #s-landing .lp-feature-card:nth-child(1){ grid-column:span 3; background:var(--lp-ink); color:#fff; }
@@ -282,29 +292,33 @@
 </section>
 
 <section class="lp-section" id="lp-features">
-  <img src="images/CCSIT.png" alt="" class="lp-features-watermark" onerror="this.style.outline='3px dashed red';this.style.background='yellow';this.alt='⚠️ image not found: images/CCSIT.png';"/>
   <h2 class="lp-section-heading lp-serif">Everything you create, in one place.</h2>
-  <div class="lp-feature-grid">
-    <div class="lp-feature-card">
-      <span class="lp-feature-icon">◧</span>
-      <h3 class="lp-serif">Organize your portfolio</h3>
-      <p class="lp-feature-sub">Upload and manage every project in one secure, always-accessible portfolio.</p>
+  <div class="lp-features-layout">
+    <div class="lp-feature-grid">
+      <div class="lp-feature-card">
+        <span class="lp-feature-icon">◧</span>
+        <h3 class="lp-serif">Organize your portfolio</h3>
+        <p class="lp-feature-sub">Upload and manage every project in one secure, always-accessible portfolio.</p>
+      </div>
+      <div class="lp-feature-card">
+        <span class="lp-feature-icon">◐</span>
+        <h3 class="lp-serif">Classwork &amp; grading</h3>
+        <p class="lp-feature-sub">Attach work directly to assignments and get graded on creativity, technique, and composition.</p>
+      </div>
+      <div class="lp-feature-card">
+        <span class="lp-feature-icon">◑</span>
+        <h3 class="lp-serif">Public showcase &amp; QR</h3>
+        <p class="lp-feature-sub">Make approved works public and share them with a scannable QR code — perfect for exhibits.</p>
+      </div>
+      <div class="lp-feature-card">
+        <span class="lp-feature-icon">◈</span>
+        <h3 class="lp-serif">Originality check</h3>
+        <p class="lp-feature-sub">Every upload is automatically compared against classmates' work using image and AI tag similarity.</p>
+      </div>
     </div>
-    <div class="lp-feature-card">
-      <span class="lp-feature-icon">◐</span>
-      <h3 class="lp-serif">Classwork &amp; grading</h3>
-      <p class="lp-feature-sub">Attach work directly to assignments and get graded on creativity, technique, and composition.</p>
-    </div>
-    <div class="lp-feature-card">
-      <span class="lp-feature-icon">◑</span>
-      <h3 class="lp-serif">Public showcase &amp; QR</h3>
-      <p class="lp-feature-sub">Make approved works public and share them with a scannable QR code — perfect for exhibits.</p>
-    </div>
-    <div class="lp-feature-card">
-      <span class="lp-feature-icon">◈</span>
-      <h3 class="lp-serif">Originality check</h3>
-      <p class="lp-feature-sub">Every upload is automatically compared against classmates' work using image and AI tag similarity.</p>
-    </div>
+    <aside class="lp-features-seal">
+      <img src="images/CCSIT.png" alt="ASIATECH seal" onerror="this.style.outline='3px dashed red';this.style.background='yellow';this.alt='⚠️ image not found: images/CCSIT.png';"/>
+    </aside>
   </div>
 </section>
 
