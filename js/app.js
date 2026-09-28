@@ -39,7 +39,11 @@ if(typeof emailjs !== 'undefined') emailjs.init(EMAILJS_PUBLIC_KEY);
 //   3. In EmailJS, create a second email template (separate from the review-
 //      notification one) with template variables {{to_email}} and {{code}},
 //      then paste its Template ID below.
-const EMAILJS_OTP_TEMPLATE_ID = 'template_XXXXXXX'; // ← replace with your new OTP template's ID
+// Free-plan note: EmailJS only allows 2 templates, so signup codes SHARE the
+// login-alert template (template_rzqc89l), which carries an optional {{code}}
+// line at the bottom of its white card. Login alerts send no code (line sits
+// quietly empty); OTP sends fill it in bold. No separate OTP template needed.
+const EMAILJS_OTP_TEMPLATE_ID = 'template_rzqc89l';
 
 function generateOtpCode(){
   return String(Math.floor(10000000 + Math.random()*90000000)); // 8 digits — matches the 8 otp-box inputs already in the UI
