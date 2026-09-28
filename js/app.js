@@ -49,13 +49,15 @@ function generateOtpCode(){
   return String(Math.floor(10000000 + Math.random()*90000000)); // 8 digits — matches the 8 otp-box inputs already in the UI
 }
 
-// Creates a row in otp_codes (5-minute expiry) and emails the code via EmailJS.
+// Saves the code via request_otp() (5-minute expiry) and emails it via
+// EmailJS. Uses the RPC — never touches the otp_codes table directly, since
+// it has no public access policies (see supabase-otp-setup.sql).
 // Returns true on success; callers show their own toast on failure.
 async function sendCustomOtp(email){
   const code      = generateOtpCode();
   const expiresAt = new Date(Date.now() + 5*60*1000).toISOString();
   try{
-    const { error: dbErr } = await sb.from('otp_codes').insert([{ email, code, expires_at: expiresAt }]);
+    const { error: dbErr } = await sb.rpc('request_otp', { p_email: email, p_code: code, p_expires_at: expiresAt });
     if(dbErr) throw dbErr;
     if(typeof emailjs === 'undefined') throw new Error('EmailJS not loaded');
     // Shared template, so fill its subject line sensibly: without this the
@@ -68,19 +70,14 @@ async function sendCustomOtp(email){
   }
 }
 
-// Checks the typed code against the most recent unused, unexpired row for
-// that email, and marks it used on success so it can't be replayed.
+// Checks the typed code via verify_otp(), which atomically finds the most
+// recent unused, unexpired row for that email and marks it used so it can't
+// be replayed. Same RPC-only access as sending (see supabase-otp-setup.sql).
 async function verifyCustomOtp(email, code){
   try{
-    const { data, error } = await sb.from('otp_codes')
-      .select('id, expires_at')
-      .eq('email', email).eq('code', code).eq('used', false)
-      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+    const { data, error } = await sb.rpc('verify_otp', { p_email: email, p_code: code });
     if(error) throw error;
-    if(!data) return false;
-    if(new Date(data.expires_at) < new Date()) return false;
-    await sb.from('otp_codes').update({ used: true }).eq('id', data.id);
-    return true;
+    return data === true;
   }catch(err){
     console.error('verifyCustomOtp error:', err);
     return false;
