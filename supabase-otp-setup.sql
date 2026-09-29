@@ -32,16 +32,19 @@ create index if not exists otp_codes_email_idx on otp_codes (email);
 alter table otp_codes enable row level security;
 -- Intentionally zero policies: deny direct access, functions only.
 
+-- v2: expiry is stamped server-side (10 min) so a wrong device clock can never
+-- make codes instantly-expired. The app (v41+) calls the 2-argument form.
 drop function if exists request_otp(text, text, timestamptz);
+drop function if exists request_otp(text, text);
 
-create or replace function request_otp(p_email text, p_code text, p_expires_at timestamptz)
+create or replace function request_otp(p_email text, p_code text)
 returns void
 language sql
 security definer
 set search_path = public
 as $$
   delete from otp_codes where expires_at < now() - interval '1 hour';
-  insert into otp_codes (email, code, expires_at) values (p_email, p_code, p_expires_at);
+  insert into otp_codes (email, code, expires_at) values (p_email, p_code, now() + interval '10 minutes');
 $$;
 
 drop function if exists verify_otp(text, text);
@@ -70,5 +73,5 @@ begin
 end
 $$;
 
-grant execute on function request_otp(text, text, timestamptz) to anon, authenticated;
+grant execute on function request_otp(text, text) to anon, authenticated;
 grant execute on function verify_otp(text, text) to anon, authenticated;

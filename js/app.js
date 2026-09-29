@@ -70,10 +70,12 @@ function generateOtpCode(){
 // it has no public access policies (see supabase-otp-setup.sql).
 // Returns true on success; callers show their own toast on failure.
 async function sendCustomOtp(email){
-  const code      = generateOtpCode();
-  const expiresAt = new Date(Date.now() + 5*60*1000).toISOString();
+  const code = generateOtpCode();
   try{
-    const { error: dbErr } = await sb.rpc('request_otp', { p_email: email, p_code: code, p_expires_at: expiresAt });
+    // Expiry is stamped by the DATABASE clock (10 min) inside request_otp —
+    // never the device clock, so a wrong laptop/phone time can't make codes
+    // instantly-expired (or immortal).
+    const { error: dbErr } = await sb.rpc('request_otp', { p_email: email, p_code: code });
     if(dbErr) throw dbErr;
     await sendOtpEmail(email, code);
     return true;
