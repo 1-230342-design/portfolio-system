@@ -440,6 +440,12 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 /* Recent Uploads shows the WHOLE artwork letterboxed (contain) — cover was
    beheading every portrait piece into an unrecognisable strip. */
 .upload-thumb{width:100%;height:170px;object-fit:contain;display:block;background:var(--surface2);}
+/* Public screens scroll as one clean sheet — their navs are static (not
+   sticky), so headers and QR boxes can never slide underneath and look
+   clipped or tucked. */
+#s-public-profile .landing-nav,
+#s-public-search .landing-nav,
+#s-public-work .landing-nav{position:static;}
 /* Per-work ambient background: a blurred, enlarged copy of the artwork glows
    behind the full piece (Spotify/YouTube style) — each card gets its own
    colours, no canvas/CORS tricks needed, pure CSS. */
