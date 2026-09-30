@@ -31,11 +31,6 @@
     <img id="ppv-img" src="" alt="" style="width:100%;max-height:400px;object-fit:cover;border-radius:10px;margin-bottom:14px;background:var(--surface2);"/>
     <video id="ppv-video" src="" controls style="display:none;width:100%;max-height:400px;border-radius:10px;margin-bottom:14px;background:#000;"></video>
     <div id="ppv-placeholder" style="display:none;height:200px;align-items:center;justify-content:center;font-size:52px;background:var(--surface2);border-radius:10px;margin-bottom:14px;">🖼️</div>
-    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:6px;border-top:1px solid var(--border);">
-      <img id="ppv-qr-img" src="" alt="Scan for details" style="width:180px;height:180px;border-radius:10px;"/>
-      <div style="font-size:12px;color:var(--text3);">📱 Scan to view full details</div>
-      <a id="ppv-manual-link" href="#" target="_blank" rel="noopener" style="font-size:11px;color:var(--dark);text-decoration:underline;word-break:break-all;text-align:center;">—</a>
-    </div>
   </div>
 </div>
 
@@ -76,29 +71,11 @@
     </div>
 
     <button class="btn-outline" id="spv-public-toggle-btn" style="display:none;margin-top:0;margin-bottom:10px;" onclick="togglePublic(currentPreviewItemId)">🌐 Add to Public</button>
-    <button class="btn-outline" id="spv-qr-btn" style="display:none;margin-top:0;margin-bottom:10px;" onclick="showWorkQr(currentPreviewItemId)">📱 View QR Code</button>
     <button class="btn-download" id="spv-download-btn" style="margin-top:0;margin-bottom:10px;" onclick="downloadWork(currentPreviewItemId)"><span class="dl-ico">⬇</span> Download</button>
     <div id="spv-public-hint" style="display:none;font-size:11px;color:var(--text3);margin-top:-6px;margin-bottom:14px;text-align:center;">Public works can be found by anyone searching your name on the Artfolio homepage.</div>
 
     <button class="btn-cancel" id="spv-unsubmit-btn" style="width:100%;justify-content:center;margin-bottom:10px;display:none;" onclick="unsubmitWorkFromPreview()">↩️ Unsubmit</button>
     <button class="btn-cancel" id="spv-delete-btn" style="width:100%;color:var(--red);border-color:rgba(244,67,54,.4);justify-content:center;" onclick="deleteWorkFromPreview()">🗑️ Delete This Work</button>
-  </div>
-</div>
-
-<div class="modal-overlay" id="qrCodeOverlay">
-  <div class="modal-box" style="max-width:340px;text-align:center;">
-    <div class="modal-head">
-      <div class="modal-title">Work QR Code</div>
-      <button class="modal-close" onclick="closeQrModal()">✕</button>
-    </div>
-    <div id="qr-loading" style="display:none;font-size:12px;color:var(--text3);padding:40px 0;">Generating QR code…</div>
-    <img id="qr-canvas" src="" alt="QR code" style="width:240px;height:240px;margin:0 auto 14px;display:block;border-radius:10px;background:#fff;"/>
-    <div id="qr-link-text" style="font-size:11px;color:var(--text3);word-break:break-all;background:var(--surface);border-radius:8px;padding:8px 10px;margin-bottom:14px;">—</div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn-outline" style="margin-top:0;" onclick="copyQrLink()">🔗 Copy Link</button>
-      <button class="btn-full" style="margin-top:0;" onclick="downloadQrImage()">⬇ Download PNG</button>
-    </div>
-    <div style="font-size:11px;color:var(--text3);margin-top:12px;">Print this next to your physical artwork — scanning it opens this work's title and description.</div>
   </div>
 </div>
 
@@ -309,11 +286,11 @@
      student/professor browsers can never keep running a stale cached copy of
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
-<script src="js/loader.js?v=41"></script>
-<script src="js/app.js?v=41"></script>
-<script src="js/assignments.js?v=41"></script>
-<script src="js/grade-archives.js?v=41"></script>
-<script src="js/qr.js?v=41"></script>
-<script src="js/similarity-ai.js?v=41"></script>
+<script src="js/loader.js?v=42"></script>
+<script src="js/app.js?v=42"></script>
+<script src="js/assignments.js?v=42"></script>
+<script src="js/grade-archives.js?v=42"></script>
+<script src="js/qr.js?v=42"></script>
+<script src="js/similarity-ai.js?v=42"></script>
 </body>
 </html>

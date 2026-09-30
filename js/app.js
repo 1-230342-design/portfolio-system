@@ -1724,7 +1724,7 @@ async function openPublicProfile(userId){
 
   const { data: profile, error: profErr } = await sb
     .from('user_profiles')
-    .select('user_id, full_name, student_id, section, year_level, social_link, skills')
+    .select('user_id, full_name, student_id, section, year_level, social_link, show_social_on_qr, skills')
     .eq('user_id', userId)
     .maybeSingle();
   if(profErr || !profile){ showToast('❌ Could not load this profile.'); console.error(profErr); return; }
@@ -1740,8 +1740,8 @@ async function openPublicProfile(userId){
 
   document.getElementById('pp-name').textContent = profile.full_name || 'Student';
   const secYear = [profile.section, profile.year_level].filter(Boolean).join(' \u00b7 ');
-  // No social link here on purpose — visitors get the artist's socials by
-  // scanning a work's QR (contact card), so the QR stays the reason to scan.
+  // No social link text here on purpose — the header contact QR (opt-in only)
+  // is the single place visitors get it.
   document.getElementById('pp-meta').innerHTML = [
     esc(maskStudentId(profile.student_id) || 'Student ID not set'),
     esc(secYear || 'Section · Year Level')
@@ -1751,6 +1751,21 @@ async function openPublicProfile(userId){
     ? skills.map(sk=>`<span class="skill-pill">${esc(sk)}</span>`).join('')
     : `<span class="skill-pill" style="opacity:.6">No skills added yet</span>`;
   document.getElementById('pp-avatar').innerHTML = `<div class="avatar-initial" style="background:${avatarColor(profile.full_name)}">${esc(studentInitial(profile.full_name))}</div>`;
+  // Contact QR on the public header — shown ONLY when the student opted in
+  // (Edit Profile checkbox). Strangers never see the raw social link text;
+  // the QR encodes it for scanners. No opt-in = no box at all.
+  const ppQr = document.getElementById('pp-qr');
+  if(ppQr){
+    const rawLink = (profile.social_link || '').trim();
+    if(profile.show_social_on_qr && rawLink){
+      const href = /^https?:\/\//i.test(rawLink) ? rawLink : 'https://' + rawLink;
+      ppQr.style.display = '';
+      ppQr.innerHTML = `<img src="${buildGoQrImageUrl(href, 140)}" alt="Contact QR code"/><div class="qr-cap">📱 Scan to contact me</div>`;
+    }else{
+      ppQr.style.display = 'none';
+      ppQr.innerHTML = '';
+    }
+  }
 
   // Only PUBLIC + APPROVED works are visible here — nothing pending/rejected/private,
   // and no grades or professor comments, since those stay private to the student.
@@ -1821,19 +1836,12 @@ function viewPublicWork(idx){
     ph.style.display='flex';
     ph.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
       <span style="font-size:44px;">🎬</span>
-      <span style="font-size:12px;font-weight:600;color:var(--text2);">Scan the QR code below to watch this video</span>
+      <span style="font-size:12px;font-weight:600;color:var(--text2);">Video — playable on the full portfolio page</span>
     </div>`;
   } else {
     img.style.display='none'; vid.style.display='none'; ph.style.display='flex';
     ph.innerHTML = '🖼️';
   }
-  // Title + image only here — the description is intentionally gated behind
-  // the QR scan (public-work.html), not shown just by browsing the profile.
-  const workUrl = buildWorkPublicUrl(p.id);
-  const qrImg = document.getElementById('ppv-qr-img');
-  if(qrImg) qrImg.src = buildGoQrImageUrl(workUrl, 180);
-  const manualLink = document.getElementById('ppv-manual-link');
-  if(manualLink){ manualLink.href = workUrl; manualLink.textContent = workUrl; }
   document.getElementById('publicWorkPreviewOverlay').classList.add('open');
 }
 function closePublicWorkPreview(){
@@ -2654,15 +2662,7 @@ function renderPortfolioPage(uid){
   const cardHtml = p => {
     const thumb = cardThumbHtml(p, 'pwork-thumb-frame', 'upload-thumb-placeholder', 'height:200px');
     const toggleLabel = p.isPublic ? '🔒 Remove from Public' : '🌐 Add to Public';
-    // QR shows automatically (no button/click needed) the moment a work is public —
-    // it's just a goqr.me image URL, so no async call required to render it.
-    // Clicking it opens the bigger printable version + download (student-only, since
-    // this card only ever renders on the logged-in student's own dashboard).
-    const qrThumbHtml = p.isPublic
-      ? `<img class="pwork-qr-thumb" src="${buildGoQrImageUrl(buildWorkPublicUrl(p.id), 90)}" alt="QR code" title="Tap to download" onclick="event.stopPropagation();showWorkQr('${p.id}')" style="position:absolute;top:8px;right:8px;width:44px;height:44px;background:#fff;border-radius:6px;padding:3px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.15);z-index:2;"/>`
-      : '';
     return `<div class="pwork-card" style="position:relative;">${thumb}
-      ${qrThumbHtml}
       <div class="pwork-overlay">
         <button class="btn-view-project" onclick="viewStudentProject('${p.id}')">👁 View Project</button>
         <button class="btn-view-project" onclick="event.stopPropagation();togglePublic('${p.id}')">${toggleLabel}</button>
@@ -2719,11 +2719,7 @@ async function togglePublic(itemId){
     if(currentPreviewItemId === itemId) viewStudentProject(itemId);
 
     if(newValue){
-      // Just went public — this is the ONLY moment a QR makes sense (a professor
-      // reviewing a private/pending submission has zero use for one), so generate
-      // and show it immediately instead of making the student click a second button.
-      showToast('🌐 Added to your public portfolio! Generating QR code…');
-      if(typeof showWorkQr === 'function') showWorkQr(itemId);
+      showToast('🌐 Added to your public portfolio!');
     } else {
       showToast('🔒 Removed from public portfolio.');
     }
@@ -2798,24 +2794,19 @@ function viewStudentProject(itemId){
   }
 
   // Public/private toggle — only approved works can be made public.
-  // The QR view button only shows once the work is ALREADY public — a
-  // pending/private work has no shareable QR to look at.
   const pubBtn    = document.getElementById('spv-public-toggle-btn');
   const pubHint   = document.getElementById('spv-public-hint');
-  const qrBtn     = document.getElementById('spv-qr-btn');
   const deleteBtn = document.getElementById('spv-delete-btn');
   const unsubmitBtn = document.getElementById('spv-unsubmit-btn');
   if(p.status === 'approved'){
     pubBtn.textContent = p.isPublic ? '🔒 Remove from Public' : '🌐 Add to Public';
     pubBtn.style.display = 'block';
     pubHint.style.display = 'block';
-    if(qrBtn) qrBtn.style.display = p.isPublic ? 'block' : 'none';
     if(deleteBtn) deleteBtn.style.display = 'none'; // already approved — nothing left to undo
     if(unsubmitBtn) unsubmitBtn.style.display = 'none';
   } else {
     pubBtn.style.display = 'none';
     pubHint.style.display = 'none';
-    if(qrBtn) qrBtn.style.display = 'none';
     if(p.status === 'submitted'){
       // Pending — pull it back from review first; deleting outright would remove it
       // from the professor's queue without ever going through that step.

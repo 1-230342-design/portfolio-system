@@ -1,20 +1,12 @@
 // ══════════════════════════════════════════════════════
-//  Artfolio — QR Code: Public Work Description
-//  Lets a student generate a QR code for any of their
-//  PUBLIC approved works. Scanning it opens a no-login
-//  page (index.html?work=<item_id>) showing that work's
-//  title, image, and description — meant to be printed
-//  next to the physical artwork at an exhibit/defense.
-//  Loaded after js/app.js — reuses its globals (sb, go,
-//  esc, showToast).
+//  Artfolio — QR Code utilities + Public Work page
+//  Per-artwork QR generation was removed: the single contact QR in the
+//  portfolio header (see renderContactQr/downloadContactQr in app.js) is now
+//  the only QR in the system. What remains here: the goqr.me image builder
+//  the contact QR uses, plus the no-login ?work=<id> destination page so any
+//  already-printed artwork QRs still resolve instead of breaking.
+//  Loaded after js/app.js — reuses its globals (sb, go, esc, showToast).
 // ══════════════════════════════════════════════════════
-
-// ── Build the shareable URL a QR code should encode ──
-function buildWorkPublicUrl(itemId){
-  // location.pathname already includes /portfolio-system/ on GitHub Pages,
-  // and just / on Live Server — this works in both without hardcoding either.
-  return `${location.origin}${location.pathname}?work=${itemId}`;
-}
 
 // ── Build a goqr.me QR image URL for a given link ──
 // goqr.me just renders a PNG from URL params — no library/CDN dependency,
@@ -22,57 +14,6 @@ function buildWorkPublicUrl(itemId){
 function buildGoQrImageUrl(dataUrl, size){
   const s = size || 300;
   return `https://api.qrserver.com/v1/create-qr-code/?size=${s}x${s}&margin=10&data=${encodeURIComponent(dataUrl)}`;
-}
-
-// ── OPEN: render a QR code for one work into the shared modal ──
-let currentQrItemId = null;
-function showWorkQr(itemId){
-  currentQrItemId = itemId;
-  const url = buildWorkPublicUrl(itemId);
-  document.getElementById('qr-link-text').textContent = url;
-
-  const img = document.getElementById('qr-canvas');
-  const loadingMsg = document.getElementById('qr-loading');
-  if(loadingMsg) loadingMsg.style.display = 'block';
-  img.style.display = 'none';
-  img.onload = () => { if(loadingMsg) loadingMsg.style.display = 'none'; img.style.display = 'block'; };
-  img.onerror = () => {
-    if(loadingMsg) loadingMsg.style.display = 'none';
-    showToast('❌ Could not generate QR code — check your internet connection.');
-  };
-  img.src = buildGoQrImageUrl(url, 300);
-
-  document.getElementById('qrCodeOverlay').classList.add('open');
-}
-function closeQrModal(){
-  document.getElementById('qrCodeOverlay').classList.remove('open');
-  currentQrItemId = null;
-}
-function copyQrLink(){
-  const url = document.getElementById('qr-link-text').textContent;
-  navigator.clipboard.writeText(url).then(
-    ()=>showToast('🔗 Link copied!'),
-    ()=>showToast('⚠️ Could not copy — copy it manually.')
-  );
-}
-// Download the QR as a PNG so it can be printed full-size next to the artwork.
-// goqr.me serves the PNG directly, so this just triggers a download of that image.
-async function downloadQrImage(){
-  const url = document.getElementById('qr-link-text').textContent;
-  if(!url || url === '—') return;
-  try{
-    const imgUrl = buildGoQrImageUrl(url, 600); // larger size for printing
-    const res = await fetch(imgUrl);
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'artfolio-work-qr.png';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }catch(err){
-    console.error('QR download error:', err);
-    showToast('❌ Could not download QR code.');
-  }
 }
 
 // ══════════════════════════════════════════════════════
