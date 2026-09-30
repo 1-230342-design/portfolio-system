@@ -361,6 +361,46 @@ function renderPortfolioHeader(){
 
   setAvatar('s-portfolio-avatar', currentProfile.full_name);
   setAvatar('s-sidebar-avatar', currentProfile.full_name);
+  renderContactQr();
+}
+
+// Contact QR (portfolio header): encodes the student's own social link so one
+// scan reaches them — no per-artwork QR needed for contact. Refreshes with
+// the header (login + profile save).
+function contactSocialHref(){
+  const raw = (currentProfile && currentProfile.social_link || '').trim();
+  if(!raw) return null;
+  return /^https?:\/\//i.test(raw) ? raw : 'https://' + raw;
+}
+function renderContactQr(){
+  const box = document.getElementById('s-portfolio-qr');
+  if(!box) return;
+  const href = contactSocialHref();
+  if(!href){
+    box.classList.add('qr-empty');
+    box.innerHTML = `Add a social link<br>in Edit Profile<br>to get your<br>contact QR`;
+    return;
+  }
+  box.classList.remove('qr-empty');
+  box.innerHTML = `<img src="${buildGoQrImageUrl(href, 140)}" alt="Contact QR code" onclick="downloadContactQr()"/><div class="qr-cap">📱 Scan to contact me</div>`;
+}
+// "Share Portfolio" downloads the contact QR full-size for printing.
+async function downloadContactQr(){
+  const href = contactSocialHref();
+  if(!href){ showToast('⚠️ Add a social link in Edit Profile first.'); return; }
+  try{
+    const res = await fetch(buildGoQrImageUrl(href, 600));
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'artfolio-contact-qr.png';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('✅ Contact QR downloaded!');
+  }catch(err){
+    console.error('contact QR download error:', err);
+    showToast('❌ Could not download QR code.');
+  }
 }
 
 // ══════════════════════════════════════════════════════
