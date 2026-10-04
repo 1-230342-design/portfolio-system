@@ -38,6 +38,7 @@
         <a class="snav-item" onclick="pPage('p-students')">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Students
+          <span class="nav-badge" id="pstud-badge"></span>
         </a>
         <a class="snav-item" onclick="pPage('p-rankings')">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 20 18 10"/><polyline points="12 20 12 4"/><polyline points="6 20 6 14"/></svg>
@@ -117,6 +118,7 @@
         <div id="p-students-sections">
           <div class="page-title">Students</div>
           <div style="font-size:13px;color:var(--text3);margin-bottom:18px;margin-top:-14px;">Tap a section to see the students enrolled in it.</div>
+          <div id="transfer-requests-box" style="margin-bottom:16px;"></div>
           <div class="students-list" id="p-sections-list">
             <div style="font-size:13px;color:var(--text3);padding:20px 0;">Loading sections…</div>
           </div>

@@ -427,6 +427,65 @@ function openEditProfile(){
   renderSkillPicker();
   document.getElementById('ep-skill-picker').style.display = 'none';
   document.getElementById('editProfileOverlay').classList.add('open');
+  renderTransferNote(); // fire-and-forget: pending transfer status under Section
+}
+
+// ── SECTION TRANSFER REQUESTS ──
+// Changing sections while enrolled files a request instead of switching
+// instantly (needs supabase-section-requests.sql, run once). First-time picks
+// (unenrolled → section) still apply immediately — approval only gates
+// hopping. Until the SQL is run, every change applies instantly as before.
+let _myTransferReqs = [];   // student's own requests, newest first
+let _transferTableOk = null; // null = unknown, false = SQL not run yet
+
+async function loadMyTransferReqs(){
+  if(!currentUser) return [];
+  try{
+    const { data, error } = await sb.rpc('my_section_requests');
+    if(error) throw error;
+    _transferTableOk = true;
+    _myTransferReqs = data || [];
+  }catch(err){
+    if(_transferTableOk !== false){
+      _transferTableOk = false;
+      console.info('[transfer] section-requests backend unavailable — run supabase-section-requests.sql. Section changes apply instantly.');
+    }
+    _myTransferReqs = [];
+  }
+  return _myTransferReqs;
+}
+function pendingTransferReq(){
+  return _myTransferReqs.find(r => r.status === 'pending') || null;
+}
+// Pending-transfer banner inside Edit Profile, with a cancel button.
+async function renderTransferNote(){
+  const el = document.getElementById('ep-transfer-note');
+  if(!el) return;
+  el.style.display = 'none';
+  el.innerHTML = '';
+  if(!currentUser || !currentProfile || !currentProfile.section) return;
+  await loadMyTransferReqs();
+  if(_transferTableOk === false) return; // backend missing — nothing to show
+  const p = pendingTransferReq();
+  if(!p) return;
+  el.style.display = 'block';
+  el.innerHTML = `<div style="margin-top:10px;background:var(--surface);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--dark);">
+    ⏳ Transfer to <strong>${esc(p.to_section)}</strong> is awaiting your professor's approval.
+    <button type="button" class="btn-cancel" style="margin-top:8px;width:100%;justify-content:center;" onclick="cancelSectionTransfer('${p.id}')">Cancel request</button>
+  </div>`;
+}
+async function cancelSectionTransfer(reqId){
+  if(!currentUser) return;
+  showToast('⏳ Cancelling request…');
+  try{
+    const { error } = await sb.rpc('cancel_section_request', { p_id: reqId });
+    if(error) throw error;
+    showToast('✅ Transfer request cancelled.');
+    await renderTransferNote();
+  }catch(err){
+    console.error('cancelSectionTransfer error:', err);
+    showToast('❌ Error: ' + (err.message || err));
+  }
 }
 function closeEditProfile(){
   document.getElementById('editProfileOverlay').classList.remove('open');
@@ -501,21 +560,34 @@ async function saveProfileEdits(){
   const showQrBox = document.getElementById('ep-show-qr');
   const show_social_on_qr = showQrBox ? showQrBox.checked : false;
   if(!full_name){ showToast('⚠️ Please enter your full name.'); return; }
+  // Section hop? → transfer request (the section itself is NOT saved now; it
+  // flips only when a professor approves). First-time picks and clearing
+  // behave as before. Clearing by hand is rerouted to the Unenroll button.
+  const oldSection = currentProfile.section || '';
+  let hopTarget = null, unenrollHint = false, activeSection = section;
+  if(oldSection && section && section !== oldSection){
+    hopTarget = section;
+    activeSection = oldSection;
+  }else if(!section && oldSection){
+    activeSection = oldSection;
+    document.getElementById('ep-section').value = oldSection;
+    unenrollHint = true;
+  }
   showToast('💾 Saving profile…');
   // The QR opt-in column needs supabase-qr-social.sql (run once). If it isn't
   // there yet, save everything else instead of failing the whole profile edit.
   let { error } = await sb.from('user_profiles').update({
-    full_name, section, year_level, social_link, skills: editSkills, show_social_on_qr
+    full_name, section: activeSection, year_level, social_link, skills: editSkills, show_social_on_qr
   }).eq('user_id', currentUser.id);
   if(error && /show_social_on_qr/i.test(error.message || '')){
     console.info('[profile] QR opt-in column missing — run supabase-qr-social.sql. Saving the rest of the profile.');
     ({ error } = await sb.from('user_profiles').update({
-      full_name, section, year_level, social_link, skills: editSkills
+      full_name, section: activeSection, year_level, social_link, skills: editSkills
     }).eq('user_id', currentUser.id));
   }
   if(error){ showToast('❌ '+error.message); return; }
   currentProfile.full_name   = full_name;
-  currentProfile.section     = section;
+  currentProfile.section     = activeSection;
   currentProfile.year_level  = year_level;
   currentProfile.social_link = social_link;
   currentProfile.show_social_on_qr = show_social_on_qr;
@@ -525,7 +597,35 @@ async function saveProfileEdits(){
   document.getElementById('s-welcome-name').textContent = 'Welcome Back, '+firstName+'!';
   renderPortfolioHeader();
   closeEditProfile();
-  showToast('✅ Profile updated!');
+  if(hopTarget){
+    // File the transfer request; backend missing → legacy instant behavior.
+    try{
+      const { error: rpcErr } = await sb.rpc('file_section_request', { p_to_section: hopTarget });
+      if(rpcErr) throw rpcErr;
+      _transferTableOk = true;
+      await loadMyTransferReqs();
+      showToast(`🔄 Transfer to ${hopTarget} requested — your professor must approve. Your section stays put meanwhile.`);
+    }catch(rpcErr){
+      if(/function|relation|does not exist|schema cache|not allowed/i.test(rpcErr.message || '')){
+        _transferTableOk = false;
+        console.info('[transfer] backend missing — applying section change instantly (legacy behavior).');
+        const { error: e2 } = await sb.from('user_profiles').update({ section: hopTarget }).eq('user_id', currentUser.id);
+        if(!e2){
+          currentProfile.section = hopTarget;
+          renderPortfolioHeader();
+          showToast('✅ Profile updated!');
+        }else{
+          showToast('❌ ' + (e2.message || e2));
+        }
+      }else{
+        // Validation message from the function itself (already pending, same
+        // section, not enrolled…) — profile saved, only the request refused.
+        showToast('❌ ' + (rpcErr.message || rpcErr));
+      }
+    }
+    return;
+  }
+  showToast(unenrollHint ? '✅ Profile updated! (Section unchanged — use Unenroll below to leave it.)' : '✅ Profile updated!');
 }
 
 // ══════════════════════════════════════════════════════
@@ -2608,7 +2708,7 @@ function updateStudentNotifBadge(uid, notifs){
   else { badge.classList.remove('show'); }
 }
 
-function renderNotifications(uid){
+async function renderNotifications(uid){
   const list = studentProjects[uid] || [];
   // NOTE: previously this deduped by portfolioId, so if a student had more than one
   // work under the same portfolio (e.g. two uploads in the same grading period), only
@@ -2618,23 +2718,61 @@ function renderNotifications(uid){
     return p.status==='approved' || p.status==='rejected' || p.status==='submitted';
   }).sort((a,b)=> new Date(b.decisionAt||b.submittedAt) - new Date(a.decisionAt||a.submittedAt));
 
-  updateStudentNotifBadge(uid, notifs);
+  // Section-transfer decisions ride the same inbox (approved/declined/pending
+  // cards, newest-first, sharing the unread badge + last-seen timestamp).
+  // Backend missing → just the work cards, exactly as before.
+  try{
+    if(currentUser && currentUser.id === uid){
+      await loadMyTransferReqs();
+      const tCards = _myTransferReqs
+        .filter(r => r.status === 'approved' || r.status === 'rejected' || r.status === 'pending')
+        .map(r => ({ _transfer: true, req: r, when: r.decided_at || r.created_at }));
+      tCards.sort((a, b) => new Date(b.when) - new Date(a.when));
+      // Merge by time, transfers first on ties (decisions feel newer).
+      const merged = [...notifs.map(n => ({ _w: n, when: n.decisionAt || n.submittedAt })), ...tCards]
+        .sort((a, b) => new Date(b.when) - new Date(a.when));
+      renderNotifLists(uid, merged);
+      return;
+    }
+  }catch(e){ console.warn('[transfer] notifications merge skipped:', e); }
+  renderNotifLists(uid, notifs.map(n => ({ _w: n, when: n.decisionAt || n.submittedAt })));
+}
+
+function renderNotifLists(uid, merged){
+  updateStudentNotifBadge(uid, merged.map(m => ({ decisionAt: m.when, submittedAt: m.when })));
 
   const lastSeen = lastSeenNotifTime(uid);
+  const unreadDot = when => (new Date(when) > lastSeen)
+    ? '<span style="position:absolute;top:14px;right:16px;width:8px;height:8px;border-radius:50%;background:var(--red);"></span>' : '';
+  const transferCardHtml = r => {
+    const st = r.status;
+    const icon  = st === 'approved' ? '✅' : st === 'rejected' ? '❌' : '📤';
+    const cls   = st === 'approved' ? 'approved' : st === 'rejected' ? 'rejected' : 'pending';
+    const title = st === 'approved' ? 'Transfer Approved' : st === 'rejected' ? 'Transfer Declined' : 'Transfer Pending';
+    const when  = r.decided_at || r.created_at;
+    const body  = st === 'approved' ? `You're now in <strong>${esc(r.to_section)}</strong>. New assignments will appear in Classwork.`
+      : st === 'rejected' ? `You remain in <strong>${esc(r.from_section || 'your current section')}</strong>.`
+      : `Transfer to <strong>${esc(r.to_section)}</strong> is awaiting your professor's decision.`;
+    return `<div class="notif-item ${cls}" style="position:relative;">
+      ${unreadDot(when)}
+      <div class="ni-header"><span class="ni-icon">${icon}</span><span class="ni-title">${title}</span></div>
+      <div class="ni-body">${body}</div>
+      <div class="ni-time">${fmtDate(when)}</div>
+    </div>`;
+  };
   const notifCardHtml = p => {
     const isApproved = p.status==='approved';
     const isRejected = p.status==='rejected';
     const icon  = isApproved ? '✅' : isRejected ? '❌' : '📤';
     const cls   = isApproved ? 'approved' : isRejected ? 'rejected' : 'pending';
     const title = isApproved ? 'Work Approved' : isRejected ? 'Work Rejected' : 'Work Uploaded';
-    const isUnread = new Date(p.decisionAt||p.submittedAt) > lastSeen;
     let body = isApproved ? `"${esc(p.title)}" was approved by your professor.`
       : isRejected ? `"${esc(p.title)}" was rejected by your professor.`
       : `"${esc(p.title)}" was uploaded and is awaiting review.`;
     if(isApproved && p.finalGrade!=null) body += ` Grade: ${p.finalGrade}/100.`;
     if(p.feedbackComment) body += ` Comment: "${esc(p.feedbackComment)}"`;
     return `<div class="notif-item ${cls}" style="position:relative;">
-      ${isUnread ? '<span style="position:absolute;top:14px;right:16px;width:8px;height:8px;border-radius:50%;background:var(--red);"></span>' : ''}
+      ${unreadDot(p.decisionAt||p.submittedAt)}
       <div class="ni-header"><span class="ni-icon">${icon}</span><span class="ni-title">${title}</span></div>
       <div class="ni-body">${body}</div>
       <div class="ni-time">${fmtDate(p.decisionAt||p.submittedAt)}</div>
@@ -2643,13 +2781,16 @@ function renderNotifications(uid){
 
   const notifListEl = document.getElementById('s-notif-list');
   if(notifListEl){
-    notifListEl.innerHTML = notifs.length ? notifs.map(notifCardHtml).join('') : `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No notifications yet.</div>`;
+    notifListEl.innerHTML = merged.length
+      ? merged.map(m => m._transfer ? transferCardHtml(m.req) : notifCardHtml(m._w)).join('')
+      : `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No notifications yet.</div>`;
   }
 
   const dashRecentEl = document.getElementById('dash-recent-notifs');
   if(dashRecentEl){
-    const recent = notifs.slice(0,3);
-    dashRecentEl.innerHTML = recent.length ? recent.map(p=>{
+    const recent = merged.filter(m => !m._transfer).slice(0,3);
+    dashRecentEl.innerHTML = recent.length ? recent.map(m=>{
+      const p = m._w;
       const isApproved = p.status==='approved';
       const isRejected = p.status==='rejected';
       const icon  = isApproved ? '✅' : isRejected ? '❌' : '📤';
@@ -3380,6 +3521,74 @@ async function renderStudentsPage(){
       </div>
       <button class="btn-view-sm" onclick="event.stopPropagation();openUnenrolledStudents()">👁 View</button>
     </div>`;
+  }
+
+  loadTransferBanner(); // fire-and-forget: pending transfer requests above the list
+}
+
+// ══════════════════════════════════════════════════════
+//  TRANSFER REQUESTS — professor inbox (Students page top)
+//  Only full (Multimedia Arts) professors see and decide these; the database
+//  re-checks the role on every decision, so reviewer-only accounts and
+//  students are rejected server-side no matter what the UI shows.
+// ══════════════════════════════════════════════════════
+async function loadTransferBanner(){
+  const box = document.getElementById('transfer-requests-box');
+  const badge = document.getElementById('pstud-badge');
+  const clearBadge = ()=>{ if(badge) badge.classList.remove('show'); };
+  if(!box){ clearBadge(); return; }
+  if(!isFullProfessor()){ box.innerHTML = ''; clearBadge(); return; }
+  try{
+    const { data, error } = await sb.rpc('list_section_requests');
+    if(error) throw error;
+    const rows = data || [];
+    const pending = rows.filter(r => r.status === 'pending');
+    if(badge){
+      if(pending.length){ badge.textContent = pending.length > 9 ? '9+' : pending.length; badge.classList.add('show'); }
+      else badge.classList.remove('show');
+    }
+    if(!rows.length){ box.innerHTML = ''; return; }
+    const rowHtml = r => {
+      const when = r.status === 'pending' ? r.created_at : (r.decided_at || r.created_at);
+      const verdict = r.status === 'approved' ? ' <strong style="color:#1a7f37;">✓ approved</strong>'
+        : r.status === 'rejected' ? ' <strong style="color:var(--red);">✕ declined</strong>' : '';
+      const actions = r.status === 'pending'
+        ? `<div style="display:flex;gap:8px;flex-shrink:0;">
+             <button class="btn-view-sm" onclick="decideSectionRequest('${r.id}', true)">✓ Approve</button>
+             <button class="btn-cancel" style="padding:8px 12px;" onclick="decideSectionRequest('${r.id}', false)">✕ Decline</button>
+           </div>`
+        : '';
+      return `<div class="student-row">
+        <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(r.student_name)};width:100%;height:100%;">${esc(studentInitial(r.student_name))}</div></div>
+        <div class="student-row-info">
+          <div class="student-row-name">${esc(r.student_name || 'Student')} <span style="font-weight:400;color:var(--text3);">· ${esc(r.student_number || '')}</span></div>
+          <div class="student-row-meta">${esc(r.from_section || 'No section')} → <strong style="color:var(--dark);">${esc(r.to_section)}</strong> · ${fmtDate(when)}${verdict}</div>
+        </div>
+        ${actions}
+      </div>`;
+    };
+    box.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--dark);margin-bottom:10px;">🔔 Transfer Requests${pending.length ? ` (${pending.length} waiting)` : ''}</div>
+      <div class="students-list">${rows.map(rowHtml).join('')}</div>`;
+  }catch(err){
+    // Backend missing (SQL not run) or not allowed — stay silent, page works on.
+    console.info('[transfer] inbox unavailable:', (err && err.message) || err);
+    box.innerHTML = '';
+    clearBadge();
+  }
+}
+
+async function decideSectionRequest(reqId, approve){
+  if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can decide transfers.'); return; }
+  if(!confirm((approve ? 'Approve' : 'Decline') + ' this section transfer?')) return;
+  showToast(approve ? '✅ Approving…' : '⏳ Declining…');
+  try{
+    const { data, error } = await sb.rpc('decide_section_request', { p_id: reqId, p_approve: approve });
+    if(error) throw error;
+    showToast(approve ? '✅ Transfer approved — student moved.' : '✅ Transfer declined.');
+    await renderStudentsPage(); // counts + lists reflect the move (banner reloads with it)
+  }catch(err){
+    console.error('decideSectionRequest error:', err);
+    showToast('❌ Error: ' + (err.message || err));
   }
 }
 
