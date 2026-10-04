@@ -414,6 +414,7 @@ function openEditProfile(){
   document.getElementById('ep-social').value     = currentProfile.social_link || '';
   const qrBox = document.getElementById('ep-show-qr');
   if(qrBox) qrBox.checked = !!currentProfile.show_social_on_qr;
+  toggleUnenrollBtn();
   editSkills = Array.isArray(currentProfile.skills) ? [...currentProfile.skills] : [];
   renderSkillChips();
   renderSkillPicker();
@@ -422,6 +423,39 @@ function openEditProfile(){
 }
 function closeEditProfile(){
   document.getElementById('editProfileOverlay').classList.remove('open');
+}
+// The self-unenroll button only exists when there's a section to leave.
+function toggleUnenrollBtn(){
+  const wrap = document.getElementById('ep-unenroll-wrap');
+  if(wrap) wrap.style.display = (currentProfile && currentProfile.section) ? 'block' : 'none';
+}
+// ── SELF-UNENROLL (student: clear their own section, keep everything else) ──
+// Unenroll ≠ withdraw: pending submissions stay submitted and professors still
+// see them — leaving a section never pulls work back. Re-enroll anytime by
+// picking a section again (same field, zero new UI).
+async function unenrollSelf(){
+  if(!currentUser || !currentProfile) return;
+  if(!currentProfile.section){ showToast('⚠️ You are not enrolled in any section.'); return; }
+  if(!confirm('Are you sure you want to unenroll?')) return;
+  showToast('💾 Unenrolling…');
+  try{
+    const { data, error } = await sb.from('user_profiles').update({ section: null }).eq('user_id', currentUser.id).select();
+    if(error) throw error;
+    if(!data || !data.length){
+      throw new Error('Nothing was updated — this is usually a Supabase RLS permissions issue. Check that an UPDATE policy exists on user_profiles allowing students to update their own section.');
+    }
+    currentProfile.section = null;
+    document.getElementById('ep-section').value = '';
+    toggleUnenrollBtn();
+    renderPortfolioHeader();
+    await loadProjectsForStudent(currentUser.id);
+    refreshStudentViews();
+    closeEditProfile();
+    showToast('✅ Unenrolled. Your works, grades and portfolio are untouched — only your section was cleared.');
+  }catch(err){
+    console.error('unenrollSelf error:', err);
+    showToast('❌ Error: '+err.message);
+  }
 }
 function renderSkillChips(){
   const el = document.getElementById('ep-skill-chips');
@@ -3328,6 +3362,39 @@ async function renderStudentsPage(){
       <button class="btn-view-sm" onclick="event.stopPropagation();openSectionStudents('${s.id}')">👁 View</button>
     </div>`;
   }).join('');
+
+  // Unenrolled bucket — students with no section (self-unenrolled or never
+  // set) would otherwise be invisible on this page. Re-enroll anyone by
+  // setting their section again (Edit Profile / sign-up picks it up).
+  const unenrolled = _allStudentsCache.filter(st=>!st.section);
+  if(unenrolled.length){
+    el.innerHTML += `<div class="section-group" onclick="openUnenrolledStudents()">
+      <div class="section-group-info">
+        <div class="section-name">Unenrolled (No Section)</div>
+        <div class="section-year">${unenrolled.length} student${unenrolled.length===1?'':'s'} without a section</div>
+      </div>
+      <button class="btn-view-sm" onclick="event.stopPropagation();openUnenrolledStudents()">👁 View</button>
+    </div>`;
+  }
+}
+
+// Unenrolled drill-down — same list UI as a normal section, fed by the
+// no-section filter instead of a section id.
+async function openUnenrolledStudents(){
+  currentSectionId = null;
+  document.getElementById('p-students-sections').style.display = 'none';
+  document.getElementById('p-students-in-section').style.display = 'block';
+  document.getElementById('psx-section-title').textContent = 'Unenrolled (No Section)';
+  document.getElementById('psx-section-meta').textContent = 'Students without a section — works and grades intact';
+  const searchBox = document.getElementById('psx-search');
+  if(searchBox) searchBox.value = '';
+
+  const el = document.getElementById('p-section-students-list');
+  if(el) el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">Loading students…</div>`;
+
+  _allStudentsCache = await loadAllStudentProfiles();
+  _currentSectionStudents = _allStudentsCache.filter(s=>!s.section);
+  renderSectionStudentsList(_currentSectionStudents);
 }
 
 // ── STEP 2: STUDENTS IN A SECTION ──
