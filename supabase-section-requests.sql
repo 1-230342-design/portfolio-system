@@ -114,7 +114,9 @@ as $$
    limit 20;
 $$;
 
--- ── professor inbox: pending first, then recently decided ──
+-- ── professor inbox: PENDING ONLY. Decided requests vanish the moment
+-- they're approved/declined (students are told via Notifications instead),
+-- so the inbox is always a pure to-do list, never history. ──
 drop function if exists list_section_requests();
 
 create or replace function list_section_requests()
@@ -145,8 +147,7 @@ begin
       from section_requests r
       left join user_profiles p on p.user_id = r.student_id
      where r.status = 'pending'
-        or (r.status in ('approved', 'rejected') and r.decided_at > now() - interval '30 days')
-     order by (r.status = 'pending') desc, r.created_at desc
+     order by r.created_at desc
      limit 50;
 end
 $$;
