@@ -74,10 +74,9 @@ begin
   end if;
 
   select section into v_from from user_profiles where user_id = auth.uid();
-  if v_from is null or btrim(v_from) = '' then
-    raise exception 'You are not enrolled — just pick the section directly, no approval needed.';
-  end if;
-  if btrim(p_to_section) = btrim(v_from) then
+  -- Unenrolled students (NULL/blank section) file join requests too — every
+  -- section acquisition needs a professor's yes; only signup picks are direct.
+  if v_from is not null and btrim(v_from) <> '' and btrim(p_to_section) = btrim(v_from) then
     raise exception 'You are already in that section.';
   end if;
   if exists (select 1 from section_requests

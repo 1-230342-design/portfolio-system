@@ -463,7 +463,7 @@ async function renderTransferNote(){
   if(!el) return;
   el.style.display = 'none';
   el.innerHTML = '';
-  if(!currentUser || !currentProfile || !currentProfile.section) return;
+  if(!currentUser || !currentProfile) return;
   await loadMyTransferReqs();
   if(_transferTableOk === false) return; // backend missing — nothing to show
   const p = pendingTransferReq();
@@ -573,12 +573,13 @@ async function saveProfileEdits(){
   const showQrBox = document.getElementById('ep-show-qr');
   const show_social_on_qr = showQrBox ? showQrBox.checked : false;
   if(!full_name){ showToast('⚠️ Please enter your full name.'); return; }
-  // Section hop? → transfer request (the section itself is NOT saved now; it
-  // flips only when a professor approves). First-time picks and clearing
-  // behave as before. Clearing by hand is rerouted to the Unenroll button.
+  // ANY section pick (hop or first join) → approval request; the section
+  // itself is NOT saved now, it flips only when a professor approves. Signup
+  // choices stay instant (no account exists to approve yet). Clearing by hand
+  // is rerouted to the Unenroll button.
   const oldSection = currentProfile.section || '';
   let hopTarget = null, unenrollHint = false, activeSection = section;
-  if(oldSection && section && section !== oldSection){
+  if(section && section !== oldSection){
     hopTarget = section;
     activeSection = oldSection;
   }else if(!section && oldSection){
@@ -617,7 +618,9 @@ async function saveProfileEdits(){
       if(rpcErr) throw rpcErr;
       _transferTableOk = true;
       await loadMyTransferReqs();
-      showToast(`🔄 Transfer to ${hopTarget} requested — your professor must approve. Your section stays put meanwhile.`);
+      showToast(oldSection
+        ? `🔄 Transfer to ${hopTarget} requested — your professor must approve. Your section stays put meanwhile.`
+        : `🔄 Request to join ${hopTarget} sent — your professor must approve before it takes effect.`);
     }catch(rpcErr){
       if(/function|relation|does not exist|schema cache|not allowed/i.test(rpcErr.message || '')){
         _transferTableOk = false;
