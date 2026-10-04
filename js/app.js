@@ -3244,10 +3244,10 @@ function renderGradesPage(uid){
 function portTab(el,tab){
   document.querySelectorAll('.ptab-btn').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('pt-public').style.display   = tab==='public'   ? 'grid':'none';
-  document.getElementById('pt-approved').style.display = tab==='approved' ? 'grid':'none';
+  document.getElementById('pt-public').style.display   = tab==='public'   ? 'block':'none';
+  document.getElementById('pt-approved').style.display = tab==='approved' ? 'block':'none';
   const personalEl = document.getElementById('pt-personal');
-  if(personalEl) personalEl.style.display = tab==='personal' ? 'grid':'none';
+  if(personalEl) personalEl.style.display = tab==='personal' ? 'block':'none';
 }
 
 // ── PROJECT FILTER ──
