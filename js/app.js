@@ -193,6 +193,13 @@ function fileIsVideo(f){
   if(!f||!f.dataUrl) return false;
   return /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|$)/i.test(f.dataUrl)||(f.mimeType&&f.mimeType.startsWith('video/'));
 }
+// Full-bleed showcase media (Unsplash-style): image or muted first-frame
+// video filling the card edge to edge. Anything else → 🖼️ tile.
+function pfMediaHtml(p){
+  if(p && p.file && fileIsVideo(p.file)) return `<video class="pf-media" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline disablepictureinpicture style="pointer-events:none;" oncontextmenu="return false;"></video>`;
+  if(p && p.file && fileIsImage(p.file)) return `<img class="pf-media" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>`;
+  return `<div class="pf-media" style="display:flex;align-items:center;justify-content:center;font-size:44px;background:var(--surface2);">🖼️</div>`;
+}
 // Card thumbnail used by every list in the app: real images/videos render the
 // FULL work (contain) over a blurred, enlarged copy of itself as a per-work
 // ambient background. Videos are muted first-frame only (metadata, no
@@ -1836,13 +1843,12 @@ async function openPublicProfile(userId){
     });
 
     worksEl.innerHTML = _publicProfileWorks.length ? _publicProfileWorks.map((p,i)=>{
-      const thumb = cardThumbHtml(p, 'pwork-thumb-frame', 'upload-thumb-placeholder', 'height:200px');
-      return `<div class="pwork-card" onclick="viewPublicWork(${i})">${thumb}
-        <div class="pwork-overlay"><button class="btn-view-project">👁 View Project</button></div>
-        <div class="pwork-info">
-          <div class="pwork-title">${esc(p.title)}</div>
-          <div class="pwork-cat">${esc(p.category)}</div>
-          <div class="pwork-desc">${esc(p.desc||'')}</div>
+      return `<div class="pwork-full" onclick="viewPublicWork(${i})">${pfMediaHtml(p)}
+        <div class="pf-actions"><button class="pf-btn" onclick="event.stopPropagation();viewPublicWork(${i})">👁 View</button></div>
+        <div class="pf-hover">
+          <div class="pf-title">${esc(p.title)}</div>
+          <div class="pf-cat">${esc(p.category)}</div>
+          <div class="pf-desc">${esc(p.desc||'No description')}</div>
         </div></div>`;
     }).join('') : `<div class="empty-state"><p>This student hasn't made any works public yet.</p></div>`;
   }catch(err){
@@ -2694,18 +2700,16 @@ function renderPortfolioPage(uid){
   const personal  = list.filter(p=>p.status==='draft' && p.neverSent);
 
   const cardHtml = p => {
-    const thumb = cardThumbHtml(p, 'pwork-thumb-frame', 'upload-thumb-placeholder', 'height:200px');
-    const toggleLabel = p.isPublic ? '🔒 Remove from Public' : '🌐 Add to Public';
-    return `<div class="pwork-card" style="position:relative;">${thumb}
-      <div class="pwork-overlay">
-        <button class="btn-view-project" onclick="viewStudentProject('${p.id}')">👁 View Project</button>
-        <button class="btn-view-project" onclick="event.stopPropagation();togglePublic('${p.id}')">${toggleLabel}</button>
+    return `<div class="pwork-full" onclick="viewStudentProject('${p.id}')">${pfMediaHtml(p)}
+      <span class="pf-badge">${p.isPublic ? '🌐 Public' : 'Approved'}</span>
+      <div class="pf-actions">
+        <button class="pf-btn" onclick="event.stopPropagation();viewStudentProject('${p.id}')">👁 View</button>
+        <button class="pf-btn gold" onclick="event.stopPropagation();togglePublic('${p.id}')">${p.isPublic ? '🔒 Unpublish' : '🌐 Publish'}</button>
       </div>
-      <span class="pwork-badge badge-approved" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;">${p.isPublic ? '🌐 Public' : 'Approved'}</span>
-      <div class="pwork-info">
-        <div class="pwork-title">${esc(p.title)}</div>
-        <div class="pwork-cat">${esc(p.category)} · ${esc(p.gradingPeriod)}</div>
-        <div class="pwork-desc">${esc(p.desc||'')}</div>
+      <div class="pf-hover">
+        <div class="pf-title">${esc(p.title)}</div>
+        <div class="pf-cat">${esc(p.category)} · ${esc(p.gradingPeriod)}</div>
+        <div class="pf-desc">${esc(p.desc||'No description')}</div>
       </div></div>`;
   };
   pub.innerHTML = publicOnes.length ? publicOnes.map(cardHtml).join('') : `<div class="empty-state"><p>Nothing public yet. Open an approved work and tap "Add to Public" so it shows up when people search for you.</p></div>`;
@@ -2713,17 +2717,16 @@ function renderPortfolioPage(uid){
   const personalEl = document.getElementById('pt-personal');
   if(personalEl){
     const personalCardHtml = p => {
-      const thumb = cardThumbHtml(p, 'pwork-thumb-frame', 'upload-thumb-placeholder', 'height:200px');
-      return `<div class="pwork-card" style="position:relative;">${thumb}
-        <div class="pwork-overlay">
-          <button class="btn-view-project" onclick="viewStudentProject('${p.id}')">👁 View Project</button>
-          <button class="btn-view-project" onclick="event.stopPropagation();downloadWork('${p.id}')">⬇️ Download</button>
+      return `<div class="pwork-full" onclick="viewStudentProject('${p.id}')">${pfMediaHtml(p)}
+        <span class="pf-badge">📁 Personal</span>
+        <div class="pf-actions">
+          <button class="pf-btn" onclick="event.stopPropagation();viewStudentProject('${p.id}')">👁 View</button>
+          <button class="pf-btn gold" onclick="event.stopPropagation();downloadWork('${p.id}')">⬇ Download</button>
         </div>
-        <span class="pwork-badge badge-pending" style="padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;">📁 Personal</span>
-        <div class="pwork-info">
-          <div class="pwork-title">${esc(p.title)}</div>
-          <div class="pwork-cat">${esc(p.category)} · ${esc(p.gradingPeriod)}</div>
-          <div class="pwork-desc">${esc(p.desc||'')}</div>
+        <div class="pf-hover">
+          <div class="pf-title">${esc(p.title)}</div>
+          <div class="pf-cat">${esc(p.category)} · ${esc(p.gradingPeriod)}</div>
+          <div class="pf-desc">${esc(p.desc||'No description')}</div>
         </div></div>`;
     };
     personalEl.innerHTML = personal.length ? personal.map(personalCardHtml).join('') : `<div class="empty-state"><p>No personal works yet. Use Upload Work (without the review checkbox) to build your private gallery.</p></div>`;
