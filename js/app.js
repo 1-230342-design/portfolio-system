@@ -3502,6 +3502,7 @@ function studentInitial(name){
 }
 
 // ── STEP 1: SECTIONS LIST (entry point — pPage() calls this for p-students) ──
+let _studentsView = 'sections'; // 'sections' | 'requests' — which tab is open
 async function renderStudentsPage(){
   currentSectionId = null;
   const sectionsView = document.getElementById('p-students-sections');
@@ -3512,6 +3513,13 @@ async function renderStudentsPage(){
   const el = document.getElementById('p-sections-list');
   if(!el) return;
   el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">Loading sections…</div>`;
+
+  // Pending section/join requests — fetched up front so the tab count and
+  // list below are ready before paint. Reviewer-only professors can't see them.
+  const canSeeRequests = isFullProfessor();
+  const tabsBar = document.getElementById('p-students-tabs');
+  if(tabsBar) tabsBar.style.display = canSeeRequests ? 'flex' : 'none';
+  if(canSeeRequests) await loadPendingTransferMap();
 
   try{
     const [{ data: sections, error }, students] = await Promise.all([
@@ -3528,6 +3536,9 @@ async function renderStudentsPage(){
 
   if(!_studentSections.length){
     el.innerHTML = `<div class="empty-state"><p>No sections yet. Add one from Grade Archives — students will be able to pick it at sign-up, and it'll show up here once they do.</p></div>`;
+    renderPendingRequestsList();
+    applyStudentsView();
+    refreshTransferBadge(); // fire-and-forget: nav count of waiting requests
     return;
   }
 
@@ -3556,7 +3567,56 @@ async function renderStudentsPage(){
     </div>`;
   }
 
+  renderPendingRequestsList();
+  applyStudentsView();
   refreshTransferBadge(); // fire-and-forget: nav count of waiting requests
+}
+
+// ── PENDING REQUESTS TAB (Students page) ──
+// Students who unenroll then pick a section again (or hop sections) file a
+// request here; the professor clicks the tab, sees everyone waiting, and
+// approves/declines on the spot. Same Approve/Decline flow as the inline rows.
+function studentsViewTab(tab){
+  _studentsView = tab;
+  applyStudentsView();
+}
+function applyStudentsView(){
+  const showReq = _studentsView === 'requests';
+  const secBtn = document.getElementById('ps-tab-sections');
+  const reqBtn = document.getElementById('ps-tab-requests');
+  if(secBtn) secBtn.classList.toggle('active', !showReq);
+  if(reqBtn) reqBtn.classList.toggle('active', showReq);
+  const secList = document.getElementById('p-sections-list');
+  const reqList = document.getElementById('p-requests-list');
+  if(secList) secList.style.display = showReq ? 'none' : 'flex';
+  if(reqList) reqList.style.display = showReq ? 'flex' : 'none';
+}
+function renderPendingRequestsList(){
+  const countEl = document.getElementById('ps-req-count');
+  const reqs = Object.values(_pendingTransferMap);
+  if(countEl) countEl.textContent = reqs.length ? '(' + reqs.length + ')' : '';
+  const el = document.getElementById('p-requests-list');
+  if(!el) return;
+  if(!isFullProfessor()){ el.innerHTML = ''; return; }
+  if(!reqs.length){
+    el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No pending requests — students will show up here when they request to join or transfer sections.</div>`;
+    return;
+  }
+  el.innerHTML = reqs.map(r=>{
+    const from = r.from_section || 'Unenrolled';
+    const when = r.created_at ? fmtDateTime(r.created_at) : '';
+    return `<div class="student-row">
+      <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(r.student_name)};width:100%;height:100%;">${esc(studentInitial(r.student_name))}</div></div>
+      <div class="student-row-info">
+        <div class="student-row-name">${esc(r.student_name||'Student')}</div>
+        <div class="student-row-meta">${esc(r.student_number||'No ID')}${when ? ' &middot; ' + esc(when) : ''}</div>
+        <div class="student-row-meta" style="margin-top:4px;">🔔 Requests to move from <strong style="color:var(--dark);">${esc(from)}</strong> to <strong style="color:var(--dark);">${esc(r.to_section)}</strong>
+          <button class="btn-view-sm" style="margin-left:6px;" onclick="event.stopPropagation();decideSectionRequest('${r.id}', true)">✓ Approve</button>
+          <button class="btn-cancel" style="padding:6px 10px;margin-left:4px;" onclick="event.stopPropagation();decideSectionRequest('${r.id}', false)">✕ Decline</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ══════════════════════════════════════════════════════
