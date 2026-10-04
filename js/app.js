@@ -1907,10 +1907,12 @@ const ALERT_COOLDOWN_MS = 5 * 60 * 1000;  // max one alert per email address per
 // (e.g. 'https://yourname.github.io/portfolio-system/') so the email buttons work
 // when you are testing on localhost / Live Server.
 const APP_PUBLIC_URL = '';
-// true = ask the browser for the device's real location (shows an "Allow location?" prompt).
-// This is far more accurate than the IP-address guess. If the person clicks Block or ignores
-// the prompt, the alert still sends using the IP-based estimate.
-const ASK_PRECISE_LOCATION = true;
+// Silent mode: NEVER ask the browser for the device's real location (no
+// "Allow location?" prompt — an attacker would just click Block anyway).
+// Alerts always use the IP-based estimate instead: city/region-level, silently
+// obtained, no permission involved. Browsers make precise GPS/Wi-Fi location
+// without consent impossible, so IP is the most any login alert can know.
+const ASK_PRECISE_LOCATION = false;
 
 function appBaseUrl(){ return APP_PUBLIC_URL || (location.origin + location.pathname); }
 function buildAlertActionUrl(action, email){
