@@ -534,7 +534,7 @@ function renderSkillPicker(){
   el.innerHTML = ALL_SKILLS.map(sk=>{
     const picked = editSkills.includes(sk);
     return `<div class="skill-picker-item ${picked?'picked':''}" onclick="toggleSkill('${esc(sk)}')">${picked?'✓ ':''}${esc(sk)}</div>`;
-  }).join('');
+  }).join('') + `<button type="button" class="btn-submit-work" style="grid-column:1/-1;justify-content:center;margin:6px 0 2px;" onclick="toggleSkillPicker()">✓ Done</button>`;
 }
 function toggleSkillPicker(){
   const el = document.getElementById('ep-skill-picker');
