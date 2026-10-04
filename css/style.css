@@ -467,6 +467,16 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
   .pwork-full .pf-hover{opacity:1;transform:none;}
   .pwork-full .pf-actions{opacity:1;transform:none;}
 }
+/* ── UNSPLASH MASONRY ──
+   Showcase grids flow in staggered columns with every work at its NATURAL
+   aspect ratio (tall stays tall, wide stays wide) — no uniform frames, no
+   cropping. Applies to portfolio tabs + public works (the showcase family);
+   workflow lists (projects, professor queues) keep their tidy uniform rows. */
+.portfolio-grid{columns:3 220px;column-gap:16px;display:block;}
+.portfolio-grid .pwork-full{break-inside:avoid;margin-bottom:16px;height:auto;}
+.portfolio-grid .pf-media{position:relative;inset:auto;width:100%;height:auto;}
+.portfolio-grid video.pf-media{min-height:200px;background:#000;}
+.portfolio-grid .empty-state{margin-bottom:16px;}
 /* Per-work ambient background: a blurred, enlarged copy of the artwork glows
    behind the full piece (Spotify/YouTube style) — each card gets its own
    colours, no canvas/CORS tricks needed, pure CSS. */
