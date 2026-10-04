@@ -66,19 +66,30 @@ async function renderAssignmentsPage(uid){
   myPorts.forEach(p => { byAssignment[p.assignment_id] = p; });
   _myAssignmentPorts = byAssignment;
 
+  // Unenrolled students (no section) stop receiving NEW assignments — but keep
+  // every entry they already have, so existing submissions stay manageable
+  // (view, unsubmit, grades) exactly as the unenroll rules promise.
+  const isUnenrolled = !((currentProfile && currentProfile.section) || '').trim();
+  const visible = isUnenrolled ? assignments.filter(a => byAssignment[a.id]) : assignments;
+
   const badge = document.getElementById('assign-badge');
   if(badge){
-    const notDone = assignments.filter(a => !byAssignment[a.id]).length;
+    const notDone = visible.filter(a => !byAssignment[a.id]).length;
     if(notDone > 0){ badge.textContent = notDone > 9 ? '9+' : notDone; badge.classList.add('show'); }
     else badge.classList.remove('show');
   }
 
-  if(!assignments.length){
-    el.innerHTML = `<div class="empty-state"><p>No classwork posted yet. Check back once your professor posts an assignment.</p></div>`;
+  if(!visible.length){
+    el.innerHTML = isUnenrolled
+      ? `<div class="empty-state"><p>You are not enrolled in any section, so new assignments don't appear here. Re-enroll (Edit Profile → Section) to receive classwork again.</p></div>`
+      : `<div class="empty-state"><p>No classwork posted yet. Check back once your professor posts an assignment.</p></div>`;
     return;
   }
 
-  el.innerHTML = assignments.map(a => {
+  el.innerHTML = (isUnenrolled
+    ? `<div style="font-size:13px;color:var(--text3);background:var(--surface);border-radius:10px;padding:12px 14px;margin-bottom:16px;">ℹ️ You're unenrolled: new assignments won't appear, but your existing submissions below stay fully manageable.</div>`
+    : '')
+    + visible.map(a => {
     const mine   = byAssignment[a.id];
     const status = mine ? mine.status : 'none';
     const badgeCls   = status==='approved' ? 'badge-approved' : status==='rejected' ? 'badge-rejected' : (status==='submitted') ? 'badge-pending' : '';
