@@ -3556,58 +3556,43 @@ async function renderStudentsPage(){
     </div>`;
   }
 
-  loadTransferBanner(); // fire-and-forget: pending transfer requests above the list
+  refreshTransferBadge(); // fire-and-forget: nav count of waiting requests
 }
 
 // ══════════════════════════════════════════════════════
-//  TRANSFER REQUESTS — professor inbox (Students page top)
-//  Only full (Multimedia Arts) professors see and decide these; the database
+//  TRANSFER REQUESTS — decided inline, right beside the student.
+//  No separate inbox: each row carrying a pending request shows where the
+//  student wants to go, with Approve/Decline on the spot. Only full
+//  (Multimedia Arts) professors see and decide these; the database
 //  re-checks the role on every decision, so reviewer-only accounts and
 //  students are rejected server-side no matter what the UI shows.
 // ══════════════════════════════════════════════════════
-async function loadTransferBanner(){
-  const box = document.getElementById('transfer-requests-box');
-  const badge = document.getElementById('pstud-badge');
-  const clearBadge = ()=>{ if(badge) badge.classList.remove('show'); };
-  if(!box){ clearBadge(); return; }
-  if(!isFullProfessor()){ box.innerHTML = ''; clearBadge(); return; }
+let _pendingTransferMap = {}; // student_id → pending request (professor views only)
+let _inUnenrolledView = false;
+
+async function loadPendingTransferMap(){
+  _pendingTransferMap = {};
+  if(!isFullProfessor()) return;
   try{
     const { data, error } = await sb.rpc('list_section_requests');
     if(error) throw error;
-    const rows = data || [];
-    const pending = rows.filter(r => r.status === 'pending');
-    if(badge){
-      if(pending.length){ badge.textContent = pending.length > 9 ? '9+' : pending.length; badge.classList.add('show'); }
-      else badge.classList.remove('show');
-    }
-    if(!rows.length){ box.innerHTML = ''; return; }
-    const rowHtml = r => {
-      const when = r.status === 'pending' ? r.created_at : (r.decided_at || r.created_at);
-      const verdict = r.status === 'approved' ? ' <strong style="color:#1a7f37;">✓ approved</strong>'
-        : r.status === 'rejected' ? ' <strong style="color:var(--red);">✕ declined</strong>' : '';
-      const actions = r.status === 'pending'
-        ? `<div style="display:flex;gap:8px;flex-shrink:0;">
-             <button class="btn-view-sm" onclick="decideSectionRequest('${r.id}', true)">✓ Approve</button>
-             <button class="btn-cancel" style="padding:8px 12px;" onclick="decideSectionRequest('${r.id}', false)">✕ Decline</button>
-           </div>`
-        : '';
-      return `<div class="student-row">
-        <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(r.student_name)};width:100%;height:100%;">${esc(studentInitial(r.student_name))}</div></div>
-        <div class="student-row-info">
-          <div class="student-row-name">${esc(r.student_name || 'Student')} <span style="font-weight:400;color:var(--text3);">· ${esc(r.student_number || '')}</span></div>
-          <div class="student-row-meta">${esc(r.from_section || 'No section')} → <strong style="color:var(--dark);">${esc(r.to_section)}</strong> · ${fmtDate(when)}${verdict}</div>
-        </div>
-        ${actions}
-      </div>`;
-    };
-    box.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--dark);margin-bottom:10px;">🔔 Transfer Requests${pending.length ? ` (${pending.length} waiting)` : ''}</div>
-      <div class="students-list">${rows.map(rowHtml).join('')}</div>`;
+    (data || []).forEach(r => {
+      if(r.status === 'pending' && r.student_id) _pendingTransferMap[r.student_id] = r;
+    });
   }catch(err){
-    // Backend missing (SQL not run) or not allowed — stay silent, page works on.
-    console.info('[transfer] inbox unavailable:', (err && err.message) || err);
-    box.innerHTML = '';
-    clearBadge();
+    console.info('[transfer] request lookup unavailable:', (err && err.message) || err);
   }
+}
+
+// Nav badge: how many transfer requests are waiting (professors only).
+async function refreshTransferBadge(){
+  const badge = document.getElementById('pstud-badge');
+  if(!badge) return;
+  if(!isFullProfessor()){ badge.classList.remove('show'); return; }
+  await loadPendingTransferMap();
+  const n = Object.keys(_pendingTransferMap).length;
+  if(n){ badge.textContent = n > 9 ? '9+' : n; badge.classList.add('show'); }
+  else badge.classList.remove('show');
 }
 
 async function decideSectionRequest(reqId, approve){
@@ -3618,7 +3603,16 @@ async function decideSectionRequest(reqId, approve){
     const { data, error } = await sb.rpc('decide_section_request', { p_id: reqId, p_approve: approve });
     if(error) throw error;
     showToast(approve ? '✅ Transfer approved — student moved.' : '✅ Transfer declined.');
-    await renderStudentsPage(); // counts + lists reflect the move (banner reloads with it)
+    // Refresh whatever list we're looking at so the row updates in place.
+    if(document.getElementById('p-students-in-section') &&
+       document.getElementById('p-students-in-section').style.display !== 'none'){
+      if(_inUnenrolledView) await openUnenrolledStudents();
+      else if(currentSectionId) await openSectionStudents(currentSectionId);
+      else await renderStudentsPage();
+    }else{
+      await renderStudentsPage();
+    }
+    refreshTransferBadge();
   }catch(err){
     console.error('decideSectionRequest error:', err);
     showToast('❌ Error: ' + (err.message || err));
@@ -3641,6 +3635,8 @@ async function openUnenrolledStudents(){
 
   _allStudentsCache = await loadAllStudentProfiles();
   _currentSectionStudents = _allStudentsCache.filter(s=>!s.section);
+  _inUnenrolledView = true;
+  await loadPendingTransferMap();
   renderSectionStudentsList(_currentSectionStudents);
 }
 
@@ -3654,14 +3650,29 @@ function renderSectionStudentsList(students){
   }
   el.innerHTML = students.map(s=>{
     const meta = [s.student_id||'No ID', s.year_level||'Year Level'].join(' · ');
+    const req = _pendingTransferMap[s.user_id];
+    // A pending request lives ON the row: destination + Approve/Decline right
+    // beside the student, where the professor is already looking.
+    const reqHtml = req
+      ? `<div class="student-row-meta" style="margin-top:4px;">🔔 Requests <strong style="color:var(--dark);">${esc(req.to_section)}</strong>
+           <button class="btn-view-sm" style="margin-left:6px;" onclick="event.stopPropagation();decideSectionRequest('${req.id}', true)">✓ Approve</button>
+           <button class="btn-cancel" style="padding:6px 10px;margin-left:4px;" onclick="event.stopPropagation();decideSectionRequest('${req.id}', false)">✕ Decline</button>
+         </div>`
+      : '';
+    // Unenroll only makes sense for someone actually in a section — never on
+    // an already-unenrolled row.
+    const unenrollHtml = s.section
+      ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Remove this student from the section" onclick="event.stopPropagation();unenrollStudent('${s.user_id}','${esc((s.full_name||'this student').replace(/'/g,"\\'"))}')">↩️ Unenroll</button>`
+      : '';
     return `<div class="student-row" onclick="viewStudentProfile('${s.user_id}')">
       <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(s.full_name)};width:100%;height:100%;">${esc(studentInitial(s.full_name))}</div></div>
       <div class="student-row-info">
         <div class="student-row-name">${esc(s.full_name||'Student')}</div>
         <div class="student-row-meta">${esc(meta)}</div>
+        ${reqHtml}
       </div>
       <button class="btn-view-sm" onclick="event.stopPropagation();viewStudentProfile('${s.user_id}')">👁 View</button>
-      <button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Remove this student from the section" onclick="event.stopPropagation();unenrollStudent('${s.user_id}','${esc((s.full_name||'this student').replace(/'/g,"\\'"))}')">↩️ Unenroll</button>
+      ${unenrollHtml}
     </div>`;
   }).join('');
 }
@@ -3684,6 +3695,8 @@ async function openSectionStudents(sectionId){
   // Reload fresh — catches anyone who enrolled/unenrolled since the sections list was loaded
   _allStudentsCache = await loadAllStudentProfiles();
   _currentSectionStudents = _allStudentsCache.filter(s=>s.section===section.name);
+  _inUnenrolledView = false;
+  await loadPendingTransferMap();
   renderSectionStudentsList(_currentSectionStudents);
 }
 
