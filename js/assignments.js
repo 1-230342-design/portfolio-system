@@ -110,7 +110,9 @@ async function renderAssignmentsPage(uid){
       ${a.instructions ? `<div class="assignment-instructions">${esc(a.instructions)}</div>` : ''}
       ${pastDue ? `<div class="assignment-overdue">🔒 Submissions closed — past due (${fmtDateTime(a.due_date)})</div>` : ''}
       ${(mine && mine.final_grade!=null) ? `<div class="assignment-meta" style="margin-top:8px;"><strong style="color:var(--dark)">Grade: ${mine.final_grade}/100</strong></div>` : ''}
-      ${pastDue
+      ${(mine && mine.status === 'approved')
+        ? `<button class="btn-submit-work" style="margin-top:12px;opacity:.6;cursor:not-allowed;" disabled>✅ Work already graded</button>`
+        : pastDue
         ? `<button class="btn-submit-work" style="margin-top:12px;opacity:.5;cursor:not-allowed;" disabled>🔒 Closed</button>`
         : `<button class="btn-submit-work" style="margin-top:12px;" onclick="openAttachWorkModal('${a.id}')">${mine ? '📎 Manage Submission' : '📎 Attach Work'}</button>`}
     </div>`;
@@ -128,6 +130,7 @@ async function openAttachWorkModal(assignmentId){
   const a = _assignmentsCache.find(x => x.id === assignmentId);
   if(!a){ showToast('⚠️ Assignment not found'); return; }
   const mine = _myAssignmentPorts[assignmentId];
+  if(mine && mine.status === 'approved'){ showToast('✅ This work is already graded.'); return; }
   const hasLive = !!(mine && mine.status === 'submitted');
   // Deadline lock (first line of defence — the button is already disabled too).
   if(await isAssignmentClosedNow(a)){ showToast('🔒 Submissions are closed — this assignment is past due. Entries can no longer be changed.'); return; }
