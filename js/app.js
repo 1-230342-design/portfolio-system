@@ -416,7 +416,7 @@ async function downloadContactQr(){
 function openEditProfile(){
   if(!currentProfile){ showToast('⚠️ Please log in first.'); return; }
   document.getElementById('ep-fullname').value   = currentProfile.full_name || '';
-  document.getElementById('ep-section').value    = currentProfile.section || '';
+  populateEditSectionDropdown(); // roster dropdown (async) — sets ep-section itself
   document.getElementById('ep-year').value       = currentProfile.year_level || '';
   document.getElementById('ep-social').value     = currentProfile.social_link || '';
   const qrBox = document.getElementById('ep-show-qr');
@@ -3283,6 +3283,23 @@ async function populateSectionDropdown(){
   const sections = await loadSections();
   sel.innerHTML = '<option value="">Select Section</option>' +
     sections.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('');
+}
+
+// Same roster for the Edit Profile section dropdown — free text used to let
+// typos ("BSIT2") strand students outside every section grouping. A legacy
+// custom value not on the roster is kept as a selectable option so opening
+// Edit Profile never silently wipes it; picking a roster section from there
+// follows the normal transfer-request rules on save.
+async function populateEditSectionDropdown(){
+  const sel = document.getElementById('ep-section');
+  if(!sel) return;
+  const sections = await loadSections();
+  const current = (currentProfile && currentProfile.section) || '';
+  sel.innerHTML = '<option value="">— No section —</option>' +
+    sections.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('') +
+    (current && !sections.some(s=>s.name === current)
+      ? `<option value="${esc(current)}">${esc(current)} (not on roster)</option>` : '');
+  sel.value = current;
 }
 
 function handleUploadFileSelect(e){ processUploadFile(e.target.files&&e.target.files[0]); }
