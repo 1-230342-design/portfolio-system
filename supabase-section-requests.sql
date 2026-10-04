@@ -130,20 +130,26 @@ returns table(
   created_at     timestamptz,
   decided_at     timestamptz
 )
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
-  select r.id, r.student_id,
-         coalesce(p.full_name, 'Student'),
-         coalesce(p.student_id, ''),
-         r.from_section, r.to_section, r.status, r.created_at, r.decided_at
-    from section_requests r
-    left join user_profiles p on p.user_id = r.student_id
-   where r.status = 'pending'
-      or (r.status in ('approved', 'rejected') and r.decided_at > now() - interval '30 days')
-   order by (r.status = 'pending') desc, r.created_at desc
-   limit 50;
+begin
+  if not _is_professor() then
+    raise exception 'Only professors can view transfer requests.';
+  end if;
+  return query
+    select r.id, r.student_id,
+           coalesce(p.full_name, 'Student'),
+           coalesce(p.student_id, ''),
+           r.from_section, r.to_section, r.status, r.created_at, r.decided_at
+      from section_requests r
+      left join user_profiles p on p.user_id = r.student_id
+     where r.status = 'pending'
+        or (r.status in ('approved', 'rejected') and r.decided_at > now() - interval '30 days')
+     order by (r.status = 'pending') desc, r.created_at desc
+     limit 50;
+end
 $$;
 
 -- ── professor decides; approval flips the student's section ──
