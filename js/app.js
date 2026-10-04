@@ -540,6 +540,19 @@ function toggleSkillPicker(){
   const el = document.getElementById('ep-skill-picker');
   el.style.display = (el.style.display === 'none' || !el.style.display) ? 'grid' : 'none';
 }
+// Clicking anywhere outside the open skills picker dismisses it (the toggle
+// button itself is excluded so opening still works). Registered once at boot.
+function initSkillPickerOutsideCloser(){
+  if(window._skillOutsideCloser) return;
+  window._skillOutsideCloser = true;
+  document.addEventListener('click', (e)=>{
+    const picker = document.getElementById('ep-skill-picker');
+    if(!picker || picker.style.display === 'none' || !picker.style.display) return;
+    if(picker.contains(e.target)) return; // picking skills keeps it open
+    if(e.target && e.target.closest && e.target.closest('.skill-add-btn')) return; // the toggle itself
+    picker.style.display = 'none';
+  });
+}
 function toggleSkill(sk){
   if(editSkills.includes(sk)) editSkills = editSkills.filter(s=>s!==sk);
   else editSkills.push(sk);
@@ -4362,4 +4375,4 @@ async function initApp(){
   loadShowcaseMosaic();  // hero "Recently shared works" mosaic on the landing page
   loadLandingExplore();  // "Explore creative works" grid on the landing page
 }
-document.addEventListener('artfolio:ready', initApp);
+document.addEventListener('artfolio:ready', ()=>{ initSkillPickerOutsideCloser(); initApp(); });
