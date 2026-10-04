@@ -3553,20 +3553,6 @@ async function renderStudentsPage(){
     </div>`;
   }).join('');
 
-  // Unenrolled bucket — students with no section (self-unenrolled or never
-  // set) would otherwise be invisible on this page. Re-enroll anyone by
-  // setting their section again (Edit Profile / sign-up picks it up).
-  const unenrolled = _allStudentsCache.filter(st=>!st.section);
-  if(unenrolled.length){
-    el.innerHTML += `<div class="section-group" onclick="openUnenrolledStudents()">
-      <div class="section-group-info">
-        <div class="section-name">Unenrolled (No Section)</div>
-        <div class="section-year">${unenrolled.length} student${unenrolled.length===1?'':'s'} without a section</div>
-      </div>
-      <button class="btn-view-sm" onclick="event.stopPropagation();openUnenrolledStudents()">👁 View</button>
-    </div>`;
-  }
-
   renderPendingRequestsList();
   applyStudentsView();
   refreshTransferBadge(); // fire-and-forget: nav count of waiting requests
@@ -3610,10 +3596,11 @@ function renderPendingRequestsList(){
       <div class="student-row-info">
         <div class="student-row-name">${esc(r.student_name||'Student')}</div>
         <div class="student-row-meta">${esc(r.student_number||'No ID')}${when ? ' &middot; ' + esc(when) : ''}</div>
-        <div class="student-row-meta" style="margin-top:4px;">🔔 Requests to move from <strong style="color:var(--dark);">${esc(from)}</strong> to <strong style="color:var(--dark);">${esc(r.to_section)}</strong>
-          <button class="btn-view-sm" style="margin-left:6px;" onclick="event.stopPropagation();decideSectionRequest('${r.id}', true)">✓ Approve</button>
-          <button class="btn-cancel" style="padding:6px 10px;margin-left:4px;" onclick="event.stopPropagation();decideSectionRequest('${r.id}', false)">✕ Decline</button>
-        </div>
+        <div class="student-row-meta" style="margin-top:4px;">🔔 Requests to move from <strong style="color:var(--dark);">${esc(from)}</strong> to <strong style="color:var(--dark);">${esc(r.to_section)}</strong></div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">
+        <button class="btn-view-sm" onclick="event.stopPropagation();decideSectionRequest('${r.id}', true)">✓ Approve</button>
+        <button class="btn-cancel" style="padding:7px 12px;" onclick="event.stopPropagation();decideSectionRequest('${r.id}', false)">✕ Decline</button>
       </div>
     </div>`;
   }).join('');
