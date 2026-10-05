@@ -1979,6 +1979,10 @@ function viewPublicWork(idx){
   if(!p) return;
   currentPublicPreviewItemId = p.id;
   document.getElementById('ppv-title').textContent = p.title;
+  document.getElementById('ppv-cat').textContent = p.category || 'General';
+  const ppvDesc = document.getElementById('ppv-desc');
+  ppvDesc.textContent = p.desc || 'No description';
+  ppvDesc.style.color = p.desc ? 'var(--dark)' : 'var(--text3)';
   const img = document.getElementById('ppv-img');
   const vid = document.getElementById('ppv-video');
   const ph  = document.getElementById('ppv-placeholder');
