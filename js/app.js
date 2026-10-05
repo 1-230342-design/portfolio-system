@@ -1988,15 +1988,13 @@ function viewPublicWork(idx){
     img.src = p.file.dataUrl; img.style.display='block'; vid.style.display='none'; ph.style.display='none';
     if(insBtn) insBtn.style.display='inline-block';
   } else if(fileIsVideo(p.file)){
-    // Videos are intentionally NOT playable while just browsing a profile —
-    // only the QR-scan destination (public-work.html) is allowed to play them.
-    img.style.display='none'; vid.style.display='none';
-    ph.style.display='flex';
-    if(insBtn) insBtn.style.display='none';
-    ph.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
-      <span style="font-size:44px;">🎬</span>
-      <span style="font-size:12px;font-weight:600;color:var(--text2);">Video — playable on the full portfolio page</span>
-    </div>`;
+    // Public visitors can play videos right in the preview (mobile included).
+    // playsinline keeps iOS Safari from hijacking playback to fullscreen;
+    // preload="metadata" (set on the tag) avoids downloading the whole file
+    // on metered mobile data until the visitor presses play.
+    vid.src = p.file.dataUrl; vid.style.display='block';
+    img.style.display='none'; ph.style.display='none';
+    if(insBtn) insBtn.style.display='inline-block';
   } else {
     img.style.display='none'; vid.style.display='none'; ph.style.display='flex';
     if(insBtn) insBtn.style.display='none';
