@@ -577,6 +577,17 @@ video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{backgro
 /* ── MODAL / EDIT PROFILE ── */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:center;justify-content:center;padding:20px;}
 .modal-overlay.open{display:flex;}
+/* ── INSPECT: fullscreen zoom viewer (wheel zoom, drag pan, double-click fit) ── */
+.inspect-overlay{background:rgba(8,10,9,.94);padding:0;z-index:6000;cursor:grab;overflow:hidden;}
+.inspect-overlay.dragging{cursor:grabbing;}
+.inspect-stage{width:100%;height:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+.inspect-stage img{max-width:92vw;max-height:82vh;object-fit:contain;transform-origin:center center;user-select:none;-webkit-user-drag:none;transition:transform .12s ease-out;}
+.inspect-stage img.no-transition{transition:none;}
+.inspect-stage video{max-width:92vw;max-height:82vh;border-radius:8px;}
+.inspect-toolbar{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;background:rgba(255,255,255,.1);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:8px 14px;}
+.inspect-btn{border:none;background:rgba(255,255,255,.14);color:#fff;border-radius:999px;padding:7px 13px;font-size:13px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;transition:background .15s;white-space:nowrap;}
+.inspect-btn:hover{background:rgba(255,255,255,.28);}
+.inspect-pct{color:#fff;font-size:12px;font-weight:600;min-width:44px;text-align:center;}
 /* The originality result must pop ABOVE the Attach Work / Upload modals that
    are still open behind it — same z-index + earlier DOM position meant the
    "100% Match Found" notice was hidden underneath and students never saw it. */

@@ -1982,20 +1982,24 @@ function viewPublicWork(idx){
   const img = document.getElementById('ppv-img');
   const vid = document.getElementById('ppv-video');
   const ph  = document.getElementById('ppv-placeholder');
+  const insBtn = document.getElementById('ppv-inspect-btn');
   vid.pause(); vid.removeAttribute('src'); vid.load();
   if(fileIsImage(p.file)){
     img.src = p.file.dataUrl; img.style.display='block'; vid.style.display='none'; ph.style.display='none';
+    if(insBtn) insBtn.style.display='inline-block';
   } else if(fileIsVideo(p.file)){
     // Videos are intentionally NOT playable while just browsing a profile —
     // only the QR-scan destination (public-work.html) is allowed to play them.
     img.style.display='none'; vid.style.display='none';
     ph.style.display='flex';
+    if(insBtn) insBtn.style.display='none';
     ph.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
       <span style="font-size:44px;">🎬</span>
       <span style="font-size:12px;font-weight:600;color:var(--text2);">Video — playable on the full portfolio page</span>
     </div>`;
   } else {
     img.style.display='none'; vid.style.display='none'; ph.style.display='flex';
+    if(insBtn) insBtn.style.display='none';
     ph.innerHTML = '🖼️';
   }
   document.getElementById('publicWorkPreviewOverlay').classList.add('open');
@@ -2947,13 +2951,17 @@ function viewStudentProject(itemId){
   const img = document.getElementById('spv-img');
   const vid = document.getElementById('spv-video');
   const ph  = document.getElementById('spv-placeholder');
+  const insBtn = document.getElementById('spv-inspect-btn');
   vid.pause(); vid.removeAttribute('src'); vid.load();
   if(fileIsImage(p.file)){
     img.src = p.file.dataUrl; img.style.display='block'; vid.style.display='none'; ph.style.display='none';
+    if(insBtn) insBtn.style.display='inline-block';
   } else if(fileIsVideo(p.file)){
     vid.src = p.file.dataUrl; vid.style.display='block'; img.style.display='none'; ph.style.display='none';
+    if(insBtn) insBtn.style.display='inline-block';
   } else {
     img.style.display='none'; vid.style.display='none'; ph.style.display='flex';
+    if(insBtn) insBtn.style.display='none';
   }
 
   // Star rating the professor left when approving/rejecting
@@ -3021,6 +3029,111 @@ function closeStudentProjectPreview(){
   const vid = document.getElementById('spv-video');
   if(vid){ vid.pause(); }
   currentPreviewItemId = null;
+}
+
+// ── INSPECT — fullscreen zoom viewer for a previewed work ──
+// Wheel/pinch zooms, drag pans, double-click toggles fit↔100%. Videos open
+// with native fullscreen controls instead (no zoom on moving footage).
+let _insScale = 1, _insX = 0, _insY = 0, _insDrag = null;
+function openInspect([imgId, vidId]){
+  const src = document.getElementById(imgId);
+  const vsrc = document.getElementById(vidId);
+  const ov = document.getElementById('inspectOverlay');
+  const zImg = document.getElementById('inspect-img');
+  const zVid = document.getElementById('inspect-video');
+  const stage = document.getElementById('inspect-stage');
+  const isVid = vsrc && vsrc.style.display !== 'none' && vsrc.src;
+  const isImg = src && src.style.display !== 'none' && src.src;
+  if(!isVid && !isImg){ showToast('⚠️ Nothing to inspect'); return; }
+  if(isVid){
+    zImg.style.display = 'none';
+    zVid.style.display = 'block'; zVid.src = vsrc.src;
+    document.querySelector('#inspectOverlay .inspect-toolbar').style.display = 'none';
+    stage.style.cursor = 'default';
+  }else{
+    zVid.style.display = 'none'; zVid.pause && zVid.pause(); zVid.removeAttribute('src');
+    zImg.style.display = 'block'; zImg.src = src.src;
+    document.querySelector('#inspectOverlay .inspect-toolbar').style.display = 'flex';
+    stage.style.cursor = 'grab';
+    inspectReset();
+  }
+  ov.classList.add('open');
+}
+function closeInspect(e){
+  if(e && e.target){
+    const t = e.target;
+    // Only close on backdrop/stage clicks — never when clicking the image, video, or toolbar
+    if(t.id === 'inspect-img' || t.id === 'inspect-video' || (t.closest && t.closest('.inspect-toolbar'))) return;
+  }
+  const ov = document.getElementById('inspectOverlay');
+  if(!ov || !ov.classList.contains('open')) return;
+  const zVid = document.getElementById('inspect-video');
+  if(zVid){ zVid.pause(); zVid.removeAttribute('src'); }
+  ov.classList.remove('open');
+}
+function inspectApply(){
+  const img = document.getElementById('inspect-img');
+  img.style.transform = `translate(${_insX}px, ${_insY}px) scale(${_insScale})`;
+  const pct = document.getElementById('inspect-pct');
+  if(pct) pct.textContent = Math.round(_insScale * 100) + '%';
+}
+function inspectZoom(f){
+  _insScale = Math.min(8, Math.max(0.5, _insScale * f));
+  if(_insScale <= 1){ _insX = 0; _insY = 0; }
+  inspectApply();
+}
+function inspectReset(){ _insScale = 1; _insX = 0; _insY = 0; inspectApply(); }
+function initInspectViewer(){
+  if(window._inspectInit) return;
+  window._inspectInit = true;
+  const ov = document.getElementById('inspectOverlay');
+  const stage = document.getElementById('inspect-stage');
+  const img = document.getElementById('inspect-img');
+  if(!ov || !stage || !img) return;
+  // Wheel zoom toward the cursor
+  ov.addEventListener('wheel', (e)=>{
+    if(img.style.display === 'none') return;
+    e.preventDefault();
+    const before = _insScale;
+    inspectZoom(e.deltaY < 0 ? 1.15 : 1/1.15);
+    // keep the point under the cursor steady
+    const rect = stage.getBoundingClientRect();
+    const cx = e.clientX - rect.left - rect.width/2;
+    const cy = e.clientY - rect.top - rect.height/2;
+    const k = 1 - (_insScale / before);
+    _insX += cx * k; _insY += cy * k;
+    if(_insScale <= 1){ _insX = 0; _insY = 0; }
+    inspectApply();
+  }, { passive:false });
+  // Drag to pan
+  stage.addEventListener('mousedown', (e)=>{
+    if(img.style.display === 'none' || _insScale <= 1) return;
+    e.preventDefault();
+    _insDrag = { sx:e.clientX, sy:e.clientY, ox:_insX, oy:_insY };
+    ov.classList.add('dragging');
+    img.classList.add('no-transition');
+  });
+  window.addEventListener('mousemove', (e)=>{
+    if(!_insDrag) return;
+    _insX = _insDrag.ox + (e.clientX - _insDrag.sx);
+    _insY = _insDrag.oy + (e.clientY - _insDrag.sy);
+    inspectApply();
+  });
+  window.addEventListener('mouseup', ()=>{
+    if(!_insDrag) return;
+    _insDrag = null;
+    ov.classList.remove('dragging');
+    img.classList.remove('no-transition');
+  });
+  // Double-click toggles fit ↔ 100%
+  stage.addEventListener('dblclick', (e)=>{
+    if(img.style.display === 'none') return;
+    e.preventDefault();
+    if(_insScale > 1) inspectReset();
+    else { _insScale = 1; inspectApply(); }
+  });
+  // Esc closes
+  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeInspect(); });
 }
 async function deleteWorkFromPreview(){
   if(!currentPreviewItemId) return;
@@ -4438,4 +4551,4 @@ async function initApp(){
   loadShowcaseMosaic();  // hero "Recently shared works" mosaic on the landing page
   loadLandingExplore();  // "Explore creative works" grid on the landing page
 }
-document.addEventListener('artfolio:ready', ()=>{ initSkillPickerOutsideCloser(); initApp(); });
+document.addEventListener('artfolio:ready', ()=>{ initSkillPickerOutsideCloser(); initInspectViewer(); initApp(); });
