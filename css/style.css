@@ -455,14 +455,16 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 .pwork-full .pf-badge{position:absolute;top:10px;left:10px;z-index:2;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,0,0,.55);color:#fff;backdrop-filter:blur(4px);}
 .pwork-full .pf-actions{position:absolute;top:10px;right:10px;z-index:2;display:flex;gap:8px;opacity:0;transform:translateY(-4px);transition:opacity .25s ease,transform .25s ease;}
 .pwork-full:hover .pf-actions{opacity:1;transform:translateY(0);}
-.pwork-full .pf-btn{border:none;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;background:rgba(255,255,255,.94);color:var(--dark);box-shadow:0 4px 12px rgba(0,0,0,.25);transition:transform .15s ease;}
-.pwork-full .pf-btn:hover{transform:scale(1.05);}
-.pwork-full .pf-btn.gold{background:var(--gold);color:#173626;}
-.pwork-full .pf-hover{position:absolute;left:0;right:0;bottom:0;z-index:1;padding:40px 14px 12px;background:linear-gradient(transparent,rgba(0,0,0,.82));color:#fff;opacity:0;transform:translateY(6px);transition:opacity .25s ease,transform .25s ease;pointer-events:none;}
+.pwork-full .pf-btn{border:none;border-radius:999px;padding:8px 14px;font-size:12px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;background:linear-gradient(135deg,var(--gold),var(--gold-dark));color:var(--dark);box-shadow:0 4px 14px rgba(201,162,39,.45);transition:transform .15s ease,box-shadow .15s ease;}
+.pwork-full .pf-btn:hover{transform:translateY(-1px) scale(1.04);box-shadow:0 6px 18px rgba(201,162,39,.55);}
+.pwork-full .pf-btn.gold{background:linear-gradient(135deg,var(--gold),var(--gold-dark));color:#173626;}
+/* Info sheet: deep-green panel with a gold accent line — slides up on hover. */
+.pwork-full .pf-hover{position:absolute;left:0;right:0;bottom:0;z-index:1;padding:44px 16px 14px;background:linear-gradient(transparent,rgba(23,54,38,.55) 38%,rgba(23,54,38,.96));color:#fff;opacity:0;transform:translateY(10px);transition:opacity .28s ease,transform .28s ease;pointer-events:none;}
 .pwork-full:hover .pf-hover{opacity:1;transform:translateY(0);}
-.pwork-full .pf-title{font-size:14px;font-weight:700;margin-bottom:2px;text-shadow:0 1px 6px rgba(0,0,0,.5);}
-.pwork-full .pf-cat{font-size:11px;opacity:.75;margin-bottom:4px;}
-.pwork-full .pf-desc{font-size:12px;line-height:1.5;opacity:.9;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.pwork-full .pf-hover::before{content:"";position:absolute;top:0;left:16px;right:16px;height:2px;background:linear-gradient(90deg,var(--gold),rgba(201,162,39,0));border-radius:2px;}
+.pwork-full .pf-title{font-size:14px;font-weight:700;margin-bottom:3px;color:#fff;letter-spacing:.2px;}
+.pwork-full .pf-cat{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--dark);background:linear-gradient(135deg,var(--gold),var(--gold-dark));border-radius:999px;padding:2px 9px;margin-bottom:6px;}
+.pwork-full .pf-desc{font-size:12px;line-height:1.55;color:rgba(255,255,255,.82);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 @media (hover:none){
   .pwork-full .pf-hover{opacity:1;transform:none;}
   .pwork-full .pf-actions{opacity:1;transform:none;}
