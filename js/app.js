@@ -4567,9 +4567,48 @@ function toggleTheme(){
   applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
 }
 
+// ── LANDING STARFIELD (dark mode) ──
+// Builds ~70 twinkling stars + one meteor span inside #lpStars (landing page).
+// Stars are pure-CSS (randomized pos/size/phase here); visibility is gated by
+// CSS ([data-theme="dark"]) so light mode costs nothing. The meteor re-fires
+// every 10s from a random top-right spot — skipped in light mode and for
+// reduced-motion users. Runs once (guarded); called from initApp after the
+// data-include partials are inlined.
+function initLandingStars(){
+  const sky = document.getElementById('lpStars');
+  if(!sky || sky.dataset.done) return;
+  sky.dataset.done = '1';
+  const frag = document.createDocumentFragment();
+  for(let i=0;i<70;i++){
+    const s = document.createElement('span');
+    s.className = 'lp-star';
+    const sz = (Math.random()*1.8+1).toFixed(1);
+    s.style.cssText = 'left:'+(Math.random()*100).toFixed(2)+'%;top:'+(Math.random()*100).toFixed(2)+
+      '%;width:'+sz+'px;height:'+sz+'px;--tw:'+(Math.random()*3+2).toFixed(2)+
+      's;animation-delay:'+(Math.random()*4).toFixed(2)+'s;';
+    frag.appendChild(s);
+  }
+  const shoot = document.createElement('span');
+  shoot.className = 'lp-shoot'; shoot.id = 'lpShoot';
+  frag.appendChild(shoot);
+  sky.appendChild(frag);
+  const fireMeteor = ()=>{
+    if(currentTheme() !== 'dark') return;
+    if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const sh = document.getElementById('lpShoot');
+    if(!sh) return;
+    sh.style.top = (Math.random()*35+2).toFixed(1)+'%';
+    sh.style.left = (Math.random()*40+45).toFixed(1)+'%';
+    sh.classList.remove('fly'); void sh.offsetWidth; sh.classList.add('fly');
+  };
+  setTimeout(fireMeteor, 1500); // one quick teaser shortly after load
+  setInterval(fireMeteor, 10000);
+}
+
 async function initApp(){
   console.log('[artfolio] originality gate ' + ORIGINALITY_GATE_VERSION + ' active — 90%+ similar images are blocked BEFORE upload (no Cloudinary file, no database row).');
   syncThemeIcon(); // head script pre-applied the theme; just fix the button icon
+  initLandingStars(); // build the dark-mode starfield (CSS-gated, costs nothing in light)
   if(typeof checkForQrLink === 'function' && checkForQrLink()) return; // ?work=<id> in the URL — show that work's public page and stop here
   if(handleLandingLink()) return; // ?to=landing from notification emails — landing page only, no auto-login
   const openedFromAlert = handleAlertLink(); // ?action=changepw|keep from the login-alert email
