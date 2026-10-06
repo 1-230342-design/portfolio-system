@@ -233,13 +233,13 @@ async function loadSectionPreview(){
         </tr></thead>
         <tbody>${currentPreviewRows.map(r => `
           <tr style="border-bottom:1px solid var(--border);">
-            <td style="padding:8px 6px;font-weight:600;color:var(--dark);">${esc(r.name)}</td>
+            <td style="padding:8px 6px;font-weight:600;color:var(--ink);">${esc(r.name)}</td>
             <td style="padding:8px 6px;color:var(--text3);">${esc(r.studentNumber)}</td>
             <td style="padding:8px 6px;color:var(--text2);">${esc(r.assignment)}</td>
             <td style="padding:8px 6px;">${r.creativity ?? '—'}</td>
             <td style="padding:8px 6px;">${r.technique ?? '—'}</td>
             <td style="padding:8px 6px;">${r.composition ?? '—'}</td>
-            <td style="padding:8px 6px;font-weight:700;color:var(--dark);">${r.finalGrade}/100</td>
+            <td style="padding:8px 6px;font-weight:700;color:var(--ink);">${r.finalGrade}/100</td>
           </tr>`).join('')}
         </tbody></table>`
         + await renderMissingBlock(section, period, gradedIds);
@@ -264,7 +264,7 @@ async function renderMissingBlock(section, period, gradedIds){
     if(!missing.length) return `<div style="margin-top:14px;font-size:13px;color:var(--text3);">✅ Everyone in ${esc(section.name)} has a grade for ${esc(GRADING_PERIOD_LABEL[period] || period)}.</div>`;
     return `<div style="margin-top:14px;background:var(--surface);border-radius:10px;padding:12px 14px;">
       <div style="font-size:13px;font-weight:700;color:var(--orange);margin-bottom:8px;">⚠️ Not yet graded in ${esc(GRADING_PERIOD_LABEL[period] || period)} (${missing.length})</div>
-      ${missing.map(s => `<div style="font-size:13px;color:var(--dark);padding:3px 0;">${esc(s.full_name || 'Student')} <span style="color:var(--text3);">· ${esc(s.student_id || 'No ID')}</span></div>`).join('')}
+      ${missing.map(s => `<div style="font-size:13px;color:var(--ink);padding:3px 0;">${esc(s.full_name || 'Student')} <span style="color:var(--text3);">· ${esc(s.student_id || 'No ID')}</span></div>`).join('')}
     </div>`;
   }catch(err){
     console.warn('missing-grades lookup skipped:', err);
@@ -325,13 +325,13 @@ async function loadSectionSummary(){
         </tr></thead>
         <tbody>${currentSummaryRows.map(r => `
           <tr style="border-bottom:1px solid var(--border);">
-            <td style="padding:8px 6px;font-weight:600;color:var(--dark);">${esc(r.name)}</td>
+            <td style="padding:8px 6px;font-weight:600;color:var(--ink);">${esc(r.name)}</td>
             <td style="padding:8px 6px;color:var(--text3);">${esc(r.studentNumber)}</td>
             <td style="padding:8px 6px;">${cell(r.prelim)}</td>
             <td style="padding:8px 6px;">${cell(r.midterm)}</td>
             <td style="padding:8px 6px;">${cell(r.prefinals)}</td>
             <td style="padding:8px 6px;">${cell(r.finals)}</td>
-            <td style="padding:8px 6px;font-weight:700;color:var(--dark);">${cell(r.average)}</td>
+            <td style="padding:8px 6px;font-weight:700;color:var(--ink);">${cell(r.average)}</td>
           </tr>`).join('')}
         </tbody></table>
         <div style="margin-top:10px;font-size:11px;color:var(--text3);">Period scores average every graded submission in that period; the semester average averages the periods that have grades.</div>`;

@@ -469,7 +469,7 @@ async function renderTransferNote(){
   const p = pendingTransferReq();
   if(!p) return;
   el.style.display = 'block';
-  el.innerHTML = `<div style="margin-top:10px;background:var(--surface);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--dark);">
+  el.innerHTML = `<div style="margin-top:10px;background:var(--surface);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--ink);">
     ⏳ Transfer to <strong>${esc(p.to_section)}</strong> is awaiting your professor's approval.
     <button type="button" class="btn-cancel" style="margin-top:8px;width:100%;justify-content:center;" onclick="cancelSectionTransfer('${p.id}')">Cancel request</button>
   </div>`;
@@ -3204,7 +3204,7 @@ function renderProjectsPage(uid){
       : '';
     const feedbackHtml = (p.status==='approved' && (p.finalGrade!=null || p.feedbackComment))
       ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-          ${p.finalGrade!=null ? `<div style="font-size:13px;font-weight:700;color:var(--dark);">Grade: ${p.finalGrade}/100</div>` : ''}
+          ${p.finalGrade!=null ? `<div style="font-size:13px;font-weight:700;color:var(--ink);">Grade: ${p.finalGrade}/100</div>` : ''}
           ${p.feedbackComment ? `<div style="font-size:12px;color:var(--text2);font-style:italic;margin-top:4px;">"${esc(p.feedbackComment)}"</div>` : ''}
         </div>`
       : '';
@@ -3339,12 +3339,12 @@ function renderGradesPage(uid){
     <div class="review-decision" style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         <div class="rd-title" style="margin:0;">${esc(periodLabel(p.gradingPeriod))} — ${esc(p.category)}</div>
-        <span style="font-size:22px;font-weight:700;color:var(--dark);">${p.finalGrade}/100</span>
+        <span style="font-size:22px;font-weight:700;color:var(--ink);">${p.finalGrade}/100</span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
-        <div class="sim-by">Creativity: <strong style="color:var(--dark)">${p.creativityScore ?? '—'}/40</strong></div>
-        <div class="sim-by">Technique: <strong style="color:var(--dark)">${p.techniqueScore ?? '—'}/35</strong></div>
-        <div class="sim-by">Composition: <strong style="color:var(--dark)">${p.compositionScore ?? '—'}/25</strong></div>
+        <div class="sim-by">Creativity: <strong style="color:var(--ink)">${p.creativityScore ?? '—'}/40</strong></div>
+        <div class="sim-by">Technique: <strong style="color:var(--ink)">${p.techniqueScore ?? '—'}/35</strong></div>
+        <div class="sim-by">Composition: <strong style="color:var(--ink)">${p.compositionScore ?? '—'}/25</strong></div>
       </div>
       ${p.gradeRemarks ? `<div class="sim-by" style="font-style:italic;">"${esc(p.gradeRemarks)}"</div>` : ''}
     </div>
@@ -3707,7 +3707,7 @@ function renderPendingRequestsList(){
       <div class="student-row-info">
         <div class="student-row-name">${esc(r.student_name||'Student')}</div>
         <div class="student-row-meta">${esc(r.student_number||'No ID')}${when ? ' &middot; ' + esc(when) : ''}</div>
-        <div class="student-row-meta" style="margin-top:4px;">🔔 Requests to move from <strong style="color:var(--dark);">${esc(from)}</strong> to <strong style="color:var(--dark);">${esc(r.to_section)}</strong></div>
+        <div class="student-row-meta" style="margin-top:4px;">🔔 Requests to move from <strong style="color:var(--ink);">${esc(from)}</strong> to <strong style="color:var(--ink);">${esc(r.to_section)}</strong></div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">
         <button class="btn-view-sm" onclick="event.stopPropagation();decideSectionRequest('${r.id}', true)">✓ Approve</button>
@@ -3812,7 +3812,7 @@ function renderSectionStudentsList(students){
     // A pending request lives ON the row: destination + Approve/Decline right
     // beside the student, where the professor is already looking.
     const reqHtml = req
-      ? `<div class="student-row-meta" style="margin-top:4px;">🔔 Requests <strong style="color:var(--dark);">${esc(req.to_section)}</strong>
+      ? `<div class="student-row-meta" style="margin-top:4px;">🔔 Requests <strong style="color:var(--ink);">${esc(req.to_section)}</strong>
            <button class="btn-view-sm" style="margin-left:6px;" onclick="event.stopPropagation();decideSectionRequest('${req.id}', true)">✓ Approve</button>
            <button class="btn-cancel" style="padding:6px 10px;margin-left:4px;" onclick="event.stopPropagation();decideSectionRequest('${req.id}', false)">✕ Decline</button>
          </div>`
@@ -4043,7 +4043,7 @@ async function loadAndRenderRankings(){
     const ribbonCls  = place===1 ? 'rb-gold' : place===2 ? 'rb-silver' : 'rb-bronze';
     const ribbonMedal = place===1 ? '🥇' : place===2 ? '🥈' : '🥉';
     const ribbonHtml = `<div class="podium-ribbon-wrap"><div class="podium-ribbon ${ribbonCls}"><span class="rb-medal">${ribbonMedal}</span><span class="rb-place">${place===1?'1st':place===2?'2nd':'3rd'}</span></div></div>`;
-    return `<div class="podium-card ${isFirst?'first':''}" style="width:${isFirst?200:180}px;${isFirst?'border:2px solid var(--dark);':''}">
+    return `<div class="podium-card ${isFirst?'first':''}" style="width:${isFirst?200:180}px;${isFirst?'border:2px solid var(--ink);':''}">
       ${ribbonHtml}
       <div class="podium-avatar"><div class="avatar-initial" style="background:${avatarColor(s.name)};width:100%;height:100%;">${esc(studentInitial(s.name))}</div></div>
       <div class="podium-name">${esc(s.name)}</div>
@@ -4538,8 +4538,32 @@ function handleLandingLink(){
   return true;
 }
 
+// ── THEME (dark mode) ──
+// Single floating #themeToggle button (index.html) flips data-theme on <html>;
+// css/style.css remaps surfaces/text via [data-theme="dark"]. Choice persists
+// in localStorage; first visit follows the OS setting (also pre-applied in
+// <head> so dark users never see a light flash). Brand greens/gold are
+// untouched — sidebar, banners and buttons look the same in both modes.
+function currentTheme(){
+  try{ return localStorage.getItem('artfolio-theme') || 'light'; }
+  catch(e){ return document.documentElement.getAttribute('data-theme') || 'light'; }
+}
+function applyTheme(t){
+  document.documentElement.setAttribute('data-theme', t);
+  try{ localStorage.setItem('artfolio-theme', t); }catch(e){}
+  syncThemeIcon();
+}
+function syncThemeIcon(){
+  const b = document.getElementById('themeToggle');
+  if(b) b.textContent = (currentTheme() === 'dark') ? '☀️' : '🌙';
+}
+function toggleTheme(){
+  applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+}
+
 async function initApp(){
   console.log('[artfolio] originality gate ' + ORIGINALITY_GATE_VERSION + ' active — 90%+ similar images are blocked BEFORE upload (no Cloudinary file, no database row).');
+  syncThemeIcon(); // head script pre-applied the theme; just fix the button icon
   if(typeof checkForQrLink === 'function' && checkForQrLink()) return; // ?work=<id> in the URL — show that work's public page and stop here
   if(handleLandingLink()) return; // ?to=landing from notification emails — landing page only, no auto-login
   const openedFromAlert = handleAlertLink(); // ?action=changepw|keep from the login-alert email

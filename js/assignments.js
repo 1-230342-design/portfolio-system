@@ -109,7 +109,7 @@ async function renderAssignmentsPage(uid){
       </div>
       ${a.instructions ? `<div class="assignment-instructions">${esc(a.instructions)}</div>` : ''}
       ${pastDue ? `<div class="assignment-overdue">🔒 Submissions closed — past due (${fmtDateTime(a.due_date)})</div>` : ''}
-      ${(mine && mine.final_grade!=null) ? `<div class="assignment-meta" style="margin-top:8px;"><strong style="color:var(--dark)">Grade: ${mine.final_grade}/100</strong></div>` : ''}
+      ${(mine && mine.final_grade!=null) ? `<div class="assignment-meta" style="margin-top:8px;"><strong style="color:var(--ink)">Grade: ${mine.final_grade}/100</strong></div>` : ''}
       ${(mine && mine.status === 'approved')
         ? `<button class="btn-submit-work" style="margin-top:12px;opacity:.6;cursor:not-allowed;" disabled>✅ Work already graded</button>`
         : pastDue
@@ -163,10 +163,10 @@ async function showManageMode(a, mine){
     }
   }catch(e){ console.warn('manage-mode item lookup skipped:', e); }
   extra = `<div style="font-size:12px;color:var(--text3);margin-top:6px;">Submitted ${mine.submitted_at ? fmtDateTime(mine.submitted_at) : ''}`
-    + (mine.final_grade != null ? ` &middot; <strong style="color:var(--dark)">Grade: ${mine.final_grade}/100</strong>` : '')
+    + (mine.final_grade != null ? ` &middot; <strong style="color:var(--ink)">Grade: ${mine.final_grade}/100</strong>` : '')
     + (a.due_date ? `<br>Resubmissions open until ${fmtDateTime(a.due_date)}` : '') + `</div>`;
   info.innerHTML = `${thumbHtml}
-    <div style="font-size:15px;font-weight:700;color:var(--dark);margin-top:10px;">${esc(title)}</div>
+    <div style="font-size:15px;font-weight:700;color:var(--ink);margin-top:10px;">${esc(title)}</div>
     <div style="font-size:12px;color:var(--text2);">Currently with your professor for review.</div>
     ${extra}
     <div style="font-size:12px;color:var(--text3);margin-top:8px;">Unsubmitting pulls it back instantly — it disappears from the professor's list.</div>`;
