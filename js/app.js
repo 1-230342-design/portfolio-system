@@ -2024,7 +2024,7 @@ const ALERT_COOLDOWN_MS = 5 * 60 * 1000;  // max one alert per email address per
 // Leave '' to auto-detect the current site address. Set it to your real deployed URL
 // (e.g. 'https://yourname.github.io/portfolio-system/') so the email buttons work
 // when you are testing on localhost / Live Server.
-const APP_PUBLIC_URL = '';
+const APP_PUBLIC_URL = 'https://portfolio-system-three.vercel.app';
 // Silent mode: NEVER ask the browser for the device's real location (no
 // "Allow location?" prompt — an attacker would just click Block anyway).
 // Alerts always use the IP-based estimate instead: city/region-level, silently
