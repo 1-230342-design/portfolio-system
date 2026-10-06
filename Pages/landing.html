@@ -284,6 +284,15 @@
   #s-landing .lp-login-card .lp-btn-dark:hover{ background:#f4ecd2; }
   #s-landing .lp-login-card .lp-btn-ghost{ border-color:rgba(255,255,255,.35); color:#fff; }
   #s-landing .lp-login-card .lp-btn-ghost:hover{ border-color:#fff; background:rgba(255,255,255,.08); }
+  /* dark mode: the solid green slab clashes with the night sky, so the card
+     goes glassy instead — translucent deep green with blur (stars shimmer
+     through faintly), gold hairline border, deeper shadow to seat it. */
+  [data-theme="dark"] #s-landing .lp-login-card{
+    background:rgba(23,63,40,.55);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border-color:rgba(201,162,39,.35);
+    box-shadow:0 18px 48px rgba(0,0,0,.5);
+  }
   /* (night-sky star CSS lives in css/style.css as a shared block) */
 </style>
 
