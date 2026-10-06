@@ -4567,35 +4567,41 @@ function toggleTheme(){
   applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
 }
 
-// ── LANDING STARFIELD (dark mode) ──
-// Builds ~110 twinkling stars + one meteor span inside #lpStars (landing page).
-// Stars are pure-CSS (randomized pos/size/phase here); visibility is gated by
-// CSS ([data-theme="dark"]) so light mode costs nothing. The meteor re-fires
-// every 3s from a random top-right spot — skipped in light mode and for
-// reduced-motion users. Runs once (guarded); called from initApp after the
-// data-include partials are inlined.
-function initLandingStars(){
-  const sky = document.getElementById('lpStars');
-  if(!sky || sky.dataset.done) return;
-  sky.dataset.done = '1';
-  const frag = document.createDocumentFragment();
-  for(let i=0;i<110;i++){
-    const s = document.createElement('span');
-    s.className = 'lp-star';
-    const sz = (Math.random()*2.2+1).toFixed(1);
-    s.style.cssText = 'left:'+(Math.random()*100).toFixed(2)+'%;top:'+(Math.random()*100).toFixed(2)+
-      '%;width:'+sz+'px;height:'+sz+'px;--tw:'+(Math.random()*3+2).toFixed(2)+
-      's;animation-delay:'+(Math.random()*4).toFixed(2)+'s;';
-    frag.appendChild(s);
-  }
-  const shoot = document.createElement('span');
-  shoot.className = 'lp-shoot'; shoot.id = 'lpShoot';
-  frag.appendChild(shoot);
-  sky.appendChild(frag);
+// ── NIGHT SKY (dark mode, public screens) ──
+// Fills every [data-sky] layer (landing + public search/profile/work/login;
+// star count per layer via data-stars) with twinkling stars + one meteor span
+// each. Twinkle is pure CSS with randomized pos/size/phase; layer visibility
+// is gated by CSS ([data-theme="dark"]) so light mode costs nothing. Every 3s
+// a meteor fires on whichever sky is currently on screen — skipped in light
+// mode and for reduced-motion users. Runs once (guarded); called from
+// initApp after the data-include partials are inlined.
+function initStarfields(){
+  if(window._starsDone) return;
+  const skies = document.querySelectorAll('[data-sky]');
+  if(!skies.length) return;
+  window._starsDone = true;
+  skies.forEach((sky)=>{
+    const count = parseInt(sky.dataset.stars || '60', 10) || 60;
+    const frag = document.createDocumentFragment();
+    for(let i=0;i<count;i++){
+      const s = document.createElement('span');
+      s.className = 'lp-star';
+      const sz = (Math.random()*2.2+1).toFixed(1);
+      s.style.cssText = 'left:'+(Math.random()*100).toFixed(2)+'%;top:'+(Math.random()*100).toFixed(2)+
+        '%;width:'+sz+'px;height:'+sz+'px;--tw:'+(Math.random()*3+2).toFixed(2)+
+        's;animation-delay:'+(Math.random()*4).toFixed(2)+'s;';
+      frag.appendChild(s);
+    }
+    const shoot = document.createElement('span');
+    shoot.className = 'lp-shoot';
+    frag.appendChild(shoot);
+    sky.appendChild(frag);
+  });
   const fireMeteor = ()=>{
     if(currentTheme() !== 'dark') return;
     if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const sh = document.getElementById('lpShoot');
+    const sky = document.querySelector('.screen.active [data-sky]');
+    const sh = sky && sky.querySelector('.lp-shoot');
     if(!sh) return;
     sh.style.top = (Math.random()*35+2).toFixed(1)+'%';
     sh.style.left = (Math.random()*40+45).toFixed(1)+'%';
@@ -4608,7 +4614,7 @@ function initLandingStars(){
 async function initApp(){
   console.log('[artfolio] originality gate ' + ORIGINALITY_GATE_VERSION + ' active — 90%+ similar images are blocked BEFORE upload (no Cloudinary file, no database row).');
   syncThemeIcon(); // head script pre-applied the theme; just fix the button icon
-  initLandingStars(); // build the dark-mode starfield (CSS-gated, costs nothing in light)
+  initStarfields(); // build the dark-mode night sky (CSS-gated, costs nothing in light)
   if(typeof checkForQrLink === 'function' && checkForQrLink()) return; // ?work=<id> in the URL — show that work's public page and stop here
   if(handleLandingLink()) return; // ?to=landing from notification emails — landing page only, no auto-login
   const openedFromAlert = handleAlertLink(); // ?action=changepw|keep from the login-alert email
