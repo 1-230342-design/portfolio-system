@@ -4568,10 +4568,10 @@ function toggleTheme(){
 }
 
 // ── LANDING STARFIELD (dark mode) ──
-// Builds ~70 twinkling stars + one meteor span inside #lpStars (landing page).
+// Builds ~110 twinkling stars + one meteor span inside #lpStars (landing page).
 // Stars are pure-CSS (randomized pos/size/phase here); visibility is gated by
 // CSS ([data-theme="dark"]) so light mode costs nothing. The meteor re-fires
-// every 10s from a random top-right spot — skipped in light mode and for
+// every 3s from a random top-right spot — skipped in light mode and for
 // reduced-motion users. Runs once (guarded); called from initApp after the
 // data-include partials are inlined.
 function initLandingStars(){
@@ -4579,10 +4579,10 @@ function initLandingStars(){
   if(!sky || sky.dataset.done) return;
   sky.dataset.done = '1';
   const frag = document.createDocumentFragment();
-  for(let i=0;i<70;i++){
+  for(let i=0;i<110;i++){
     const s = document.createElement('span');
     s.className = 'lp-star';
-    const sz = (Math.random()*1.8+1).toFixed(1);
+    const sz = (Math.random()*2.2+1).toFixed(1);
     s.style.cssText = 'left:'+(Math.random()*100).toFixed(2)+'%;top:'+(Math.random()*100).toFixed(2)+
       '%;width:'+sz+'px;height:'+sz+'px;--tw:'+(Math.random()*3+2).toFixed(2)+
       's;animation-delay:'+(Math.random()*4).toFixed(2)+'s;';
@@ -4602,7 +4602,7 @@ function initLandingStars(){
     sh.classList.remove('fly'); void sh.offsetWidth; sh.classList.add('fly');
   };
   setTimeout(fireMeteor, 1500); // one quick teaser shortly after load
-  setInterval(fireMeteor, 10000);
+  setInterval(fireMeteor, 3000);
 }
 
 async function initApp(){
