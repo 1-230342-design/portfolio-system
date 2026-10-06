@@ -97,6 +97,18 @@
 
   /* hero */
   #s-landing .lp-hero{ padding:64px 32px 84px; position:relative; overflow:hidden; }
+  /* "morning mirror" — daylight counterpart of the dark aurora. Three soft
+     washes over the cream base, edges only: emerald breath top-left behind
+     the seal, gold pool behind the login card, white lift keeping the middle
+     reading column bright. Light mode only (dark keeps its night sky). */
+  html[data-theme="light"] #s-landing .lp-hero,
+  html:not([data-theme]) #s-landing .lp-hero{
+    background:
+      radial-gradient(560px 420px at 12% 16%, rgba(226,240,230,.8), rgba(226,240,230,0) 70%),
+      radial-gradient(660px 540px at 84% 42%, rgba(244,236,210,.9), rgba(244,236,210,0) 70%),
+      radial-gradient(520px 420px at 50% 58%, rgba(255,255,255,.6), rgba(255,255,255,0) 70%),
+      var(--lp-bg);
+  }
   #s-landing .lp-hero-grid{ max-width:1240px; margin:0 auto; display:grid; grid-template-columns:1.15fr .85fr; gap:44px; align-items:start; position:relative; }
   #s-landing .lp-kicker{ display:flex; align-items:center; gap:8px; color:var(--lp-green-dark); font-weight:600; font-size:12.5px; margin-bottom:16px; }
   #s-landing .lp-kicker::before{ content:'';width:6px;height:6px;border-radius:50%;background:var(--lp-gold); }
