@@ -214,6 +214,29 @@
     #s-landing .lp-portfolio-grid{ grid-template-columns:repeat(2,1fr); }
     #s-landing .lp-explore-head{ flex-direction:column; align-items:flex-start; }
   }
+
+  /* dark mode — remap the lp- tokens (the landing is scoped to its own
+     variables, so the global [data-theme] block can't reach it). Header,
+     footer and buttons keep their greens; only page surfaces + text go dark.
+     Card 1 keeps a near-black fill because --lp-ink (its light-mode bg)
+     becomes cream in dark mode. */
+  [data-theme="dark"] #s-landing{
+    --lp-bg:#12160f;
+    --lp-surface:#1f271d;
+    --lp-surface-tint:#1a2115;
+    --lp-ink:#edf1e2;
+    --lp-ink-soft:#b6bba4;
+    --lp-green:#3da865;
+    --lp-green-dark:#7cc79a;
+    --lp-green-tint:rgba(47,143,82,.22);
+    --lp-gold:#d4af37;
+    --lp-gold-soft:rgba(201,162,39,.16);
+    --lp-border:#2b3427;
+  }
+  [data-theme="dark"] #s-landing .lp-feature-card{ background:rgba(31,39,29,.7); }
+  [data-theme="dark"] #s-landing .lp-feature-card:hover{ background:rgba(47,143,82,.22); }
+  [data-theme="dark"] #s-landing .lp-feature-card:nth-child(1){ background:#101510; }
+  [data-theme="dark"] #s-landing .lp-feature-card:nth-child(1):hover{ background:#000; }
 </style>
 
 <header class="lp-header">

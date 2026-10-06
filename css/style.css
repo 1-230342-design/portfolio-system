@@ -59,6 +59,8 @@
 [data-theme="dark"] .notif-card.pending-bg,
 [data-theme="dark"] .notif-item.pending,
 [data-theme="dark"] .warning-note{background:rgba(255,152,0,.1);}
+[data-theme="dark"] .notif-card.approved-bg,
+[data-theme="dark"] .notif-item.approved{background:rgba(76,175,80,.12);}
 [data-theme="dark"] .notif-item.rejected{background:rgba(244,67,54,.1);}
 [data-theme="dark"] .warning-note{color:#f0c46c;border-color:rgba(255,152,0,.35);}
 [data-theme="dark"] .portfolio-qr{background:#fff;} /* stays white: QR scanners need the contrast */
