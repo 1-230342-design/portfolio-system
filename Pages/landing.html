@@ -227,12 +227,17 @@
     --lp-ink:#edf1e2;
     --lp-ink-soft:#b6bba4;
     --lp-green:#3da865;
-    --lp-green-dark:#7cc79a;
+    --lp-green-dark:#173f28;
     --lp-green-tint:rgba(47,143,82,.22);
     --lp-gold:#d4af37;
     --lp-gold-soft:rgba(201,162,39,.16);
     --lp-border:#2b3427;
   }
+  /* --lp-green-dark stays dark: it paints the header/footer backgrounds.
+     Only its three TEXT usages get lightened for dark mode. */
+  [data-theme="dark"] #s-landing .lp-kicker,
+  [data-theme="dark"] #s-landing .lp-btn-text,
+  [data-theme="dark"] #s-landing .lp-portfolio-card span{ color:#7cc79a; }
   [data-theme="dark"] #s-landing .lp-feature-card{ background:rgba(31,39,29,.7); }
   [data-theme="dark"] #s-landing .lp-feature-card:hover{ background:rgba(47,143,82,.22); }
   [data-theme="dark"] #s-landing .lp-feature-card:nth-child(1){ background:#101510; }

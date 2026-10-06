@@ -4558,6 +4558,12 @@ function syncThemeIcon(){
   if(b) b.textContent = (currentTheme() === 'dark') ? '☀️' : '🌙';
 }
 function toggleTheme(){
+  // .theming cross-fades every surface (see css/style.css); removed after
+  // the 400ms transition so normal hover animations are unaffected.
+  document.body.classList.add('theming');
+  setTimeout(()=>document.body.classList.remove('theming'), 480);
+  const b = document.getElementById('themeToggle');
+  if(b){ b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin'); }
   applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
 }
 

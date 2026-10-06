@@ -80,6 +80,16 @@
 }
 #themeToggle:hover{transform:scale(1.08);}
 [data-theme="dark"] #themeToggle{background:linear-gradient(135deg,#c9a227,#a5811c);color:#173626;}
+/* ── THEME-SWITCH ANIMATION ──
+   toggleTheme() adds .theming to <body> for ~450ms. While present, every
+   element cross-fades background/color/border instead of snapping. Scoped to
+   the class (not permanent) so hover transitions elsewhere are untouched.
+   Gradients/images can't transition — those flip instantly, solids fade. */
+body.theming, body.theming *, body.theming *::before, body.theming *::after{
+  transition:background-color .4s ease, color .4s ease, border-color .4s ease !important;
+}
+#themeToggle.spin{animation:themeSpin .45s ease;}
+@keyframes themeSpin{from{transform:rotate(0);}to{transform:rotate(360deg);}}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:var(--text);min-height:100vh;}
 ::selection{background:var(--accent);color:#fff;}
