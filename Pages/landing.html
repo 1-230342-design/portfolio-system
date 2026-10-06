@@ -242,6 +242,10 @@
   [data-theme="dark"] #s-landing .lp-feature-card:hover{ background:rgba(47,143,82,.22); }
   [data-theme="dark"] #s-landing .lp-feature-card:nth-child(1){ background:#101510; }
   [data-theme="dark"] #s-landing .lp-feature-card:nth-child(1):hover{ background:#000; }
+  /* lp-btn-dark ("Login as student") uses --lp-ink as its fill — cream in dark
+     mode, so white text vanishes. Pin it near-black with cream text. */
+  [data-theme="dark"] #s-landing .lp-btn-dark{ background:#101510; color:#edf1e2; }
+  [data-theme="dark"] #s-landing .lp-btn-dark:hover{ background:#000; }
 </style>
 
 <header class="lp-header">
