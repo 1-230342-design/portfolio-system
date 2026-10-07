@@ -3607,7 +3607,7 @@ let currentSectionId       = null;  // section currently open in the "students i
 async function loadAllStudentProfiles(){
   const { data, error } = await sb
     .from('user_profiles')
-    .select('user_id, full_name, student_id, section, year_level')
+    .select('user_id, full_name, student_id, section, year_level, social_link, show_social_on_qr')
     .eq('role', 'student')
     .order('full_name');
   if(error){ console.error('loadAllStudentProfiles error:', error); return []; }
@@ -3921,6 +3921,22 @@ async function viewStudentProfile(userId){
     ([student.section, student.year_level].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ') || 'Section · Year Level')
   ].join('<br>');
   document.getElementById('psd-avatar').innerHTML = `<div class="avatar-initial" style="background:${avatarColor(student.full_name)}">${esc(studentInitial(student.full_name))}</div>`;
+  // Contact QR on the professor's student header — same box as the public
+  // showcase. Professors see it whenever the student set a social link
+  // (they're the student's teacher, not a stranger); the public header still
+  // requires the show_social_on_qr opt-in. No link = no box at all.
+  const psdQr = document.getElementById('psd-qr');
+  if(psdQr){
+    const rawLink = (student.social_link || '').trim();
+    if(rawLink){
+      const href = /^https?:\/\//i.test(rawLink) ? rawLink : 'https://' + rawLink;
+      psdQr.style.display = '';
+      psdQr.innerHTML = `<img src="${buildGoQrImageUrl(href, 140)}" alt="Contact QR code"/><div class="qr-cap">📱 Scan to contact</div>`;
+    }else{
+      psdQr.style.display = 'none';
+      psdQr.innerHTML = '';
+    }
+  }
 
   const worksEl = document.getElementById('psd-works');
   worksEl.innerHTML = `<div style="font-size:13px;color:var(--text3);grid-column:1/-1;">Loading works…</div>`;
