@@ -2308,6 +2308,22 @@ async function doLoginProf(){
 }
 
 // ── SIGN UP ──
+// ASIATECH-ONLY accounts: the system is exclusive to ASIATECH (thesis Scope),
+// so signups require an @asiatech.edu.ph address — personal Gmails are
+// rejected here AND server-side inside request_otp() (supabase-otp-setup.sql),
+// so bypassing this check in the console still can't get a code emailed.
+const ASIATECH_EMAIL_DOMAIN = 'asiatech.edu.ph';
+function isAsiatechEmail(email){
+  return typeof email === 'string' && email.trim().toLowerCase().endsWith('@' + ASIATECH_EMAIL_DOMAIN);
+}
+function requireAsiatechEmail(emailInp){
+  const email = (emailInp || '').trim().toLowerCase();
+  if(!isAsiatechEmail(email)){
+    showToast('❌ This system is exclusive to ASIATECH — please use your @asiatech.edu.ph email');
+    return null;
+  }
+  return email;
+}
 async function doSignupStudent(){
   const firstName = document.querySelector('#s-signup-student input[placeholder="First Name"]').value.trim();
   const lastName  = document.querySelector('#s-signup-student input[placeholder="Last Name"]').value.trim();
@@ -2316,18 +2332,20 @@ async function doSignupStudent(){
   const yearLevel = document.getElementById('signup-student-year').value;
   const emailInp  = document.querySelector('#s-signup-student input[type="email"]').value.trim();
   if(!firstName||!lastName||!emailInp){ showToast('⚠️ Please fill in all required fields'); return; }
+  const email = requireAsiatechEmail(emailInp);
+  if(!email) return;
   const pass = prompt('Create a password (min 6 characters):');
   if(!pass||pass.length<6){ showToast('⚠️ Password must be at least 6 characters'); return; }
 
   showToast('📧 Sending verification code…');
-  const sent = await sendCustomOtp(emailInp);
+  const sent = await sendCustomOtp(email);
   if(!sent){ showToast('❌ Could not send verification code. Please try again.'); return; }
 
   // The real Supabase account (sb.auth.signUp) isn't created until
   // verifyStudentOtp() confirms this code — that's why the password has to
   // travel along in here too now, instead of being used immediately.
   sessionStorage.setItem('pendingSignup', JSON.stringify({
-    email:      emailInp,
+    email:      email,
     password:   pass,
     role:       'student',
     full_name:  firstName+' '+lastName,
@@ -2346,15 +2364,17 @@ async function doSignupProf(){
   const department = document.getElementById('signup-prof-department').value;
   const emailInp   = document.querySelector('#s-signup-prof input[type="email"]').value.trim();
   if(!firstName||!lastName||!department||!emailInp){ showToast('⚠️ Please fill in all required fields'); return; }
+  const email = requireAsiatechEmail(emailInp);
+  if(!email) return;
   const pass = prompt('Create a password (min 6 characters):');
   if(!pass||pass.length<6){ showToast('⚠️ Password must be at least 6 characters'); return; }
 
   showToast('📧 Sending verification code…');
-  const sent = await sendCustomOtp(emailInp);
+  const sent = await sendCustomOtp(email);
   if(!sent){ showToast('❌ Could not send verification code. Please try again.'); return; }
 
   sessionStorage.setItem('pendingSignup', JSON.stringify({
-    email:      emailInp,
+    email:      email,
     password:   pass,
     role:       'professor',
     full_name:  firstName+' '+lastName,

@@ -39,12 +39,20 @@ drop function if exists request_otp(text, text);
 
 create or replace function request_otp(p_email text, p_code text)
 returns void
-language sql
+language plpgsql
 security definer
 set search_path = public
 as $$
+begin
+  -- ASIATECH-ONLY: the system is exclusive to @asiatech.edu.ph addresses
+  -- (thesis Scope). Personal Gmails are rejected here so console bypasses of
+  -- the app's client-side check still can't get a code emailed.
+  if p_email is null or lower(trim(p_email)) not like '%@asiatech.edu.ph' then
+    raise exception 'Only @asiatech.edu.ph addresses can request a code.';
+  end if;
   delete from otp_codes where expires_at < now() - interval '1 hour';
   insert into otp_codes (email, code, expires_at) values (p_email, p_code, now() + interval '10 minutes');
+end
 $$;
 
 drop function if exists verify_otp(text, text);
