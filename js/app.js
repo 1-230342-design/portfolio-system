@@ -4671,10 +4671,40 @@ function initStarfields(){
   setInterval(fireMeteor, 3000);
 }
 
+// ── DAYLIGHT MOTES (light mode) ──
+// Counterpart to initStarfields: fills every [data-motes] layer with soft
+// gold/green/white dust that drifts slowly upward (moteFloat in css/style.css
+// with randomized pos/size/color/duration/phase). Visibility gated by CSS
+// (light mode only) so dark mode costs nothing. Runs once; initApp calls it
+// next to initStarfields after the partials are inlined.
+function initSunMotes(){
+  if(window._motesDone) return;
+  const skies = document.querySelectorAll('[data-motes]');
+  if(!skies.length) return;
+  window._motesDone = true;
+  const cols = ['rgba(201,162,39,', 'rgba(47,143,82,', 'rgba(255,255,255,'];
+  skies.forEach((sky)=>{
+    const count = parseInt(sky.dataset.motes || '40', 10) || 40;
+    const frag = document.createDocumentFragment();
+    for(let i=0;i<count;i++){
+      const s = document.createElement('span');
+      s.className = 'lp-mote';
+      const sz = (Math.random()*4+3).toFixed(1);
+      const a = (Math.random()*0.35+0.25).toFixed(2);
+      s.style.cssText = 'left:'+(Math.random()*100).toFixed(2)+'%;top:'+(Math.random()*100).toFixed(2)+
+        '%;width:'+sz+'px;height:'+sz+'px;background:'+cols[i%3]+a+');--fl:'+
+        (Math.random()*6+7).toFixed(2)+'s;animation-delay:'+(Math.random()*9).toFixed(2)+'s;';
+      frag.appendChild(s);
+    }
+    sky.appendChild(frag);
+  });
+}
+
 async function initApp(){
   console.log('[artfolio] originality gate ' + ORIGINALITY_GATE_VERSION + ' active — 90%+ similar images are blocked BEFORE upload (no Cloudinary file, no database row).');
   syncThemeIcon(); // head script pre-applied the theme; just fix the button icon
   initStarfields(); // build the dark-mode night sky (CSS-gated, costs nothing in light)
+  initSunMotes(); // build the light-mode daylight motes (CSS-gated, costs nothing in dark)
   if(typeof checkForQrLink === 'function' && checkForQrLink()) return; // ?work=<id> in the URL — show that work's public page and stop here
   if(handleLandingLink()) return; // ?to=landing from notification emails — landing page only, no auto-login
   const openedFromAlert = handleAlertLink(); // ?action=changepw|keep from the login-alert email

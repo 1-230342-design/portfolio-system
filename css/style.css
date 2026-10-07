@@ -120,7 +120,36 @@ body.theming, body.theming *, body.theming *::before, body.theming *::after{
   10%{opacity:1;}
   100%{opacity:0; transform:translate(-34vw,20vw) rotate(-28deg);}
 }
-@media (prefers-reduced-motion: reduce){ .lp-stars{ display:none; } }
+@media (prefers-reduced-motion: reduce){ .lp-stars, .lp-motes{ display:none; } }
+/* ── DAYLIGHT MOTES (light mode mirror of the night sky) ──
+   Soft gold/green/white dust drifting slowly upward through the daylight
+   washes — built by initSunMotes() in js/app.js (~40 spans per screen).
+   Same rules as the sky: behind content, light-mode only, free in dark. */
+#s-landing .lp-motes,
+#s-public-search .lp-motes,
+#s-public-profile .lp-motes,
+#s-public-work .lp-motes,
+#s-login .lp-motes{
+  position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden;display:none;
+}
+html[data-theme="light"] #s-landing .lp-motes,
+html:not([data-theme]) #s-landing .lp-motes,
+html[data-theme="light"] #s-public-search .lp-motes,
+html:not([data-theme]) #s-public-search .lp-motes,
+html[data-theme="light"] #s-public-profile .lp-motes,
+html:not([data-theme]) #s-public-profile .lp-motes,
+html[data-theme="light"] #s-public-work .lp-motes,
+html:not([data-theme]) #s-public-work .lp-motes,
+html[data-theme="light"] #s-login .lp-motes,
+html:not([data-theme]) #s-login .lp-motes{ display:block; }
+.lp-mote{ position:absolute; border-radius:50%; filter:blur(1px);
+  animation:moteFloat var(--fl,9s) ease-in-out infinite; }
+@keyframes moteFloat{
+  0%{transform:translateY(12px);opacity:0;}
+  20%{opacity:.7;}
+  80%{opacity:.5;}
+  100%{transform:translateY(-48px);opacity:0;}
+}
 /* ── MULTIMEDIA LOADER — paint-palette dots ──
    Replaces the old gray "Loading…" text everywhere. Three brand dots
    (green, light green, gold) rippling in a wave beside the label, built by
