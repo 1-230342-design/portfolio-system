@@ -242,6 +242,20 @@ function go(id){
   el.classList.add('active');
   window.scrollTo(0,0);
 }
+// Back navigation WITH a landing cascade entrance (search page's ← Back).
+// Order is the safety feature: go() first, animation class second — so even
+// if the CSS never runs, you're still home. Class self-removes after ~950ms
+// so repeat visits replay cleanly. See .cascade-in in css/style.css.
+function backToLanding(){
+  go('s-landing');
+  if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const land = document.getElementById('s-landing');
+  if(!land) return;
+  land.classList.remove('cascade-in');
+  void land.offsetWidth; // restart the animation even on rapid repeats
+  land.classList.add('cascade-in');
+  setTimeout(()=>land.classList.remove('cascade-in'), 950);
+}
 function showToast(msg){ const t=document.getElementById('toast'); t.classList.remove('tloading'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3500); }
 // Loading variant: mini palette dots + label (innerHTML, label escaped).
 // Used for the "Loading…" toasts so they match the .art-loader placeholders.

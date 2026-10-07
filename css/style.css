@@ -132,6 +132,19 @@ body.theming, body.theming *, body.theming *::before, body.theming *::after{
 .art-loader .adot:nth-child(2){background:#6fbf8f;animation-delay:.15s;}
 .art-loader .adot:nth-child(3){background:#c9a227;animation-delay:.3s;}
 @keyframes adotBounce{0%,100%{transform:translateY(0);opacity:.5;}50%{transform:translateY(-7px);opacity:1;}}
+/* ── LANDING CASCADE ENTRANCE ──
+   Played when arriving via the search page's ← Back (backToLanding in
+   js/app.js adds .cascade-in for ~950ms). Hero pieces rise in sequence —
+   kicker, headline, copy, buttons, login card. Navigation happens FIRST and
+   the animation second, so a broken animation can never strand anyone;
+   reduced-motion users get the plain jump. */
+#s-landing.cascade-in .lp-kicker{animation:cascadeUp .5s ease both;}
+#s-landing.cascade-in .lp-display{animation:cascadeUp .55s .08s ease both;}
+#s-landing.cascade-in .lp-hero-copy{animation:cascadeUp .55s .16s ease both;}
+#s-landing.cascade-in .lp-hero-ctas{animation:cascadeUp .55s .24s ease both;}
+#s-landing.cascade-in .lp-login-card{animation:cascadeUp .6s .18s ease both;}
+@keyframes cascadeUp{from{opacity:0;transform:translateY(26px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion: reduce){ #s-landing.cascade-in .lp-kicker,#s-landing.cascade-in .lp-display,#s-landing.cascade-in .lp-hero-copy,#s-landing.cascade-in .lp-hero-ctas,#s-landing.cascade-in .lp-login-card{animation:none;} }
 @media (prefers-reduced-motion: reduce){ .art-loader .adot{animation:none;} }
 /* mini palette dots inside toast popups (showToastLoading) — same bounce,
    sized for the toast bar; toast bg is dark green so gold/greens pop */
