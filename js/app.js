@@ -4688,16 +4688,16 @@ function initSunMotes(){
     const count = parseInt(sky.dataset.motes || '40', 10) || 40;
     const frag = document.createDocumentFragment();
     for(let i=0;i<count;i++){
-      // every 8th floater is a small translucent school logo instead of dust
-      if(i % 8 === 7){
+      // every 6th floater is a small translucent school logo instead of dust
+      if(i % 6 === 5){
         const img = document.createElement('img');
-        img.src = moteLogos[Math.floor(i / 8) % moteLogos.length];
+        img.src = moteLogos[Math.floor(i / 6) % moteLogos.length];
         img.alt = ''; img.draggable = false;
         img.className = 'lp-mote-logo';
         const w = (Math.random()*14+20).toFixed(0);
         img.style.cssText = 'left:'+(Math.random()*100).toFixed(2)+'%;top:'+(Math.random()*100).toFixed(2)+
-          '%;width:'+w+'px;--fl:'+(Math.random()*5+9).toFixed(2)+
-          's;animation-delay:'+(Math.random()*4).toFixed(2)+'s;';
+          '%;width:'+w+'px;--fl:'+(Math.random()*3+5).toFixed(2)+
+          's;animation-delay:'+(Math.random()*2).toFixed(2)+'s;';
         frag.appendChild(img);
         continue;
       }
@@ -4707,7 +4707,7 @@ function initSunMotes(){
       const a = (Math.random()*0.35+0.35).toFixed(2);
       s.style.cssText = 'left:'+(Math.random()*100).toFixed(2)+'%;top:'+(Math.random()*100).toFixed(2)+
         '%;width:'+sz+'px;height:'+sz+'px;background:'+cols[i%3]+a+');--fl:'+
-        (Math.random()*3+4).toFixed(2)+'s;animation-delay:'+(Math.random()*4).toFixed(2)+'s;';
+        (Math.random()*2+2.5).toFixed(2)+'s;animation-delay:'+(Math.random()*2).toFixed(2)+'s;';
       frag.appendChild(s);
     }
     sky.appendChild(frag);
