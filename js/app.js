@@ -242,7 +242,15 @@ function go(id){
   el.classList.add('active');
   window.scrollTo(0,0);
 }
-function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3500); }
+function showToast(msg){ const t=document.getElementById('toast'); t.classList.remove('tloading'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3500); }
+// Loading variant: mini palette dots + label (innerHTML, label escaped).
+// Used for the "Loading…" toasts so they match the .art-loader placeholders.
+function showToastLoading(label){
+  const t=document.getElementById('toast');
+  t.innerHTML = `<span class="tload"><span></span><span></span><span></span></span><span>${esc(label || 'Loading…')}</span>`;
+  t.classList.add('show'); t.classList.add('tloading');
+  setTimeout(()=>{ t.classList.remove('show'); t.classList.remove('tloading'); },3500);
+}
 // Toggle a password input between hidden/visible, swapping the eye icon (open ↔ slashed).
 // Reusable for any password field — just pass the input's id and the button that was clicked.
 function togglePasswordVisibility(inputId, btnEl){
@@ -1715,7 +1723,7 @@ async function runLandingSearch(inputId){
 // exact name or student number, this lists everyone enrolled so they can scroll
 // and find the person, instead of being forced to type a perfect search query. ──
 async function browseAllStudents(){
-  showToast('📋 Loading student list…');
+  showToastLoading('Loading student list…');
   let data, error;
   try{
     ({ data, error } = await sb
@@ -1871,7 +1879,7 @@ function openPublicSection(name){
 
 let _publicProfileWorks = [];
 async function openPublicProfile(userId){
-  showToast('📂 Loading portfolio…');
+  showToastLoading('Loading portfolio…');
 
   const { data: profile, error: profErr } = await sb
     .from('user_profiles')

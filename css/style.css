@@ -133,6 +133,14 @@ body.theming, body.theming *, body.theming *::before, body.theming *::after{
 .art-loader .adot:nth-child(3){background:#c9a227;animation-delay:.3s;}
 @keyframes adotBounce{0%,100%{transform:translateY(0);opacity:.5;}50%{transform:translateY(-7px);opacity:1;}}
 @media (prefers-reduced-motion: reduce){ .art-loader .adot{animation:none;} }
+/* mini palette dots inside toast popups (showToastLoading) — same bounce,
+   sized for the toast bar; toast bg is dark green so gold/greens pop */
+.toast.tloading{display:inline-flex;align-items:center;gap:9px;}
+.toast .tload{display:inline-flex;gap:4px;}
+.toast .tload span{width:7px;height:7px;border-radius:50%;animation:adotBounce 1.1s ease-in-out infinite;}
+.toast .tload span:nth-child(1){background:#c9a227;}
+.toast .tload span:nth-child(2){background:#6fbf8f;animation-delay:.15s;}
+.toast .tload span:nth-child(3){background:#2f8f52;animation-delay:.3s;}
 /* keep nav + content above the sky (the sky is z-index 0) */
 #s-public-profile .landing-nav,
 #s-public-work .landing-nav{position:relative;z-index:1;}
