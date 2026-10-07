@@ -4605,6 +4605,38 @@ function toggleTheme(){
   applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
 }
 
+// ── PAGE PEEL (public search → landing) ──
+// Click version (no finger tracking): corner tease (~380ms) then full peel
+// (~700ms) revealing the landing staged underneath, then a normal
+// go('s-landing'). Viewport-locks the outgoing screen (fixed + top:-scrollY)
+// so nothing jumps mid-animation. Guarded against double-clicks and honors
+// reduced-motion (plain go). See .peel-* rules in css/style.css.
+let _peeling = false;
+function peelBackToLanding(){
+  if(_peeling) return;
+  const cur = document.getElementById('s-public-search');
+  const land = document.getElementById('s-landing');
+  if(!cur || !land){ go('s-landing'); return; }
+  if(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches){ go('s-landing'); return; }
+  _peeling = true;
+  land.classList.add('active', 'peel-base');
+  cur.classList.add('peel-top');
+  cur.style.top = (-(window.scrollY || 0)) + 'px';
+  void cur.offsetWidth; // commit the staging before animating
+  cur.classList.add('peel-tease');
+  setTimeout(()=>{
+    cur.classList.remove('peel-tease');
+    cur.classList.add('peel-off');
+    setTimeout(()=>{
+      cur.classList.remove('peel-top', 'peel-off');
+      cur.style.top = '';
+      land.classList.remove('peel-base');
+      _peeling = false;
+      go('s-landing');
+    }, 720);
+  }, 380);
+}
+
 // ── LOADER ──
 // Multimedia loading indicator (paint-palette dots, see .art-loader in
 // css/style.css) replacing the old gray "Loading…" text. Optional second arg
