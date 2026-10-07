@@ -3918,7 +3918,7 @@ async function viewStudentProfile(userId){
   document.getElementById('psd-name').textContent = student.full_name || 'Student';
   document.getElementById('psd-meta').innerHTML = [
     esc(student.student_id||'No student ID'),
-    esc([student.section, student.year_level].filter(Boolean).join(' &nbsp;·&nbsp; ') || 'Section · Year Level')
+    ([student.section, student.year_level].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ') || 'Section · Year Level')
   ].join('<br>');
   document.getElementById('psd-avatar').innerHTML = `<div class="avatar-initial" style="background:${avatarColor(student.full_name)}">${esc(studentInitial(student.full_name))}</div>`;
 
