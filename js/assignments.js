@@ -147,7 +147,7 @@ async function showManageMode(a, mine){
   const box = document.getElementById('aw-manage-box');
   const info = document.getElementById('aw-manage-info');
   box.style.display = 'block';
-  info.innerHTML = `<div style="font-size:13px;color:var(--text3);">Loading your submission…</div>`;
+  info.innerHTML = loadingHtml('Loading your submission…');
   let thumbHtml = '', title = 'Your submission', extra = '';
   try{
     const { data: items } = await sb.from('portfolio_items')
@@ -439,7 +439,7 @@ async function toggleAssignmentSubmissions(assignmentId){
   if(isOpen) return; // clicking an already-open panel just closes it
 
   panel.classList.add('open');
-  panel.innerHTML = `<div style="font-size:13px;color:var(--text3);">Loading submissions…</div>`;
+  panel.innerHTML = loadingHtml('Loading submissions…');
   // Always reload (never trust the cache here) so a just-unsubmitted entry
   // vanishes from the professor's list the moment they open the panel.
   _profItems = await loadAllItemsForProfessor();

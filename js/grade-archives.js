@@ -69,7 +69,7 @@ async function deleteSection(id){
 async function renderSectionsManager(){
   const el = document.getElementById('sections-list');
   if(!el) return;
-  el.innerHTML = `<div style="font-size:13px;color:var(--text3);">Loading sections…</div>`;
+  el.innerHTML = loadingHtml('Loading sections…');
   try{
     const { data, error } = await sb.from('sections').select('id,name,school_year,semester').order('name');
     if(error) throw error;
@@ -209,7 +209,7 @@ async function loadSectionPreview(){
   if(!section) return;
   const period = document.getElementById('sp-period-select').value;
   const wrap = document.getElementById('sp-table-wrap');
-  wrap.innerHTML = `<div style="font-size:13px;color:var(--text3);">Loading grades…</div>`;
+  wrap.innerHTML = loadingHtml('Loading grades…');
 
   try{
     const data = await fetchSectionGradeData(section.name, period);
@@ -284,7 +284,7 @@ async function loadSectionSummary(){
   const section = _sectionsCache.find(s => s.id === currentPreviewSectionId);
   if(!section) return;
   const wrap = document.getElementById('sp-table-wrap');
-  wrap.innerHTML = `<div style="font-size:13px;color:var(--text3);">Loading summary…</div>`;
+  wrap.innerHTML = loadingHtml('Loading summary…');
 
   try{
     const data = await fetchSectionGradeData(section.name, null);

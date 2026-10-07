@@ -27,7 +27,7 @@ function buildGoQrImageUrl(dataUrl, size){
 async function loadPublicWorkFromQR(itemId){
   const el = document.getElementById('qw-body');
   go('s-public-work');
-  el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:40px 0;text-align:center;">Loading…</div>`;
+  el.innerHTML = loadingHtml('Loading…');
 
   try{
     const { data: item, error: ie } = await sb

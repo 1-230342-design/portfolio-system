@@ -1921,7 +1921,7 @@ async function openPublicProfile(userId){
   // Only PUBLIC + APPROVED works are visible here — nothing pending/rejected/private,
   // and no grades or professor comments, since those stay private to the student.
   const worksEl = document.getElementById('pp-works');
-  worksEl.innerHTML = `<div style="font-size:13px;color:var(--text3);grid-column:1/-1;">Loading works…</div>`;
+  worksEl.innerHTML = `${loadingHtml('Loading works…', 'grid-column:1/-1')}`;
   go('s-public-profile');
 
   try{
@@ -3637,7 +3637,7 @@ async function renderStudentsPage(){
 
   const el = document.getElementById('p-sections-list');
   if(!el) return;
-  el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">Loading sections…</div>`;
+  el.innerHTML = loadingHtml('Loading sections…');
 
   // Pending section/join requests — fetched up front so the tab count and
   // list below are ready before paint. Reviewer-only professors can't see them.
@@ -3803,7 +3803,7 @@ async function openUnenrolledStudents(){
   if(searchBox) searchBox.value = '';
 
   const el = document.getElementById('p-section-students-list');
-  if(el) el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">Loading students…</div>`;
+  if(el) el.innerHTML = loadingHtml('Loading students…');
 
   _allStudentsCache = await loadAllStudentProfiles();
   _currentSectionStudents = _allStudentsCache.filter(s=>!s.section);
@@ -3862,7 +3862,7 @@ async function openSectionStudents(sectionId){
   if(searchBox) searchBox.value = '';
 
   const el = document.getElementById('p-section-students-list');
-  if(el) el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">Loading students…</div>`;
+  if(el) el.innerHTML = loadingHtml('Loading students…');
 
   // Reload fresh — catches anyone who enrolled/unenrolled since the sections list was loaded
   _allStudentsCache = await loadAllStudentProfiles();
@@ -3939,7 +3939,7 @@ async function viewStudentProfile(userId){
   }
 
   const worksEl = document.getElementById('psd-works');
-  worksEl.innerHTML = `<div style="font-size:13px;color:var(--text3);grid-column:1/-1;">Loading works…</div>`;
+  worksEl.innerHTML = `${loadingHtml('Loading works…', 'grid-column:1/-1')}`;
 
   // Make sure we have this professor's full item list, then filter to this student.
   // Drafts stay private to the student (personal gallery + withdrawn works).
@@ -4050,7 +4050,7 @@ async function loadAndRenderRankings(){
   const podiumEl = document.getElementById('rankings-podium');
   const listEl   = document.getElementById('rankings-list');
   if(!podiumEl || !listEl) return;
-  podiumEl.innerHTML = `<div style="font-size:13px;color:var(--text3);">Loading rankings…</div>`;
+  podiumEl.innerHTML = loadingHtml('Loading rankings…');
   listEl.innerHTML = '';
 
   _rankingsCache = await loadOverallRankings();
@@ -4595,6 +4595,14 @@ function toggleTheme(){
   const b = document.getElementById('themeToggle');
   if(b){ b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin'); }
   applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+}
+
+// ── LOADER ──
+// Multimedia loading indicator (paint-palette dots, see .art-loader in
+// css/style.css) replacing the old gray "Loading…" text. Optional second arg
+// passes extra inline style (e.g. 'grid-column:1/-1' inside grids).
+function loadingHtml(label, style){
+  return `<div class="art-loader"${style ? ` style="${style}"` : ''}><span class="adot"></span><span class="adot"></span><span class="adot"></span><span>${esc(label || 'Loading…')}</span></div>`;
 }
 
 // ── NIGHT SKY (dark mode, public screens) ──
