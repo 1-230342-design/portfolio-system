@@ -4693,7 +4693,7 @@ function initSunMotes(){
       const a = (Math.random()*0.35+0.35).toFixed(2);
       s.style.cssText = 'left:'+(Math.random()*100).toFixed(2)+'%;top:'+(Math.random()*100).toFixed(2)+
         '%;width:'+sz+'px;height:'+sz+'px;background:'+cols[i%3]+a+');--fl:'+
-        (Math.random()*6+7).toFixed(2)+'s;animation-delay:'+(Math.random()*9).toFixed(2)+'s;';
+        (Math.random()*3+4).toFixed(2)+'s;animation-delay:'+(Math.random()*4).toFixed(2)+'s;';
       frag.appendChild(s);
     }
     sky.appendChild(frag);
