@@ -4682,15 +4682,15 @@ function initSunMotes(){
   const skies = document.querySelectorAll('[data-motes]');
   if(!skies.length) return;
   window._motesDone = true;
-  const cols = ['rgba(201,162,39,', 'rgba(47,143,82,', 'rgba(255,255,255,'];
+  const cols = ['rgba(201,162,39,', 'rgba(47,143,82,', 'rgba(184,145,42,'];
   skies.forEach((sky)=>{
     const count = parseInt(sky.dataset.motes || '40', 10) || 40;
     const frag = document.createDocumentFragment();
     for(let i=0;i<count;i++){
       const s = document.createElement('span');
       s.className = 'lp-mote';
-      const sz = (Math.random()*4+3).toFixed(1);
-      const a = (Math.random()*0.35+0.25).toFixed(2);
+      const sz = (Math.random()*5+4).toFixed(1);
+      const a = (Math.random()*0.35+0.35).toFixed(2);
       s.style.cssText = 'left:'+(Math.random()*100).toFixed(2)+'%;top:'+(Math.random()*100).toFixed(2)+
         '%;width:'+sz+'px;height:'+sz+'px;background:'+cols[i%3]+a+');--fl:'+
         (Math.random()*6+7).toFixed(2)+'s;animation-delay:'+(Math.random()*9).toFixed(2)+'s;';
