@@ -4683,10 +4683,24 @@ function initSunMotes(){
   if(!skies.length) return;
   window._motesDone = true;
   const cols = ['rgba(201,162,39,', 'rgba(47,143,82,', 'rgba(184,145,42,'];
+  const moteLogos = ['images/asia.png', 'images/new logo.png', 'images/CCSIT.png'];
   skies.forEach((sky)=>{
     const count = parseInt(sky.dataset.motes || '40', 10) || 40;
     const frag = document.createDocumentFragment();
     for(let i=0;i<count;i++){
+      // every 8th floater is a small translucent school logo instead of dust
+      if(i % 8 === 7){
+        const img = document.createElement('img');
+        img.src = moteLogos[Math.floor(i / 8) % moteLogos.length];
+        img.alt = ''; img.draggable = false;
+        img.className = 'lp-mote-logo';
+        const w = (Math.random()*14+20).toFixed(0);
+        img.style.cssText = 'left:'+(Math.random()*100).toFixed(2)+'%;top:'+(Math.random()*100).toFixed(2)+
+          '%;width:'+w+'px;--fl:'+(Math.random()*5+9).toFixed(2)+
+          's;animation-delay:'+(Math.random()*4).toFixed(2)+'s;';
+        frag.appendChild(img);
+        continue;
+      }
       const s = document.createElement('span');
       s.className = 'lp-mote';
       const sz = (Math.random()*5+4).toFixed(1);

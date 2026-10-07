@@ -150,6 +150,11 @@ html:not([data-theme]) #s-login .lp-motes{ display:block; }
   80%{opacity:.5;}
   100%{transform:translateY(-92px);opacity:0;}
 }
+/* floating logo confetti — every ~8th mote is a small translucent school logo
+   (same drift, slower and fainter so it stays ambient, never a button) */
+.lp-mote-logo{ position:absolute; height:auto; opacity:.5; pointer-events:none;
+  user-select:none; -webkit-user-select:none;
+  animation:moteFloat var(--fl,11s) ease-in-out infinite; }
 /* ── MULTIMEDIA LOADER — paint-palette dots ──
    Replaces the old gray "Loading…" text everywhere. Three brand dots
    (green, light green, gold) rippling in a wave beside the label, built by
