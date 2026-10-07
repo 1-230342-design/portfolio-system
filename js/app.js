@@ -4605,123 +4605,6 @@ function toggleTheme(){
   applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
 }
 
-// ── PAGE PEEL (public search → landing) ──
-// Two ways home: click ← Back for the auto-play peel (corner tease, then the
-// sheet flies off), or DRAG the folded corner tab leftwards to peel it
-// yourself — landing is revealed progressively underneath; release past ~1/3
-// to dismiss, earlier to snap back. Guarded against double-starts and honors
-// reduced-motion (plain go). Staging sets position inline because the screen
-// root's own inline position:relative would beat any stylesheet class.
-let _peeling = false, _peelDrag = null;
-function peelEls(){
-  return { cur: document.getElementById('s-public-search'), land: document.getElementById('s-landing') };
-}
-function peelReducedMotion(){
-  return !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
-}
-function peelStage(){
-  const { cur, land } = peelEls();
-  if(!cur || !land) return null;
-  land.classList.add('active', 'peel-base');
-  cur.classList.add('peel-top');
-  cur.style.position = 'fixed'; cur.style.left = '0'; cur.style.right = '0';
-  cur.style.top = (-(window.scrollY || 0)) + 'px';
-  document.body.classList.add('peeling-now');
-  // Watchdog: no peel may strand the UI — if anything interrupts the
-  // sequence (lost pointer events, killed timers), force home after 3s.
-  try{ clearTimeout(window._peelWatch); }catch(e){}
-  window._peelWatch = setTimeout(()=>{ if(_peeling){ peelCleanup(); go('s-landing'); } }, 3000);
-  return { cur, land };
-}
-function peelCleanup(){
-  try{ clearTimeout(window._peelWatch); }catch(e){}
-  const { cur, land } = peelEls();
-  if(cur){
-    cur.classList.remove('peel-top', 'peel-tease', 'peel-live');
-    cur.style.position = 'relative'; cur.style.top = '';
-    cur.style.transform = ''; cur.style.opacity = ''; cur.style.transition = '';
-  }
-  if(land) land.classList.remove('peel-base');
-  document.body.classList.remove('peeling-now');
-  _peeling = false; _peelDrag = null;
-}
-function peelFinishOff(cur, done){
-  // fly from the CURRENT (possibly half-dragged) pose to fully peeled
-  cur.classList.remove('peel-tease', 'peel-live');
-  cur.style.transition = 'transform .55s cubic-bezier(.55,0,.3,1), opacity .55s ease';
-  cur.style.transformOrigin = 'top left';
-  cur.style.transform = 'perspective(1400px) rotateY(-32deg) translateX(-62%)';
-  cur.style.opacity = '0';
-  setTimeout(done, 580);
-}
-function peelBackToLanding(){
-  if(_peeling) return;
-  if(peelReducedMotion()){ go('s-landing'); return; }
-  const st = peelStage(); if(!st){ go('s-landing'); return; }
-  _peeling = true;
-  const { cur } = st; void cur.offsetWidth; // commit staging before animating
-  cur.classList.add('peel-tease');
-  setTimeout(()=>{
-    if(!_peeling) return;
-    cur.classList.remove('peel-tease');
-    peelFinishOff(cur, ()=>{ peelCleanup(); go('s-landing'); });
-  }, 380);
-}
-function peelSnapBack(){
-  const { cur } = peelEls();
-  if(!cur){ peelCleanup(); return; }
-  cur.classList.remove('peel-live', 'peel-tease');
-  cur.style.transition = 'transform .3s ease-out, opacity .3s ease-out';
-  cur.style.transform = ''; cur.style.opacity = '';
-  setTimeout(()=>{ if(_peelDrag) return; peelCleanup(); }, 330);
-}
-function initPeelDrag(){
-  const tab = document.querySelector('#s-public-search .peel-tab');
-  if(!tab || tab.dataset.bound) return;
-  tab.dataset.bound = '1';
-  tab.addEventListener('pointerdown', (e)=>{
-    if(_peeling || peelReducedMotion()) return; // reduced-motion users keep the plain Back button
-    const st = peelStage(); if(!st) return;
-    _peeling = true;
-    _peelDrag = { id: e.pointerId, x0: e.clientX, p: 0 };
-    try{ tab.setPointerCapture(e.pointerId); }catch(err){}
-  });
-  tab.addEventListener('pointermove', (e)=>{
-    if(!_peelDrag || e.pointerId !== _peelDrag.id) return;
-    const { cur } = peelEls(); if(!cur) return;
-    const p = Math.max(0, Math.min(1, -(e.clientX - _peelDrag.x0) / (window.innerWidth * 0.55)));
-    _peelDrag.p = p;
-    cur.classList.add('peel-live');
-    cur.style.transition = 'none';
-    cur.style.transformOrigin = 'top left';
-    cur.style.transform = `perspective(1400px) rotateY(${(-32 * p).toFixed(2)}deg) translateX(${(-62 * p).toFixed(2)}%)`;
-    cur.style.opacity = p < 0.55 ? '1' : (1 - 0.95 * ((p - 0.55) / 0.45)).toFixed(3);
-  });
-  const endDrag = (e)=>{
-    if(!_peelDrag || (e && e.pointerId !== _peelDrag.id)) return;
-    const p = _peelDrag.p; _peelDrag = null;
-    const { cur } = peelEls();
-    if(!cur){ peelCleanup(); go('s-landing'); return; }
-    if(p < 0.03){
-      // treated as a tap on the tab — play the auto peel instead
-      cur.classList.remove('peel-live');
-      cur.style.transition = ''; cur.style.transform = ''; cur.style.opacity = '';
-      void cur.offsetWidth;
-      cur.classList.add('peel-tease');
-      setTimeout(()=>{
-        if(!_peeling) return;
-        cur.classList.remove('peel-tease');
-        peelFinishOff(cur, ()=>{ peelCleanup(); go('s-landing'); });
-      }, 380);
-      return;
-    }
-    if(p > 0.35){ peelFinishOff(cur, ()=>{ peelCleanup(); go('s-landing'); }); return; }
-    peelSnapBack();
-  };
-  tab.addEventListener('pointerup', endDrag);
-  tab.addEventListener('pointercancel', ()=>{ if(_peelDrag){ _peelDrag = null; peelSnapBack(); } });
-}
-
 // ── LOADER ──
 // Multimedia loading indicator (paint-palette dots, see .art-loader in
 // css/style.css) replacing the old gray "Loading…" text. Optional second arg
@@ -4778,7 +4661,6 @@ async function initApp(){
   console.log('[artfolio] originality gate ' + ORIGINALITY_GATE_VERSION + ' active — 90%+ similar images are blocked BEFORE upload (no Cloudinary file, no database row).');
   syncThemeIcon(); // head script pre-applied the theme; just fix the button icon
   initStarfields(); // build the dark-mode night sky (CSS-gated, costs nothing in light)
-  initPeelDrag(); // corner-tab drag-to-peel on the public search page
   if(typeof checkForQrLink === 'function' && checkForQrLink()) return; // ?work=<id> in the URL — show that work's public page and stop here
   if(handleLandingLink()) return; // ?to=landing from notification emails — landing page only, no auto-login
   const openedFromAlert = handleAlertLink(); // ?action=changepw|keep from the login-alert email

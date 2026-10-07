@@ -141,29 +141,6 @@ body.theming, body.theming *, body.theming *::before, body.theming *::after{
 .toast .tload span:nth-child(1){background:#c9a227;}
 .toast .tload span:nth-child(2){background:#6fbf8f;animation-delay:.15s;}
 .toast .tload span:nth-child(3){background:#2f8f52;animation-delay:.3s;}
-/* ── PAGE PEEL (public search → landing) ──
-   Click ← Back (or tap the corner tab) for the auto-play peel; or DRAG the
-   corner tab leftwards to peel the page yourself — release past ~1/3 to
-   dismiss, earlier to snap back. JS staging (app.js): landing gets
-   .active+.peel-base underneath; the search screen is viewport-locked inline
-   (fixed + top:-scrollY, set from JS because the root's inline
-   position:relative would beat a stylesheet class) so nothing jumps. */
-#s-landing.peel-base{position:relative;z-index:1;}
-#s-public-search.peel-top{z-index:60;margin:0;}
-#s-public-search.peel-tease{transition:transform .38s ease-out, box-shadow .38s ease-out;
-  transform-origin:top left;transform:perspective(1400px) rotateY(-14deg) rotateX(3deg);
-  box-shadow:30px 30px 60px rgba(0,0,0,.35);}
-#s-public-search.peel-live{transition:none;}
-body.peeling-now{user-select:none;-webkit-user-select:none;}
-/* folded-corner drag handle, top-left over the header — same destination as
-   the logo (landing). touch-action:pan-y lets vertical scrolls pass through
-   on touch screens while horizontal drags come to us for the peel. */
-.peel-tab{position:absolute;top:0;left:0;width:60px;height:60px;z-index:6;cursor:grab;
-  touch-action:pan-y;user-select:none;-webkit-user-select:none;
-  background:linear-gradient(to bottom right,#f7f5ee 0%,#e8cf7c 42%,rgba(0,0,0,.3) 50%,transparent 52%);
-  transition:transform .18s ease;transform-origin:top left;}
-.peel-tab:hover{transform:scale(1.2);}
-.peel-tab:active{cursor:grabbing;}
 /* keep nav + content above the sky (the sky is z-index 0) */
 #s-public-profile .landing-nav,
 #s-public-work .landing-nav{position:relative;z-index:1;}

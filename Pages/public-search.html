@@ -1,6 +1,5 @@
 <div class="screen" id="s-public-search" style="position:relative;overflow:hidden;">
 <div class="lp-stars" data-sky data-stars="60" aria-hidden="true"></div>
-<div class="peel-tab" title="Drag to peel back to Home" onclick="peelBackToLanding()"></div>
 <style>
   .ps-decor{position:absolute;pointer-events:none;z-index:0;opacity:.55;}
   .ps-decor-3{top:80px;right:20px;width:340px;}
@@ -41,7 +40,7 @@
     </div>
   </nav>
   <div class="section-page" style="position:relative;z-index:1;">
-    <div style="margin-bottom:12px;cursor:pointer;color:var(--text3);font-size:13px;" onclick="peelBackToLanding()">← Back</div>
+    <div style="margin-bottom:12px;cursor:pointer;color:var(--text3);font-size:13px;" onclick="go('s-landing')">← Back</div>
     <h2 style="font-size:32px;margin-bottom:8px;">Search Results</h2>
     <p id="public-search-summary" style="margin-bottom:24px;">—</p>
 
