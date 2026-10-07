@@ -4627,9 +4627,14 @@ function peelStage(){
   cur.style.position = 'fixed'; cur.style.left = '0'; cur.style.right = '0';
   cur.style.top = (-(window.scrollY || 0)) + 'px';
   document.body.classList.add('peeling-now');
+  // Watchdog: no peel may strand the UI — if anything interrupts the
+  // sequence (lost pointer events, killed timers), force home after 3s.
+  try{ clearTimeout(window._peelWatch); }catch(e){}
+  window._peelWatch = setTimeout(()=>{ if(_peeling){ peelCleanup(); go('s-landing'); } }, 3000);
   return { cur, land };
 }
 function peelCleanup(){
+  try{ clearTimeout(window._peelWatch); }catch(e){}
   const { cur, land } = peelEls();
   if(cur){
     cur.classList.remove('peel-top', 'peel-tease', 'peel-live');
