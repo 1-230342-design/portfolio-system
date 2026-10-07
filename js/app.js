@@ -1869,12 +1869,6 @@ function openPublicSection(name){
   }).join('') : `<div class="empty-state"><p>There's no student enrolled in this section yet.</p></div>`;
 }
 
-function backToPublicSections(){
-  document.getElementById('public-search-in-section').style.display = 'none';
-  document.getElementById('public-search-sections').style.display = 'block';
-  currentPublicSectionName = null;
-}
-
 let _publicProfileWorks = [];
 async function openPublicProfile(userId){
   showToast('📂 Loading portfolio…');
