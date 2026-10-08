@@ -267,9 +267,15 @@ async function saveAssignmentSubmission(userId, assignment, payload){
     imagga_tags: (payload.imaggaTags && payload.imaggaTags.length) ? payload.imaggaTags : null,
     cloudinary_public_id: payload.cloudinaryId || null, uploaded_at: new Date().toISOString()
   };
+  if(payload.aiScore != null) itemRow.ai_score = payload.aiScore; // needs supabase-ai-score.sql — retried without it below
   if(payload.embedding) itemRow.embedding = payload.embedding; // only sent when the AI comparison produced one
   if(payload.sha256) itemRow.sha256 = payload.sha256; // needs supabase-integrity-hardening.sql — retried without it below
   let { data: item, error: ie } = await sb.from('portfolio_items').insert([itemRow]).select().single();
+  if(ie && payload.aiScore != null && /ai_score/i.test(ie.message || '')){
+    console.info('[save] ai_score column missing — run supabase-ai-score.sql. Saving without the AI-generation hint.');
+    delete itemRow.ai_score;
+    ({ data: item, error: ie } = await sb.from('portfolio_items').insert([itemRow]).select().single());
+  }
   if(ie && payload.sha256 && /sha256/i.test(ie.message || '')){
     console.info('[save] sha256 column missing — run supabase-integrity-hardening.sql. Saving without the exact-file fingerprint.');
     delete itemRow.sha256;
@@ -352,11 +358,14 @@ async function submitAttachedWork(){
     const cloud = await withUploadProgress('aw-submit-btn', (paint)=>uploadToCloudinary(attachRawFile, paint));
     showToast('🏷️ Analyzing image content…');
     const imaggaTags = (attachRawFile.type && attachRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
+    // AI-generation hint (advisory for the professor, never a block).
+    const aiRes = (attachRawFile.type && attachRawFile.type.startsWith('image/')) ? await fetchAiScore(cloud.url) : null;
 
     showToast('💾 Saving submission…');
     const { item } = await saveAssignmentSubmission(currentUser.id, assignment, {
       title, desc, fileUrl: cloud.url, fileType: attachRawFile.type,
-      fileSize: attachRawFile.size, cloudinaryId: cloud.publicId, phash: ourPhash, imaggaTags, embedding,
+      fileSize: attachRawFile.size, cloudinaryId: cloud.publicId, phash: ourPhash, imaggaTags,
+      aiScore: aiRes ? aiRes.score : null, embedding,
       sha256: ourSha256
     });
     runSimilarityCheck(item.id, ourPhash, imaggaTags, embedding, assignment.id, currentUser.id);

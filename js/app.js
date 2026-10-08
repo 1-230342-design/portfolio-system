@@ -962,6 +962,24 @@ async function fetchImaggaTags(imageUrl){
   }
 }
 
+// ── SIGHTENGINE AI-GENERATION CHECK (advisory only) ──
+// Free 'genai' model via our own 'detect-ai' Edge Function (keys stay
+// server-side, same pattern as Imagga above). Returns { score: 0..1,
+// generator } or null when unchecked (videos, quota spent, function not
+// deployed yet). NEVER blocks uploads — detectors can misflag real digital
+// art, so this is a professor-facing hint, not a gate.
+async function fetchAiScore(imageUrl){
+  try{
+    const { data, error } = await sb.functions.invoke('detect-ai', { body: { imageUrl } });
+    if(error){ console.error('AI detection error:', error); return null; }
+    const s = data && typeof data.aiScore === 'number' ? data.aiScore : null;
+    return (s == null) ? null : { score: s, generator: data.generator || null };
+  }catch(err){
+    console.error('AI detection error:', err);
+    return null; // fail quietly — upload continues without the hint
+  }
+}
+
 // Jaccard similarity between two tag sets (0 = no overlap, 1 = identical tag sets)
 function tagSimilarity(tagsA, tagsB){
   const setA = new Set((tagsA||[]).filter(t=>t.confidence>=IMAGGA_MIN_TAG_CONFIDENCE).map(t=>(t.tag||'').toLowerCase()));
@@ -1346,9 +1364,15 @@ async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPerio
     cloudinary_public_id: cloudinaryId || null,
     uploaded_at:     new Date().toISOString()
   };
+  if(aiScore != null) itemRow.ai_score = aiScore; // needs supabase-ai-score.sql — retried without it below
   if(embedding) itemRow.embedding = embedding; // only sent when the AI comparison produced one (column may not exist otherwise)
   if(sha256) itemRow.sha256 = sha256; // needs supabase-integrity-hardening.sql — retried without it below
   let { data: item, error: ie } = await sb.from('portfolio_items').insert([itemRow]).select().single();
+  if(ie && aiScore != null && /ai_score/i.test(ie.message || '')){
+    console.info('[save] ai_score column missing — run supabase-ai-score.sql. Saving without the AI-generation hint.');
+    delete itemRow.ai_score;
+    ({ data: item, error: ie } = await sb.from('portfolio_items').insert([itemRow]).select().single());
+  }
   if(ie && sha256 && /sha256/i.test(ie.message || '')){
     console.info('[save] sha256 column missing — run supabase-integrity-hardening.sql. Saving without the exact-file fingerprint.');
     delete itemRow.sha256;
@@ -3538,13 +3562,17 @@ async function submitWork(){
     // Personal-gallery saves skip this (nothing for a professor to be informed about — saves quota too).
     showToast(sendForReview ? '🏷️ Analyzing image content…' : '💾 Saving to your portfolio…');
     const imaggaTags = (sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
+    // AI-generation hint: review-bound images only (saves the free quota —
+    // personal-gallery saves skip it, exactly like Imagga tags above).
+    const aiRes = (sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/')) ? await fetchAiScore(cloud.url) : null;
+    const aiScore = aiRes ? aiRes.score : null;
 
     if(sendForReview) showToast('💾 Saving to database…');
     // 2. Save to Supabase using real schema (personal = draft portfolio, never in review)
     const { item } = await saveItemToSupabase(currentUser.id, {
       title, desc, subjectId, gradingPeriod,
       fileUrl: cloud.url, fileType: pendingRawFile.type,
-      fileSize: pendingRawFile.size, cloudinaryId: cloud.publicId, phash: ourPhash, imaggaTags, embedding,
+      fileSize: pendingRawFile.size, cloudinaryId: cloud.publicId, phash: ourPhash, imaggaTags, aiScore, embedding,
       sha256: ourSha256, forReview: sendForReview
     });
     // 2b. Run similarity check against other students' uploads using our computed hash + tags.
@@ -4292,9 +4320,38 @@ async function openReviewById(itemId){
   // Open the panel straight away — the similarity result fills in a moment later,
   // so the professor never waits on it.
   showSimilarityChecking();
+  renderAiBadge(itemId, p);
   applyProfessorPermissions();
   pPage('p-review');
   renderReviewSimilarity(itemId);
+}
+
+// ── AI-GENERATION BADGE (advisory only) ──
+// Reads the Sightengine 'genai' score saved at upload (portfolio_items.
+// ai_score, 0 = likely human, 1 = likely AI). Paints a colored hint for the
+// professor — green <40%, amber 40–70%, red ≥70% — with an explicit
+// "you decide" footnote, because detectors can misflag real digital art
+// (stylized 3D/cartoon work especially). Videos and pre-feature uploads have
+// no score and simply show "not checked". Never blocks, never grades.
+async function renderAiBadge(itemId, p){
+  const el = document.getElementById('rev-ai-badge');
+  if(!el) return;
+  const paint = (html)=>{ if(currentReview && currentReview.itemId === itemId) el.innerHTML = html; };
+  try{
+    const isImg = p && p.file && fileIsImage(p.file);
+    if(!isImg){ paint('🤖 AI-generation check: <span style="color:var(--text3);">images only — not checked for this file type</span>'); return; }
+    const { data, error } = await sb.from('portfolio_items').select('ai_score').eq('id', itemId).maybeSingle();
+    if(error) throw error;
+    const s = data && typeof data.ai_score === 'number' ? data.ai_score : null;
+    if(s == null){ paint('🤖 AI-generation check: <span style="color:var(--text3);">not checked for this work</span>'); return; }
+    const pct = Math.round(s * 100);
+    const verdict = s >= 0.7 ? 'likely AI-generated' : s >= 0.4 ? 'uncertain — needs human review' : 'likely human-made';
+    const color = s >= 0.7 ? 'var(--red)' : s >= 0.4 ? 'var(--orange)' : 'var(--accent-dark)';
+    paint(`🤖 AI-generation likelihood: <strong style="color:${color};">${pct}% — ${verdict}</strong><br><span style="font-size:11px;color:var(--text3);">Advisory only — detectors can misflag real digital art. You decide.</span>`);
+  }catch(err){
+    console.error('AI badge error:', err);
+    paint('🤖 AI-generation check: <span style="color:var(--text3);">unavailable right now</span>');
+  }
 }
 
 // Placeholder shown for the split second while the similarity result is worked out
