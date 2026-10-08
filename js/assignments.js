@@ -195,7 +195,7 @@ async function unsubmitAssignment(){
   const mine = _myAssignmentPorts[currentAttachAssignmentId];
   if(!mine){ showToast('⚠️ No submission to unsubmit'); return; }
   if(mine.status !== 'submitted'){ showToast('⚠️ Only a submitted entry can be unsubmitted.'); return; }
-  if(!confirm('Unsubmit your work for this assignment? It will be pulled back from professor review.')) return;
+  if(!confirm('Unsubmit and DELETE your work for this assignment? It will be permanently removed from professor review (file included) so it can\'t pile up as a duplicate. Attach a fresh file below to resubmit.')) return;
   // Frozen is frozen — if the cutoff passed while the modal sat open, refuse.
   if(assignment && await isAssignmentClosedNow(assignment)){
     closeAttachWorkModal();
@@ -204,6 +204,29 @@ async function unsubmitAssignment(){
   }
   showToast('↩️ Unsubmitting…');
   try{
+    // Same no-duplicates rule as Unsubmit on My Projects: delete the entry's
+    // items (not just flip to draft) so re-attaching can't resurrect old
+    // copies. The portfolio row itself stays (resubmit reuses it) — only its
+    // items, their similarity logs, and their Cloudinary files go.
+    const { data: items, error: itemsErr } = await sb
+      .from('portfolio_items').select('id, cloudinary_public_id').eq('portfolio_id', mine.id);
+    if(itemsErr) throw itemsErr;
+    const ids = (items || []).map(r=>r.id);
+    if(ids.length){
+      await sb.from('similarity_logs').delete().in('checked_item_id', ids);
+      await sb.from('similarity_logs').delete().in('matched_item_id', ids);
+      const { data: deletedRows, error: delErr } = await sb.from('portfolio_items').delete().in('id', ids).select();
+      if(delErr) throw delErr;
+      if(!deletedRows || !deletedRows.length){
+        throw new Error('Nothing was deleted — this is usually a Supabase permissions (RLS) issue. Check that a DELETE policy exists on portfolio_items for the owning student.');
+      }
+      for(const r of (items || [])){
+        if(!r.cloudinary_public_id) continue;
+        try{
+          await sb.functions.invoke('delete-cloudinary-asset', { body: { publicId: r.cloudinary_public_id } });
+        }catch(fnErr){ console.error('Cloudinary cleanup error:', fnErr); }
+      }
+    }
     const { error } = await sb.from('portfolios').update({
       status: 'draft',
       updated_at: new Date().toISOString()
@@ -213,7 +236,7 @@ async function unsubmitAssignment(){
     await loadProjectsForStudent(currentUser.id);
     refreshStudentViews(); // background badge flips to Withdrawn
     showAttachMode(assignment || { title: '' });
-    showToast('✅ Unsubmitted! Attach your new file below.');
+    showToast('✅ Unsubmitted and deleted! Attach your new file below.');
   }catch(err){
     console.error('unsubmitAssignment error:', err);
     showToast('❌ Error: '+err.message);

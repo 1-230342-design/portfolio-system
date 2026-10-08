@@ -3325,25 +3325,49 @@ function renderProjectsPage(uid){
 }
 
 // ── UNSUBMIT (student: pull a pending submission back from professor review) ──
-// This does NOT delete the file — it just reverts the parent portfolio's status
-// back to 'draft' so it drops out of the professor's "Pending" queue. Note that
-// status lives on the shared portfolio row (per student + grading period), so
-// this affects every item submitted under the same period, not just this one.
+// This DELETES the submission (item row + similarity logs + Cloudinary file)
+// so re-uploading can't pile up duplicates — the old withdraw-and-keep
+// behavior resurfaced every withdrawn copy on the next submit, confusing
+// pending queues. Status lives on the shared portfolio row (per student +
+// grading period), so the portfolio itself drops to 'draft' only when none
+// of its remaining items are still awaiting review.
 async function unsubmitWork(itemId){
   if(!currentUser) return;
   const list = studentProjects[currentUser.id] || [];
-  const localItem = list.find(p=>p.id===itemId);
+  const idx = list.findIndex(p=>p.id===itemId);
+  const localItem = idx >= 0 ? list[idx] : null;
   if(!localItem){ showToast('⚠️ Submission not found'); return; }
   if(localItem.status !== 'submitted'){ showToast('⚠️ Only pending submissions can be unsubmitted.'); return; }
-  if(!confirm('Unsubmit this work? It will be pulled back from professor review. You can resubmit later by uploading again for the same grading period, or delete it entirely.')) return;
+  if(!confirm('Unsubmit and DELETE this work? It will be permanently removed from professor review (file included) so it can\'t pile up as a duplicate. Upload again fresh to resubmit.')) return;
   showToast('↩️ Unsubmitting…');
   try{
-    const { error } = await sb.from('portfolios').update({
-      status: 'draft', updated_at: new Date().toISOString()
-    }).eq('id', localItem.portfolioId);
+    // FK first: similarity logs reference the item in both directions.
+    await sb.from('similarity_logs').delete().eq('checked_item_id', itemId);
+    await sb.from('similarity_logs').delete().eq('matched_item_id', itemId);
+    const { data: deletedRows, error } = await sb.from('portfolio_items').delete().eq('id', itemId).select();
     if(error) throw error;
-    list.forEach(p=>{ if(p.portfolioId===localItem.portfolioId) p.status='draft'; });
-    showToast('✅ Submission unsubmitted — pulled back from review.');
+    if(!deletedRows || !deletedRows.length){
+      throw new Error('Nothing was deleted — this is usually a Supabase permissions (RLS) issue. Check that a DELETE policy exists on portfolio_items for the owning student.');
+    }
+    // Best-effort Cloudinary cleanup (secret lives in the Edge Function).
+    // Never fails the unsubmit — the DB record is already gone either way.
+    const publicId = localItem.cloudinaryPublicId;
+    if(publicId){
+      try{
+        await sb.functions.invoke('delete-cloudinary-asset', { body: { publicId } });
+      }catch(fnErr){ console.error('Cloudinary cleanup error:', fnErr); }
+    }
+    list.splice(idx, 1);
+    // Pull the portfolio back to draft only when nothing in it is still
+    // pending — siblings under the same grading period stay untouched.
+    const stillPending = list.some(p=>p.portfolioId===localItem.portfolioId && p.status==='submitted');
+    if(!stillPending){
+      const { error: pe } = await sb.from('portfolios').update({
+        status: 'draft', updated_at: new Date().toISOString()
+      }).eq('id', localItem.portfolioId);
+      if(pe) throw pe;
+    }
+    showToast('✅ Unsubmitted and deleted — upload again fresh to resubmit.');
     refreshStudentViews();
   }catch(err){
     console.error('unsubmitWork error:', err);
