@@ -4087,6 +4087,7 @@ async function loadOverallRankings(){
     userId:     s.userId,
     name:       s.profile.full_name || 'Student',
     studentId:  s.profile.student_id || '',
+    section:    s.profile.section || '',
     sectionYear: [s.profile.section, s.profile.year_level].filter(Boolean).join(' · ') || 'Year & Section',
     avgGrade:   s.sum / s.count,
     graded:     s.count
@@ -4099,9 +4100,11 @@ async function loadOverallRankings(){
 async function loadAndRenderRankings(){
   const podiumEl = document.getElementById('rankings-podium');
   const listEl   = document.getElementById('rankings-list');
+  const secsEl   = document.getElementById('rankings-sections');
   if(!podiumEl || !listEl) return;
   podiumEl.innerHTML = loadingHtml('Loading rankings…');
   listEl.innerHTML = '';
+  if(secsEl) secsEl.innerHTML = '';
 
   _rankingsCache = await loadOverallRankings();
 
@@ -4142,6 +4145,29 @@ async function loadAndRenderRankings(){
       <div style="text-align:right"><div class="rank-score">${s.avgGrade.toFixed(1)}/100</div><div class="rank-reviews">${s.graded} Graded Work${s.graded===1?'':'s'}</div></div>
       <button class="btn-view-sm" style="margin-left:12px" onclick="viewRankedStudent('${s.userId}')">👁 View</button>
     </div>`).join('') : '';
+
+  // Per-section Top 3 — fills the space under the overall board. Groups reuse
+  // the same .rank-item rows (section-local ranks 1–3); sections sort
+  // alphabetically (2BSIT → 4BSIT), section-less students land in "No Section".
+  if(secsEl){
+    const groups = {};
+    _rankingsCache.forEach(s=>{
+      const key = (s.section || '').trim() || 'No Section';
+      (groups[key] = groups[key] || []).push(s);
+    });
+    const order = Object.keys(groups).sort((a, b)=>
+      a === 'No Section' ? 1 : b === 'No Section' ? -1 : a.localeCompare(b));
+    secsEl.innerHTML = order.map(sec=>`
+      <div class="section-title" style="margin:28px 0 12px;">🏆 ${esc(sec)} — Top 3</div>
+      ${groups[sec].slice(0, 3).map((s, i)=>`
+      <div class="rank-item">
+        <div class="rank-num">${i+1}</div>
+        <div class="rank-ava"><div class="avatar-initial" style="background:${avatarColor(s.name)};width:100%;height:100%;">${esc(studentInitial(s.name))}</div></div>
+        <div class="rank-info"><div class="rank-name">${esc(s.name)}</div><div class="rank-meta">${esc(s.studentId||'No ID')} · ${esc(s.sectionYear)}</div></div>
+        <div style="text-align:right"><div class="rank-score">${s.avgGrade.toFixed(1)}/100</div><div class="rank-reviews">${s.graded} Graded Work${s.graded===1?'':'s'}</div></div>
+        <button class="btn-view-sm" style="margin-left:12px" onclick="viewRankedStudent('${s.userId}')">👁 View</button>
+      </div>`).join('')}`).join('');
+  }
 }
 
 // The rankings list only knows the student_id (userId), not the row shape used by
