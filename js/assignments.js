@@ -352,20 +352,28 @@ async function submitAttachedWork(){
       return;
     }
 
+    // AI-generation analysis on the LOCAL file (downscaled) BEFORE Cloudinary —
+    // flagged content never costs storage. Advisory for now (professor badge).
+    let aiScore = null;
+    if(attachRawFile.type && attachRawFile.type.startsWith('image/')){
+      showToast('🤖 Checking for AI-generated content…');
+      const small = await downscaleForAnalysis(attachRawFile);
+      const aiRes = small ? await fetchAiScore({ imageData: small }) : null;
+      aiScore = aiRes ? aiRes.score : null;
+    }
+
     // Clear — now upload to Cloudinary (live % on the Submit button), then
     // fetch Imagga tags for the post-save professor flag (tags never block,
     // they only inform review).
     const cloud = await withUploadProgress('aw-submit-btn', (paint)=>uploadToCloudinary(attachRawFile, paint));
     showToast('🏷️ Analyzing image content…');
     const imaggaTags = (attachRawFile.type && attachRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
-    // AI-generation hint (advisory for the professor, never a block).
-    const aiRes = (attachRawFile.type && attachRawFile.type.startsWith('image/')) ? await fetchAiScore(cloud.url) : null;
 
     showToast('💾 Saving submission…');
     const { item } = await saveAssignmentSubmission(currentUser.id, assignment, {
       title, desc, fileUrl: cloud.url, fileType: attachRawFile.type,
       fileSize: attachRawFile.size, cloudinaryId: cloud.publicId, phash: ourPhash, imaggaTags,
-      aiScore: aiRes ? aiRes.score : null, embedding,
+      aiScore, embedding,
       sha256: ourSha256
     });
     runSimilarityCheck(item.id, ourPhash, imaggaTags, embedding, assignment.id, currentUser.id);

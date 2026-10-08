@@ -18,6 +18,12 @@
 //    5. Done — the app (v82+) calls this at upload and shows an ADVISORY
 //       badge in the professor review panel. It never blocks uploads:
 //       detectors can misflag real digital art, so the professor decides.
+//
+//  v2 — PRE-UPLOAD ANALYSIS: also accepts { imageData } (a base64 data-URL
+//  of a downscaled local file) so the app can analyze BEFORE anything is
+//  uploaded to Cloudinary. Sent to Sightengine as a multipart file upload
+//  (same 1 operation). If you deployed v1, re-paste this file and Deploy
+//  again to enable it.
 // ═══════════════════════════════════════════════════════════════════
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
@@ -36,8 +42,8 @@ function json(body: unknown, status = 200) {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   try {
-    const { imageUrl } = await req.json();
-    if (!imageUrl || typeof imageUrl !== 'string') {
+    const { imageUrl, imageData } = await req.json();
+    if ((!imageUrl || typeof imageUrl !== 'string') && (!imageData || typeof imageData !== 'string')) {
       return json({ aiScore: null });
     }
     const user = Deno.env.get('SIGHTENGINE_API_USER');
@@ -46,12 +52,26 @@ serve(async (req) => {
       console.error('[detect-ai] secrets missing — set SIGHTENGINE_API_USER / SIGHTENGINE_API_SECRET.');
       return json({ aiScore: null, error: 'missing-keys' });
     }
-    const apiUrl =
-      'https://api.sightengine.com/1.0/check.json?url=' + encodeURIComponent(imageUrl) +
-      '&models=genai&api_user=' + encodeURIComponent(user) +
-      '&api_secret=' + encodeURIComponent(secret);
-    const r = await fetch(apiUrl);
-    const j = await r.json();
+    let j: any = null;
+    if (imageUrl && typeof imageUrl === 'string') {
+      const apiUrl =
+        'https://api.sightengine.com/1.0/check.json?url=' + encodeURIComponent(imageUrl) +
+        '&models=genai&api_user=' + encodeURIComponent(user) +
+        '&api_secret=' + encodeURIComponent(secret);
+      const r = await fetch(apiUrl);
+      j = await r.json();
+    } else {
+      // pre-upload path: base64 data-URL (or raw base64) → multipart file upload
+      const b64 = imageData.includes(',') ? imageData.split(',')[1] : imageData;
+      const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const form = new FormData();
+      form.append('media', new Blob([bin], { type: 'image/jpeg' }), 'upload.jpg');
+      form.append('models', 'genai');
+      form.append('api_user', user);
+      form.append('api_secret', secret);
+      const r = await fetch('https://api.sightengine.com/1.0/check.json', { method: 'POST', body: form });
+      j = await r.json();
+    }
     if (!j || j.status !== 'success') {
       console.error('[detect-ai] sightengine error:', JSON.stringify(j).slice(0, 300));
       return json({ aiScore: null }); // quota spent / bad URL — upload must never fail because of this

@@ -968,15 +968,39 @@ async function fetchImaggaTags(imageUrl){
 // generator } or null when unchecked (videos, quota spent, function not
 // deployed yet). NEVER blocks uploads — detectors can misflag real digital
 // art, so this is a professor-facing hint, not a gate.
-async function fetchAiScore(imageUrl){
+async function fetchAiScore(src){
+  // src: Cloudinary URL string (post-upload path) OR { imageData } base64
+  // data-URL (pre-upload path — analyzed before anything leaves the browser
+  // for storage). Both cost 1 free Sightengine operation.
   try{
-    const { data, error } = await sb.functions.invoke('detect-ai', { body: { imageUrl } });
+    const body = (typeof src === 'string') ? { imageUrl: src } : { imageData: src.imageData };
+    const { data, error } = await sb.functions.invoke('detect-ai', { body });
     if(error){ console.error('AI detection error:', error); return null; }
     const s = data && typeof data.aiScore === 'number' ? data.aiScore : null;
     return (s == null) ? null : { score: s, generator: data.generator || null };
   }catch(err){
     console.error('AI detection error:', err);
     return null; // fail quietly — upload continues without the hint
+  }
+}
+
+// Downscale a local image File to a compact JPEG data-URL purely for
+// pre-upload analysis. Detection models downsample internally anyway, so a
+// ≤1600px image is plenty — and it keeps the Edge Function payload small
+// (base64 inflates ~33%). Returns null for non-images or on any failure.
+async function downscaleForAnalysis(file, maxDim){
+  try{
+    if(!file || !file.type || !file.type.startsWith('image/')) return null;
+    const img = await loadImageFromFile(file);
+    const scale = Math.min(1, (maxDim || 1600) / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+    const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
+    const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(img, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.85);
+  }catch(err){
+    console.error('downscaleForAnalysis error:', err);
+    return null;
   }
 }
 
@@ -3554,6 +3578,19 @@ async function submitWork(){
       return;
     }
 
+    // 1b2. AI-generation analysis on the LOCAL file (downscaled) BEFORE
+    // Cloudinary — flagged content never costs storage or leaves the
+    // browser for naught. Review-bound images only (personal saves skip it,
+    // saving free quota). Advisory for now: the score rides along to the
+    // professor badge, same as before — just computed earlier.
+    let aiScore = null;
+    if(sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/')){
+      showToast('🤖 Checking for AI-generated content…');
+      const small = await downscaleForAnalysis(pendingRawFile);
+      const aiRes = small ? await fetchAiScore({ imageData: small }) : null;
+      aiScore = aiRes ? aiRes.score : null;
+    }
+
     // 1c. Clear — now upload to Cloudinary, with live % on the Save button.
     const cloud = await withUploadProgress('up-submit-btn', (paint)=>uploadToCloudinary(pendingRawFile, paint));
     // 1d. Fetch Imagga tags for the uploaded image (via Edge Function — secret stays server-side).
@@ -3562,10 +3599,6 @@ async function submitWork(){
     // Personal-gallery saves skip this (nothing for a professor to be informed about — saves quota too).
     showToast(sendForReview ? '🏷️ Analyzing image content…' : '💾 Saving to your portfolio…');
     const imaggaTags = (sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
-    // AI-generation hint: review-bound images only (saves the free quota —
-    // personal-gallery saves skip it, exactly like Imagga tags above).
-    const aiRes = (sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/')) ? await fetchAiScore(cloud.url) : null;
-    const aiScore = aiRes ? aiRes.score : null;
 
     if(sendForReview) showToast('💾 Saving to database…');
     // 2. Save to Supabase using real schema (personal = draft portfolio, never in review)
