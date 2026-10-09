@@ -3605,21 +3605,19 @@ async function submitWork(){
       return;
     }
 
-    // 1b2. AI-generation analysis on the LOCAL file (downscaled) BEFORE
-    // Cloudinary — flagged content never costs storage or leaves the
-    // browser for naught. Review-bound images only (personal saves skip it,
-    // saving free quota). Advisory for now: the score rides along to the
-    // professor badge, same as before — just computed earlier.
-    let aiScore = null;
-    if(sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/')){
-      showToast('🤖 Checking for AI-generated content…');
-      const small = await downscaleForAnalysis(pendingRawFile);
-      const aiRes = small ? await fetchAiScore({ imageData: small }) : null;
-      aiScore = aiRes ? aiRes.score : null;
-    }
+    // 1b2. AI-generation analysis starts here on the LOCAL file (downscaled)
+    // and runs IN PARALLEL with the Cloudinary upload below — whichever takes
+    // longer sets the pace, instead of adding the two waits together. The
+    // score is only needed at save time, so nothing awaits it yet.
+    const wantAi = sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/');
+    const small = wantAi ? await downscaleForAnalysis(pendingRawFile) : null;
+    const aiPromise = (wantAi && small) ? fetchAiScore({ imageData: small }) : Promise.resolve(null);
 
     // 1c. Clear — now upload to Cloudinary, with live % on the Save button.
+    // (The AI check above runs concurrently in the background.)
     const cloud = await withUploadProgress('up-submit-btn', (paint)=>uploadToCloudinary(pendingRawFile, paint));
+    const aiRes = await aiPromise;
+    const aiScore = aiRes ? aiRes.score : null;
     // 1d. Fetch Imagga tags for the uploaded image (via Edge Function — secret stays server-side).
     // Only meaningful for images; fails quietly (empty array) for non-image files or if the
     // Imagga quota/credentials aren't set up. Tags never block — they only feed the post-save professor flag.
@@ -4873,6 +4871,10 @@ async function initApp(){
   syncThemeIcon(); // head script pre-applied the theme; just fix the button icon
   initStarfields(); // build the dark-mode night sky (CSS-gated, costs nothing in light)
   initSunMotes(); // build the light-mode daylight motes (CSS-gated, costs nothing in dark)
+  // Warm up the AI-check Edge Function: free-tier functions sleep between
+  // calls, and an empty body returns instantly WITHOUT spending Sightengine
+  // quota — so the real pre-upload check later skips the cold start.
+  try{ sb.functions.invoke('detect-ai', { body: {} }).catch(()=>{}); }catch(e){}
   if(typeof checkForQrLink === 'function' && checkForQrLink()) return; // ?work=<id> in the URL — show that work's public page and stop here
   if(handleLandingLink()) return; // ?to=landing from notification emails — landing page only, no auto-login
   const openedFromAlert = handleAlertLink(); // ?action=changepw|keep from the login-alert email

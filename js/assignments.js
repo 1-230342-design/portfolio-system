@@ -375,20 +375,19 @@ async function submitAttachedWork(){
       return;
     }
 
-    // AI-generation analysis on the LOCAL file (downscaled) BEFORE Cloudinary —
-    // flagged content never costs storage. Advisory for now (professor badge).
-    let aiScore = null;
-    if(attachRawFile.type && attachRawFile.type.startsWith('image/')){
-      showToast('🤖 Checking for AI-generated content…');
-      const small = await downscaleForAnalysis(attachRawFile);
-      const aiRes = small ? await fetchAiScore({ imageData: small }) : null;
-      aiScore = aiRes ? aiRes.score : null;
-    }
+    // AI-generation analysis starts here on the LOCAL file (downscaled) and
+    // runs IN PARALLEL with the Cloudinary upload below — whichever takes
+    // longer sets the pace. Advisory for now (professor badge).
+    const wantAi = attachRawFile.type && attachRawFile.type.startsWith('image/');
+    const small = wantAi ? await downscaleForAnalysis(attachRawFile) : null;
+    const aiPromise = (wantAi && small) ? fetchAiScore({ imageData: small }) : Promise.resolve(null);
 
     // Clear — now upload to Cloudinary (live % on the Submit button), then
     // fetch Imagga tags for the post-save professor flag (tags never block,
-    // they only inform review).
+    // they only inform review). (The AI check above runs concurrently.)
     const cloud = await withUploadProgress('aw-submit-btn', (paint)=>uploadToCloudinary(attachRawFile, paint));
+    const aiRes = await aiPromise;
+    const aiScore = aiRes ? aiRes.score : null;
     showToast('🏷️ Analyzing image content…');
     const imaggaTags = (attachRawFile.type && attachRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
 
