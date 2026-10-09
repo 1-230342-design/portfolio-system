@@ -962,12 +962,15 @@ async function fetchImaggaTags(imageUrl){
   }
 }
 
-// ── SIGHTENGINE AI-GENERATION CHECK (advisory only) ──
+// ── SIGHTENGINE AI-GENERATION CHECK (advisory + quarantine flag) ──
 // Free 'genai' model via our own 'detect-ai' Edge Function (keys stay
 // server-side, same pattern as Imagga above). Returns { score: 0..1,
 // generator } or null when unchecked (videos, quota spent, function not
-// deployed yet). NEVER blocks uploads — detectors can misflag real digital
-// art, so this is a professor-facing hint, not a gate.
+// deployed yet). Scores NEVER auto-block or auto-grade — at or above
+// AI_QUARANTINE_THRESHOLD the work is simply flagged loudly for the
+// professor (student is told at submit, red banner in review). The human
+// always decides: detectors can misflag real digital art.
+const AI_QUARANTINE_THRESHOLD = 0.85;
 async function fetchAiScore(src){
   // src: Cloudinary URL string (post-upload path) OR { imageData } base64
   // data-URL (pre-upload path — analyzed before anything leaves the browser
@@ -3656,7 +3659,10 @@ async function submitWork(){
     document.getElementById('up-send-review').checked=false;
     document.getElementById('up-drop-text').textContent='Drop files here or click to upload';
     if(sendForReview){
-      showToast('✅ Work submitted for professor review!');
+      const flagged = aiScore != null && aiScore >= AI_QUARANTINE_THRESHOLD;
+      showToast(flagged
+        ? '✅ Submitted! ⚠️ Flagged as possibly AI-generated — your professor will review it before grading.'
+        : '✅ Work submitted for professor review!');
       await sPage('projects');
       switchToProjectsTab('pending-p');
     }else{
@@ -4430,7 +4436,15 @@ async function renderAiBadge(itemId, p){
     const pct = Math.round(s * 100);
     const verdict = s >= 0.7 ? 'likely AI-generated' : s >= 0.4 ? 'uncertain — needs human review' : 'likely human-made';
     const color = s >= 0.7 ? 'var(--red)' : s >= 0.4 ? 'var(--orange)' : 'var(--accent-dark)';
-    paint(`🤖 AI-generation likelihood: <strong style="color:${color};">${pct}% — ${verdict}</strong><br><span style="font-size:11px;color:var(--text3);">Advisory only — detectors can misflag real digital art. You decide.</span>`);
+    // Quarantine flag: impossible to approve past blindly, but one click
+    // still approves the innocent — machine flags, human decides.
+    const flagBox = (s >= AI_QUARANTINE_THRESHOLD)
+      ? `<div style="background:rgba(244,67,54,.1);border:1px solid rgba(244,67,54,.45);border-radius:10px;padding:12px 14px;margin-bottom:8px;">
+           <div style="font-size:13px;font-weight:700;color:var(--red);">⛔ Quarantined: ${pct}% AI-generation likelihood</div>
+           <div style="font-size:12px;color:var(--text2);margin-top:4px;">Verify process work / originality with the student before approving. The student was told this was flagged at submit time.</div>
+         </div>`
+      : '';
+    paint(`${flagBox}🤖 AI-generation likelihood: <strong style="color:${color};">${pct}% — ${verdict}</strong><br><span style="font-size:11px;color:var(--text3);">Advisory only — detectors can misflag real digital art. You decide.</span>`);
   }catch(err){
     console.error('AI badge error:', err);
     paint('🤖 AI-generation check: <span style="color:var(--text3);">unavailable right now</span>');

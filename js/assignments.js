@@ -402,7 +402,10 @@ async function submitAttachedWork(){
     runSimilarityCheck(item.id, ourPhash, imaggaTags, embedding, assignment.id, currentUser.id);
 
     closeAttachWorkModal();
-    showToast('✅ Work attached and submitted!');
+    const flagged = aiScore != null && aiScore >= AI_QUARANTINE_THRESHOLD;
+    showToast(flagged
+      ? '✅ Submitted! ⚠️ Flagged as possibly AI-generated — your professor will review it before grading.'
+      : '✅ Work attached and submitted!');
     await loadProjectsForStudent(currentUser.id); // also refreshes My Projects/grades automatically
     refreshStudentViews();
   }catch(err){
