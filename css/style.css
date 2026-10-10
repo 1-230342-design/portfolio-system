@@ -653,7 +653,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 .portfolio-grid .pwork-full{break-inside:avoid;margin-bottom:16px;height:auto;}
 .portfolio-grid .pf-media{position:relative;inset:auto;width:100%;height:auto;}
 .portfolio-grid video.pf-media{min-height:200px;background:#000;}
-.portfolio-grid .empty-state{margin-bottom:16px;}
+.portfolio-grid .empty-state{margin-bottom:16px;column-span:all;}
 /* Per-work ambient background: a blurred, enlarged copy of the artwork glows
    behind the full piece (Spotify/YouTube style) — each card gets its own
    colours, no canvas/CORS tricks needed, pure CSS. */
