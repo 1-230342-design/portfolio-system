@@ -2007,7 +2007,7 @@ async function openPublicProfile(userId){
     const portIds = (portfolios||[]).map(p=>p.id);
     if(!portIds.length){
       _publicProfileWorks = [];
-      worksEl.innerHTML = `<div class="empty-state"><p>No approved works to show yet — nothing from this student has cleared professor review.</p></div>`;
+      worksEl.innerHTML = `<div class="empty-state" style="max-width:560px;margin:0 auto;"><p style="font-size:15px;color:var(--text2);font-weight:600;">No approved works to show yet.</p><p style="margin-top:6px;">Nothing from this student has cleared professor review.</p></div>`;
       return;
     }
     const portMap = {}; (portfolios||[]).forEach(p=>{ portMap[p.id]=p; });
