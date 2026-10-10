@@ -1998,26 +1998,52 @@ async function openPublicProfile(userId){
   go('s-public-profile');
 
   try{
-    const { data: portfolios, error: pe } = await sb
-      .from('portfolios')
-      .select('id, subjects(name,code)')
-      .eq('student_id', userId)
-      .eq('status', 'approved');
-    if(pe) throw pe;
-    const portIds = (portfolios||[]).map(p=>p.id);
-    if(!portIds.length){
+    // PRIMARY PATH — public-safe RPC (SECURITY DEFINER, see
+    // supabase-public-profile-rpc.sql): returns approved + public works for
+    // ANY caller (anon, student, professor) with only public-safe columns.
+    // Direct table reads below go through role-scoped RLS, which can hide
+    // other students' approved rows from logged-in non-owners and fake an
+    // empty page — the RPC makes the page immune to that. Falls through to
+    // the legacy direct queries when the function isn't deployed yet.
+    let items = null, portMap = null, approvedCount = 0;
+    try{
+      const { data: pub, error: pubErr } = await sb.rpc('get_public_profile_works', { p_student_id: userId });
+      if(!pubErr && pub && typeof pub === 'object' && Array.isArray(pub.works)){
+        approvedCount = pub.approved_count || 0;
+        items = pub.works.map(r=>({ id: r.item_id, portfolio_id: r.portfolio_id, title: r.title, description: r.description, file_url: r.file_url, file_type: r.file_type }));
+        portMap = {};
+        pub.works.forEach(r=>{ portMap[r.portfolio_id] = { subjects: { name: r.subject_name, code: r.subject_code } }; });
+      }
+    }catch(rpcEx){ console.warn('[public] RPC unavailable — using direct queries:', rpcEx); }
+    if(items === null){
+      // LEGACY PATH — direct reads (correct for anon + owners; may hide rows
+      // for other logged-in roles depending on RLS — hence the RPC above).
+      const { data: portfolios, error: pe } = await sb
+        .from('portfolios')
+        .select('id, subjects(name,code)')
+        .eq('student_id', userId)
+        .eq('status', 'approved');
+      if(pe) throw pe;
+      approvedCount = (portfolios||[]).length;
+      const portIds = (portfolios||[]).map(p=>p.id);
+      portMap = {}; (portfolios||[]).forEach(p=>{ portMap[p.id]=p; });
+      if(!portIds.length){
+        items = [];
+      }else{
+        const { data: rows, error: ie } = await sb
+          .from('portfolio_items')
+          .select('id, portfolio_id, title, description, file_url, file_type')
+          .in('portfolio_id', portIds)
+          .eq('is_public', true);
+        if(ie) throw ie;
+        items = rows;
+      }
+    }
+    if(!approvedCount){
       _publicProfileWorks = [];
       worksEl.innerHTML = `<div class="empty-state" style="max-width:560px;margin:0 auto;"><p style="font-size:15px;color:var(--text2);font-weight:600;">No approved works to show yet.</p><p style="margin-top:6px;">Nothing from this student has cleared professor review.</p></div>`;
       return;
     }
-    const portMap = {}; (portfolios||[]).forEach(p=>{ portMap[p.id]=p; });
-
-    const { data: items, error: ie } = await sb
-      .from('portfolio_items')
-      .select('id, portfolio_id, title, description, file_url, file_type')
-      .in('portfolio_id', portIds)
-      .eq('is_public', true);
-    if(ie) throw ie;
 
     _publicProfileWorks = (items||[]).map(it=>{
       const subj = (portMap[it.portfolio_id]||{}).subjects || {};
