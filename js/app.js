@@ -1674,6 +1674,27 @@ function handleLandingLogin(role){
 // uploaded PUBLIC + APPROVED works, then keep only one per student so the
 // same person doesn't dominate the mosaic/grid.
 async function loadRecentPublicWorks(limit){
+  // PRIMARY PATH — public-safe RPC (SECURITY DEFINER, see
+  // supabase-recent-works-rpc.sql): visible to every role, public-safe
+  // columns only. Falls through to direct queries when not deployed yet.
+  try{
+    const { data: rpcRows, error: rpcErr } = await sb.rpc('get_recent_public_works', { p_limit: limit });
+    if(!rpcErr && Array.isArray(rpcRows) && rpcRows.length){
+      const seen = new Set();
+      const picks = [];
+      for(const r of rpcRows){
+        if(!r || seen.has(r.student_id)) continue;
+        seen.add(r.student_id);
+        picks.push({ id: r.id, title: r.title, file_url: r.file_url, file_type: r.file_type,
+          portfolio_id: r.portfolio_id, uploaded_at: r.uploaded_at, studentId: r.student_id,
+          subj: { name: r.subject_name, code: r.subject_code }, studentName: r.student_name || 'Student' });
+        if(picks.length >= 6) break;
+      }
+      if(picks.length) return picks;
+    }
+  }catch(rpcEx){ console.warn('[explore] RPC unavailable — using direct queries:', rpcEx); }
+  // LEGACY PATH — direct reads (correct for anon + owners; may hide rows for
+  // other logged-in roles depending on RLS — hence the RPC above).
   const { data: items, error } = await sb
     .from('portfolio_items')
     .select('id, title, file_url, file_type, portfolio_id, uploaded_at')
