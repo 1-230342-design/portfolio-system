@@ -255,7 +255,7 @@
     <div style="display:flex;gap:12px;">
       <div style="flex:1;">
         <label class="flabel">Section</label>
-        <select class="fselect" id="ep-section">
+        <select class="fselect" id="ep-section" onchange="syncEpYear()">
           <option value="">— No section —</option>
         </select>
       </div>
@@ -323,7 +323,7 @@
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
 <script src="js/loader.js?v=52"></script>
-<script src="js/app.js?v=92"></script>
+<script src="js/app.js?v=93"></script>
 <script src="js/assignments.js?v=59"></script>
 <script src="js/grade-archives.js?v=53"></script>
 <script src="js/qr.js?v=53"></script>

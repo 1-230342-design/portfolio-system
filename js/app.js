@@ -184,6 +184,26 @@ function maskStudentId(id){
   let seen = 0;
   return bare.replace(/\d/g, d => (++seen <= 3) ? '•' : d);
 }
+// Year Level is DERIVED from Section (e.g. "2BSIT MM1" → "2nd Year") — never
+// typed by users, so section/year contradictions are impossible. The
+// year_level column stays (rankings, profiles, archives all display it), but
+// signup + Edit Profile compute it instead of asking. Returns '' when the
+// section doesn't start with a digit (callers keep their manual fallback).
+function yearFromSection(section){
+  const m = String(section || '').match(/(\d)/);
+  if(!m) return '';
+  const n = parseInt(m[1], 10);
+  const ord = n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : n + 'th';
+  return ord + ' Year';
+}
+// Edit Profile live-sync: picking a section immediately shows the year it
+// implies (saveProfileEdits re-derives anyway as the backstop).
+function syncEpYear(){
+  const sel = document.getElementById('ep-section');
+  const yr = document.getElementById('ep-year');
+  if(!sel || !yr) return;
+  yr.value = yearFromSection(sel.value) || yr.value;
+}
 function fmtDate(iso){ return iso ? new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'numeric'}) : '—'; }
 // Assignment deadlines carry a time too (datetime-local picker), so they get
 // their own formatter — e.g. "9/25/2026, 2:30 PM".
@@ -594,7 +614,7 @@ async function saveProfileEdits(){
   if(!currentUser){ showToast('⚠️ Please log in first.'); return; }
   const full_name   = document.getElementById('ep-fullname').value.trim();
   const section     = document.getElementById('ep-section').value.trim();
-  const year_level  = document.getElementById('ep-year').value;
+  const epYearManual = document.getElementById('ep-year').value;
   const social_link = document.getElementById('ep-social').value.trim();
   const showQrBox = document.getElementById('ep-show-qr');
   const show_social_on_qr = showQrBox ? showQrBox.checked : false;
@@ -613,6 +633,9 @@ async function saveProfileEdits(){
     document.getElementById('ep-section').value = oldSection;
     unenrollHint = true;
   }
+  // Year follows the EFFECTIVE section (approved old one, not the pending hop
+  // target) — manual dropdown value survives only for digit-less sections.
+  const year_level = yearFromSection(activeSection) || epYearManual;
   showToast('💾 Saving profile…');
   // The QR opt-in column needs supabase-qr-social.sql (run once). If it isn't
   // there yet, save everything else instead of failing the whole profile edit.
@@ -2447,7 +2470,7 @@ async function doSignupStudent(){
   const lastName  = document.querySelector('#s-signup-student input[placeholder="Last Name"]').value.trim();
   const studentId = document.querySelector('#s-signup-student input[placeholder="ex. 1 - 230371"]').value.trim();
   const section   = document.getElementById('signup-student-section').value;
-  const yearLevel = document.getElementById('signup-student-year').value;
+  const yearLevel = yearFromSection(section); // derived — never user-picked
   const emailInp  = document.querySelector('#s-signup-student input[type="email"]').value.trim();
   if(!firstName||!lastName||!emailInp){ showToast('⚠️ Please fill in all required fields'); return; }
   // Student ID must be the ID number, not an email — an email typed here used
