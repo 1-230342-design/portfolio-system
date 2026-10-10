@@ -175,10 +175,14 @@ function esc(s){ return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','
 // Masks the first 3 DIGITS of a student number for public-facing pages (no login required),
 // e.g. "1 - 230371" -> "• - ••0371". Dashes/spaces are left alone so the format still reads
 // the same. Returns null if there's no id at all, so callers can pick their own fallback text.
+// Anything from '@' onward is stripped first, so a mistyped email in the ID
+// field can never leak its domain onto a public page (see doSignupStudent,
+// which now rejects emails there outright).
 function maskStudentId(id){
   if(!id) return null;
+  const bare = String(id).split('@')[0];
   let seen = 0;
-  return id.replace(/\d/g, d => (++seen <= 3) ? '•' : d);
+  return bare.replace(/\d/g, d => (++seen <= 3) ? '•' : d);
 }
 function fmtDate(iso){ return iso ? new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'numeric'}) : '—'; }
 // Assignment deadlines carry a time too (datetime-local picker), so they get
@@ -2425,6 +2429,9 @@ async function doSignupStudent(){
   const yearLevel = document.getElementById('signup-student-year').value;
   const emailInp  = document.querySelector('#s-signup-student input[type="email"]').value.trim();
   if(!firstName||!lastName||!emailInp){ showToast('⚠️ Please fill in all required fields'); return; }
+  // Student ID must be the ID number, not an email — an email typed here used
+  // to leak its domain onto public pages via the masked-ID display.
+  if(studentId && studentId.includes('@')){ showToast('⚠️ Student ID should be your ID number (e.g. 1 - 230371), not an email address'); return; }
   const email = requireAsiatechEmail(emailInp);
   if(!email) return;
   const pass = prompt('Create a password (min 6 characters):');
