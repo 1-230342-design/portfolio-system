@@ -388,6 +388,15 @@ async function submitAttachedWork(){
     const cloud = await withUploadProgress('aw-submit-btn', (paint)=>uploadToCloudinary(attachRawFile, paint));
     const aiRes = await aiPromise;
     const aiScore = aiRes ? aiRes.score : null;
+    const AI_BLOCK = (typeof AI_BLOCK_THRESHOLD === 'number') ? AI_BLOCK_THRESHOLD : 0.75;
+    console.log('[AI-block check] attach score=', aiScore, 'threshold=', AI_BLOCK);
+    if(aiScore != null && aiScore >= AI_BLOCK && typeof showAiBlocked === 'function'){
+      showAiBlocked(aiScore);
+      showToast(`🤖 AI check: ${Math.round(aiScore*100)}% (block ≥${Math.round(AI_BLOCK*100)}%) — submission blocked.`);
+      attachRawFile = null;
+      document.getElementById('aw-drop-text').textContent = 'Drop files here or click to upload';
+      return;
+    }
     showToast('🏷️ Analyzing image content…');
     const imaggaTags = (attachRawFile.type && attachRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
 

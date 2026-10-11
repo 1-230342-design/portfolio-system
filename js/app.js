@@ -998,6 +998,16 @@ async function fetchImaggaTags(imageUrl){
 // professor (student is told at submit, red banner in review). The human
 // always decides: detectors can misflag real digital art.
 const AI_QUARANTINE_THRESHOLD = 0.85;
+const AI_BLOCK_THRESHOLD = 0.75; // >=75% AI likelihood = blocked at submit (similarity block stays separate)
+function showAiBlocked(score){
+  document.getElementById('oc-scanning').style.display = 'none';
+  document.getElementById('oc-result-clear').style.display = 'none';
+  document.getElementById('oc-result-blocked').style.display = 'block';
+  const pct = Math.round((score || 0) * 100);
+  document.getElementById('oc-blocked-text').textContent =
+    `AI-generated content detected (${pct}% likelihood). This work cannot be submitted. Please upload original human-made work.`;
+  document.getElementById('originalityCheckOverlay').classList.add('open');
+}
 async function fetchAiScore(src){
   // src: Cloudinary URL string (post-upload path) OR { imageData } base64
   // data-URL (pre-upload path — analyzed before anything leaves the browser
@@ -3695,6 +3705,14 @@ async function submitWork(){
     const cloud = await withUploadProgress('up-submit-btn', (paint)=>uploadToCloudinary(pendingRawFile, paint));
     const aiRes = await aiPromise;
     const aiScore = aiRes ? aiRes.score : null;
+    console.log('[AI-block check] score=', aiScore, 'threshold=', AI_BLOCK_THRESHOLD);
+    if(sendForReview && aiScore != null && aiScore >= AI_BLOCK_THRESHOLD){
+      showAiBlocked(aiScore);
+      showToast(`🤖 AI check: ${Math.round(aiScore*100)}% (block ≥${Math.round(AI_BLOCK_THRESHOLD*100)}%) — submission blocked.`);
+      pendingRawFile = null; pendingUploadFile = null;
+      document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
+      return;
+    }
     // 1d. Fetch Imagga tags for the uploaded image (via Edge Function — secret stays server-side).
     // Only meaningful for images; fails quietly (empty array) for non-image files or if the
     // Imagga quota/credentials aren't set up. Tags never block — they only feed the post-save professor flag.
