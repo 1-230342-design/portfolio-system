@@ -388,7 +388,7 @@ async function submitAttachedWork(){
     const cloud = await withUploadProgress('aw-submit-btn', (paint)=>uploadToCloudinary(attachRawFile, paint));
     const aiRes = await aiPromise;
     const aiScore = aiRes ? aiRes.score : null;
-    const AI_BLOCK = (typeof AI_BLOCK_THRESHOLD === 'number') ? AI_BLOCK_THRESHOLD : 0.90;
+    const AI_BLOCK = (typeof AI_BLOCK_THRESHOLD === 'number') ? AI_BLOCK_THRESHOLD : 0.85;
     console.log('[AI-block check] attach score=', aiScore, 'threshold=', AI_BLOCK);
     if(aiScore != null && aiScore >= AI_BLOCK && typeof showAiBlocked === 'function'){
       showAiBlocked(aiScore);
