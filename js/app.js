@@ -998,7 +998,7 @@ async function fetchImaggaTags(imageUrl){
 // professor (student is told at submit, red banner in review). The human
 // always decides: detectors can misflag real digital art.
 const AI_QUARANTINE_THRESHOLD = 0.85;
-const AI_BLOCK_THRESHOLD = 0.75; // >=75% AI likelihood = blocked at submit (similarity block stays separate)
+const AI_BLOCK_THRESHOLD = 0.90; // >=90% AI likelihood = blocked at submit (similarity block stays separate)
 function showAiBlocked(score){
   document.getElementById('oc-scanning').style.display = 'none';
   document.getElementById('oc-result-clear').style.display = 'none';
