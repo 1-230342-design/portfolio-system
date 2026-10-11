@@ -1003,6 +1003,8 @@ function showAiBlocked(score){
   document.getElementById('oc-scanning').style.display = 'none';
   document.getElementById('oc-result-clear').style.display = 'none';
   document.getElementById('oc-result-blocked').style.display = 'block';
+  const titleEl = document.getElementById('oc-blocked-title');
+  if(titleEl) titleEl.textContent = 'AI-Generated Output Detected';
   const pct = Math.round((score || 0) * 100);
   document.getElementById('oc-blocked-text').textContent =
     `AI-generated content detected (${pct}% likelihood). This work cannot be submitted. Please upload original human-made work.`;
