@@ -375,28 +375,30 @@ async function submitAttachedWork(){
       return;
     }
 
-    // AI-generation analysis starts here on the LOCAL file (downscaled) and
-    // runs IN PARALLEL with the Cloudinary upload below — whichever takes
-    // longer sets the pace. Advisory for now (professor badge).
+    // AI-generation check on the LOCAL file (downscaled) — STRICTLY BEFORE
+    // Cloudinary upload. Nothing AI ever leaves the browser, no orphan files.
     const wantAi = attachRawFile.type && attachRawFile.type.startsWith('image/');
-    const small = wantAi ? await downscaleForAnalysis(attachRawFile) : null;
-    const aiPromise = (wantAi && small) ? fetchAiScore({ imageData: small }) : Promise.resolve(null);
+    let aiScore = null;
+    if(wantAi){
+      showToast('🤖 Checking for AI-generated content…');
+      const small = await downscaleForAnalysis(attachRawFile);
+      const aiRes = (small) ? await fetchAiScore({ imageData: small }) : null;
+      aiScore = aiRes ? aiRes.score : null;
+      const AI_BLOCK = (typeof AI_BLOCK_THRESHOLD === 'number') ? AI_BLOCK_THRESHOLD : 0.85;
+      console.log('[AI-block check] attach pre-upload score=', aiScore, 'threshold=', AI_BLOCK);
+      showToast(`🤖 AI check: ${Math.round((aiScore||0)*100)}% (block ≥${Math.round(AI_BLOCK*100)}%)`);
+      if(aiScore != null && aiScore >= AI_BLOCK && typeof showAiBlocked === 'function'){
+        showAiBlocked(aiScore);
+        attachRawFile = null;
+        document.getElementById('aw-drop-text').textContent = 'Drop files here or click to upload';
+        return;
+      }
+    }
 
     // Clear — now upload to Cloudinary (live % on the Submit button), then
     // fetch Imagga tags for the post-save professor flag (tags never block,
-    // they only inform review). (The AI check above runs concurrently.)
+    // they only inform review).
     const cloud = await withUploadProgress('aw-submit-btn', (paint)=>uploadToCloudinary(attachRawFile, paint));
-    const aiRes = await aiPromise;
-    const aiScore = aiRes ? aiRes.score : null;
-    const AI_BLOCK = (typeof AI_BLOCK_THRESHOLD === 'number') ? AI_BLOCK_THRESHOLD : 0.85;
-    console.log('[AI-block check] attach score=', aiScore, 'threshold=', AI_BLOCK);
-    if(aiScore != null && aiScore >= AI_BLOCK && typeof showAiBlocked === 'function'){
-      showAiBlocked(aiScore);
-      showToast(`🤖 AI check: ${Math.round(aiScore*100)}% (block ≥${Math.round(AI_BLOCK*100)}%) — submission blocked.`);
-      attachRawFile = null;
-      document.getElementById('aw-drop-text').textContent = 'Drop files here or click to upload';
-      return;
-    }
     showToast('🏷️ Analyzing image content…');
     const imaggaTags = (attachRawFile.type && attachRawFile.type.startsWith('image/')) ? await fetchImaggaTags(cloud.url) : [];
 

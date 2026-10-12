@@ -3694,27 +3694,28 @@ async function submitWork(){
       return;
     }
 
-    // 1b2. AI-generation analysis starts here on the LOCAL file (downscaled)
-    // and runs IN PARALLEL with the Cloudinary upload below — whichever takes
-    // longer sets the pace, instead of adding the two waits together. The
-    // score is only needed at save time, so nothing awaits it yet.
+    // 1b2. AI-generation check on the LOCAL file (downscaled) — STRICTLY BEFORE
+    // Cloudinary upload. Nothing AI ever leaves the browser, no orphan files.
+    // Slightly slower than parallel (AI + upload sequential), but guarantees block pre-upload.
     const wantAi = sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/');
-    const small = wantAi ? await downscaleForAnalysis(pendingRawFile) : null;
-    const aiPromise = (wantAi && small) ? fetchAiScore({ imageData: small }) : Promise.resolve(null);
+    let aiScore = null;
+    if(wantAi){
+      showToast('🤖 Checking for AI-generated content…');
+      const small = await downscaleForAnalysis(pendingRawFile);
+      const aiRes = (small) ? await fetchAiScore({ imageData: small }) : null;
+      aiScore = aiRes ? aiRes.score : null;
+      console.log('[AI-block check] pre-upload score=', aiScore, 'threshold=', AI_BLOCK_THRESHOLD);
+      showToast(`🤖 AI check: ${Math.round((aiScore||0)*100)}% (block ≥${Math.round(AI_BLOCK_THRESHOLD*100)}%)`);
+      if(aiScore != null && aiScore >= AI_BLOCK_THRESHOLD){
+        showAiBlocked(aiScore);
+        pendingRawFile = null; pendingUploadFile = null;
+        document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
+        return;
+      }
+    }
 
     // 1c. Clear — now upload to Cloudinary, with live % on the Save button.
-    // (The AI check above runs concurrently in the background.)
     const cloud = await withUploadProgress('up-submit-btn', (paint)=>uploadToCloudinary(pendingRawFile, paint));
-    const aiRes = await aiPromise;
-    const aiScore = aiRes ? aiRes.score : null;
-    console.log('[AI-block check] score=', aiScore, 'threshold=', AI_BLOCK_THRESHOLD);
-    if(sendForReview && aiScore != null && aiScore >= AI_BLOCK_THRESHOLD){
-      showAiBlocked(aiScore);
-      showToast(`🤖 AI check: ${Math.round(aiScore*100)}% (block ≥${Math.round(AI_BLOCK_THRESHOLD*100)}%) — submission blocked.`);
-      pendingRawFile = null; pendingUploadFile = null;
-      document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
-      return;
-    }
     // 1d. Fetch Imagga tags for the uploaded image (via Edge Function — secret stays server-side).
     // Only meaningful for images; fails quietly (empty array) for non-image files or if the
     // Imagga quota/credentials aren't set up. Tags never block — they only feed the post-save professor flag.
