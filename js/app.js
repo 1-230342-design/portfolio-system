@@ -1861,8 +1861,8 @@ async function loadRecentPublicWorks(limit){
 
   const portIds = [...new Set(items.map(i=>i.portfolio_id))];
   const { data: ports } = await sb
-    .from('portfolios').select('id, student_id, status, subjects(name,code)')
-    .in('id', portIds).eq('status', 'approved');
+    .from('portfolios').select('id, student_id, status, submitted_at, subjects(name,code)')
+    .in('id', portIds).in('status', ['approved','draft']);
   const portMap = {};
   (ports||[]).forEach(p=>{ portMap[p.id] = p; });
 
@@ -1871,6 +1871,9 @@ async function loadRecentPublicWorks(limit){
   for(const it of items){
     const port = portMap[it.portfolio_id];
     if(!port || seen.has(port.student_id)) continue;
+    // Drafts count only when they're personal-gallery (never sent for review) —
+    // works sitting in professor review stay off the public grid.
+    if(port.status === 'draft' && port.submitted_at) continue;
     seen.add(port.student_id);
     picks.push({ ...it, studentId: port.student_id, subj: port.subjects });
     if(picks.length >= 6) break;
@@ -2201,30 +2204,57 @@ async function openPublicProfile(userId){
     if(items === null){
       // LEGACY PATH — direct reads (correct for anon + owners; may hide rows
       // for other logged-in roles depending on RLS — hence the RPC above).
+      // Includes personal-gallery drafts (never sent for review) so students
+      // can showcase personal pieces publicly.
       const { data: portfolios, error: pe } = await sb
         .from('portfolios')
-        .select('id, subjects(name,code)')
+        .select('id, status, submitted_at, subjects(name,code)')
         .eq('student_id', userId)
-        .eq('status', 'approved');
+        .in('status', ['approved','draft']);
       if(pe) throw pe;
-      approvedCount = (portfolios||[]).length;
-      const portIds = (portfolios||[]).map(p=>p.id);
+      approvedCount = (portfolios||[]).filter(p=>p.status==='approved').length;
+      const eligibleIds = (portfolios||[]).filter(p=>p.status==='approved' || (p.status==='draft' && !p.submitted_at)).map(p=>p.id);
       portMap = {}; (portfolios||[]).forEach(p=>{ portMap[p.id]=p; });
-      if(!portIds.length){
+      if(!eligibleIds.length){
         items = [];
       }else{
         const { data: rows, error: ie } = await sb
           .from('portfolio_items')
           .select('id, portfolio_id, title, description, file_url, file_type')
-          .in('portfolio_id', portIds)
+          .in('portfolio_id', eligibleIds)
           .eq('is_public', true);
         if(ie) throw ie;
         items = rows;
       }
     }
-    if(!approvedCount){
+    // Personal-public top-up: the RPC above still returns approved-only until
+    // its SQL is re-run, so merge the student's public personal pieces directly
+    // (visible to owners + anon under public RLS; other roles need the new RPC).
+    try{
+      const { data: ownDrafts } = await sb
+        .from('portfolios')
+        .select('id')
+        .eq('student_id', userId)
+        .eq('status', 'draft')
+        .is('submitted_at', null);
+      const draftIds = (ownDrafts||[]).map(p=>p.id).filter(id=>!portMap[id]);
+      if(draftIds.length){
+        const { data: draftItems } = await sb
+          .from('portfolio_items')
+          .select('id, portfolio_id, title, description, file_url, file_type')
+          .in('portfolio_id', draftIds)
+          .eq('is_public', true);
+        (draftItems||[]).forEach(it=>{
+          if(!(items||[]).some(x=>x.id===it.id)){
+            items.push(it);
+            portMap[it.portfolio_id] = { subjects: {} };
+          }
+        });
+      }
+    }catch(topErr){ console.warn('[public] personal top-up skipped:', topErr); }
+    if(!approvedCount && !(items||[]).length){
       _publicProfileWorks = [];
-      worksEl.innerHTML = `<div class="empty-state" style="max-width:560px;margin:0 auto;"><p style="font-size:15px;color:var(--text2);font-weight:600;">No approved works to show yet.</p><p style="margin-top:6px;">Nothing from this student has cleared professor review.</p></div>`;
+      worksEl.innerHTML = `<div class="empty-state" style="max-width:560px;margin:0 auto;"><p style="font-size:15px;color:var(--text2);font-weight:600;">No public works to show yet.</p><p style="margin-top:6px;">Nothing from this student has been published.</p></div>`;
       return;
     }
 
@@ -3185,7 +3215,7 @@ function renderPortfolioPage(uid){
   if(!pub) return;
   const list      = studentProjects[uid] || [];
   const approved  = list.filter(p=>p.status==='approved');
-  const publicOnes= approved.filter(p=>p.isPublic);
+  const publicOnes= list.filter(p=>p.isPublic && (p.status==='approved' || (p.status==='draft' && p.neverSent)));
   // Personal gallery — Upload Work saves that were never sent for review.
   // Owner-only by construction (professors never see drafts anywhere).
   const personal  = list.filter(p=>p.status==='draft' && p.neverSent);
@@ -3203,15 +3233,16 @@ function renderPortfolioPage(uid){
         <div class="pf-desc">${esc(p.desc||'No description')}</div>
       </div></div>`;
   };
-  pub.innerHTML = publicOnes.length ? publicOnes.map(cardHtml).join('') : `<div class="empty-state"><p>Nothing public yet. Open an approved work and tap "Add to Public" so it shows up when people search for you.</p></div>`;
+  pub.innerHTML = publicOnes.length ? publicOnes.map(cardHtml).join('') : `<div class="empty-state"><p>Nothing public yet. Open an approved or personal work and tap "Publish" / "Add to Public" so it shows up when people search for you.</p></div>`;
   document.getElementById('pt-approved').innerHTML = approved.length ? approved.map(cardHtml).join('') : `<div class="empty-state"><p>No approved works yet.</p></div>`;
   const personalEl = document.getElementById('pt-personal');
   if(personalEl){
     const personalCardHtml = p => {
       return `<div class="pwork-full" onclick="viewStudentProject('${p.id}')">${pfMediaHtml(p)}
-        <span class="pf-badge">📁 Personal</span>
+        <span class="pf-badge">📁 Personal${p.isPublic ? ' · 🌐 Public' : ''}</span>
         <div class="pf-actions">
           <button class="pf-btn" onclick="event.stopPropagation();viewStudentProject('${p.id}')">👁 View</button>
+          <button class="pf-btn gold" onclick="event.stopPropagation();togglePublic('${p.id}')">${p.isPublic ? '🔒 Unpublish' : '🌐 Publish'}</button>
           <button class="pf-btn gold" onclick="event.stopPropagation();downloadWork('${p.id}')">⬇ Download</button>
         </div>
         <div class="pf-hover">
@@ -3230,7 +3261,11 @@ async function togglePublic(itemId){
   const list = studentProjects[currentUser.id] || [];
   const item = list.find(p=>p.id===itemId);
   if(!item){ showToast('⚠️ Work not found'); return; }
-  if(item.status !== 'approved'){ showToast('⚠️ Only approved works can be made public.'); return; }
+  // Approved works AND personal-gallery drafts can go public so students can
+  // showcase personal pieces. Works sitting in professor review (submitted) or
+  // rejected stay private.
+  const isPersonal = item.status === 'draft' && item.neverSent;
+  if(item.status !== 'approved' && !isPersonal){ showToast('⚠️ Only approved or personal works can be made public.'); return; }
   const newValue = !item.isPublic;
   try{
     // .select() after update lets us see exactly which rows were changed — without it,
@@ -3325,17 +3360,24 @@ function viewStudentProject(itemId){
     commentBox.style.display = 'none';
   }
 
-  // Public/private toggle — only approved works can be made public.
+  // Public/private toggle — approved works and personal-gallery drafts can be
+  // made public. Works in professor review stay private until decided.
   const pubBtn    = document.getElementById('spv-public-toggle-btn');
   const pubHint   = document.getElementById('spv-public-hint');
   const deleteBtn = document.getElementById('spv-delete-btn');
   const unsubmitBtn = document.getElementById('spv-unsubmit-btn');
-  if(p.status === 'approved'){
+  const isPersonalDraft = p.status === 'draft' && p.neverSent;
+  if(p.status === 'approved' || isPersonalDraft){
     pubBtn.textContent = p.isPublic ? '🔒 Remove from Public' : '🌐 Add to Public';
     pubBtn.style.display = 'block';
     pubHint.style.display = 'block';
-    if(deleteBtn) deleteBtn.style.display = 'none'; // already approved — nothing left to undo
-    if(unsubmitBtn) unsubmitBtn.style.display = 'none';
+    if(p.status === 'approved'){ // approved — nothing left to undo
+      if(deleteBtn) deleteBtn.style.display = 'none';
+      if(unsubmitBtn) unsubmitBtn.style.display = 'none';
+    }else{ // personal draft — still deletable, nothing to unsubmit
+      if(deleteBtn) deleteBtn.style.display = 'block';
+      if(unsubmitBtn) unsubmitBtn.style.display = 'none';
+    }
   } else {
     pubBtn.style.display = 'none';
     pubHint.style.display = 'none';

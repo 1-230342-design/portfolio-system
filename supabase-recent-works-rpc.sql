@@ -3,7 +3,8 @@
 -- ═══════════════════════════════════════════════════════════════════
 --  WHY this exists (same story as supabase-public-profile-rpc.sql):
 --  The landing "Explore creative works" grid and hero mosaic must show
---  approved + public works to EVERYONE. Direct table reads go through
+--  public works to EVERYONE: approved pieces plus personal-gallery pieces
+--  the student chose to publish. Direct table reads go through
 --  role-scoped RLS, which can hide other students' approved rows from
 --  logged-in non-owners and fake an empty grid. This SECURITY DEFINER
 --  function bypasses RLS but returns ONLY public-safe columns (titles,
@@ -41,7 +42,7 @@ as $$
         left join subjects s on s.id = p.subject_id
         left join user_profiles pr on pr.user_id = p.student_id
        where i.is_public = true
-         and p.status = 'approved'
+         and (p.status = 'approved' or (p.status = 'draft' and p.submitted_at is null))
        order by i.uploaded_at desc nulls last
        limit greatest(coalesce(p_limit, 24), 1)
     ) w;

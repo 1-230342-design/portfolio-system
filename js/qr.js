@@ -18,11 +18,11 @@ function buildGoQrImageUrl(dataUrl, size){
 
 // ══════════════════════════════════════════════════════
 //  PUBLIC WORK PAGE — what opens when the QR is scanned
-//  No login required. Only shows the work if it is BOTH
-//  is_public = true on portfolio_items AND the parent
-//  portfolio's status = 'approved' — same rule as the
-//  public search/profile pages, so nothing pending or
-//  private ever leaks through a shared QR/link.
+//  No login required. Only shows the work if it is is_public = true on
+//  portfolio_items AND the parent portfolio is approved OR a personal-gallery
+//  draft (never sent for review) — same rule as the public search/profile
+//  pages, so nothing pending review, rejected, or private ever leaks through
+//  a shared QR/link.
 // ══════════════════════════════════════════════════════
 async function loadPublicWorkFromQR(itemId){
   const el = document.getElementById('qw-body');
@@ -41,12 +41,12 @@ async function loadPublicWorkFromQR(itemId){
 
     const { data: portfolio, error: pe } = await sb
       .from('portfolios')
-      .select('id, status, student_id, subjects(name,code)')
+      .select('id, status, submitted_at, student_id, subjects(name,code)')
       .eq('id', item.portfolio_id)
-      .eq('status', 'approved')
       .maybeSingle();
     if(pe) throw pe;
-    if(!portfolio){ renderPublicWorkNotFound(); return; }
+    const isPersonalPublic = portfolio && portfolio.status === 'draft' && !portfolio.submitted_at;
+    if(!portfolio || !(portfolio.status === 'approved' || isPersonalPublic)){ renderPublicWorkNotFound(); return; }
 
     // Base profile first (columns that always exist), then the QR opt-in
     // columns separately — if supabase-qr-social.sql was never run, that

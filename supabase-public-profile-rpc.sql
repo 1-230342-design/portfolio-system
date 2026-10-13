@@ -2,8 +2,9 @@
 --  Artfolio — public profile works RPC (one-time setup, re-runnable)
 -- ═══════════════════════════════════════════════════════════════════
 --  WHY this exists:
---  The public portfolio page must show approved + public works to EVERYONE
---  (logged-out visitors, students, professors alike). Direct table reads go
+--  The public portfolio page must show public works to EVERYONE
+--  (logged-out visitors, students, professors alike): approved works plus
+--  personal-gallery pieces the student chose to publish. Direct table reads go
 --  through RLS, which is role-scoped — e.g. an owner-only policy on
 --  portfolios hides other students' approved works from logged-in
 --  professors, showing a false "no approved works" empty state. This
@@ -17,8 +18,8 @@
 --  HOW TO INSTALL (once, ~30 seconds):
 --    1. Open your Supabase Dashboard → SQL Editor → New query.
 --    2. Paste this entire file and press Run.
---    3. Done — public profiles immediately show approved public works for
---       every role. Verify with: select get_public_profile_works('<any-user-id>');
+--    3. Done — public profiles immediately show approved + personal public
+--       works for every role. Verify with: select get_public_profile_works('<any-user-id>');
 -- ═══════════════════════════════════════════════════════════════════
 
 create or replace function get_public_profile_works(p_student_id uuid)
@@ -53,7 +54,7 @@ begin
         join portfolios p on p.id = i.portfolio_id
         left join subjects s on s.id = p.subject_id
        where p.student_id = p_student_id
-         and p.status = 'approved'
+         and (p.status = 'approved' or (p.status = 'draft' and p.submitted_at is null))
          and i.is_public = true
     ) w;
 
