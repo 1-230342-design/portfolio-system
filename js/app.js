@@ -156,6 +156,8 @@ const ALL_SKILLS = [
   'Event Photography','Landscape Photography'
 ];
 let editSkills = []; // skills currently selected inside the Edit Profile modal
+let _stagedAvatarFile = null;  // new photo picked in Edit Profile, uploaded on Save
+let _removeAvatarFlag = false; // true = revert to letter avatar on Save
 
 const AVATAR_COLORS = ['#2f6f75','#c2452d','#2d7d5a','#a8763e','#3a6ea5','#8a3e6e','#4c6b8a','#c0862f'];
 // Deterministic color per name so the same person always gets the same
@@ -408,15 +410,55 @@ async function specificLoginErrorMessage(email, error){
 }
 
 // ══════════════════════════════════════════════════════
-//  AVATARS — initial letter of the account's name
+//  AVATARS — uploaded photo when set, initial letter otherwise (default)
 // ══════════════════════════════════════════════════════
-function setAvatar(containerId, name){
+function setAvatar(containerId, name, photoUrl){
   const el = document.getElementById(containerId);
   if(!el) return;
+  if(photoUrl){
+    el.innerHTML = `<img src="${esc(photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;" onerror="this.remove()"/>`;
+    return;
+  }
   const firstName = (name||'').trim().split(/\s+/)[0] || '';
   const match = firstName.match(/[A-Za-z]/); // first actual letter, skipping numbers/dashes
   const letter = match ? match[0].toUpperCase() : '?';
   el.innerHTML = `<div class="avatar-initial" style="background:${avatarColor(name)}">${esc(letter)}</div>`;
+}
+
+// ── EDIT PROFILE avatar picker (photo optional, letter stays default) ──
+function renderAvatarPreview(){
+  const box = document.getElementById('ep-avatar-preview');
+  if(!box) return;
+  if(_stagedAvatarFile){
+    const url = URL.createObjectURL(_stagedAvatarFile);
+    box.innerHTML = `<img src="${esc(url)}" alt="" style="width:100%;height:100%;object-fit:cover;"/>`;
+    return;
+  }
+  const current = (!_removeAvatarFlag && currentProfile && currentProfile.avatar_url) ? currentProfile.avatar_url : null;
+  if(current){
+    box.innerHTML = `<img src="${esc(current)}" alt="" style="width:100%;height:100%;object-fit:cover;"/>`;
+    return;
+  }
+  const name = (document.getElementById('ep-fullname') && document.getElementById('ep-fullname').value.trim()) || (currentProfile && currentProfile.full_name) || '?';
+  const firstName = name.trim().split(/\s+/)[0] || '';
+  const match = firstName.match(/[A-Za-z]/);
+  const letter = match ? match[0].toUpperCase() : '?';
+  box.innerHTML = `<div class="avatar-initial" style="background:${avatarColor(name)};font-size:26px;">${esc(letter)}</div>`;
+}
+function stageAvatarFile(e){
+  const f = e && e.target && e.target.files && e.target.files[0];
+  if(!f) return;
+  if(!f.type || !f.type.startsWith('image/')){ showToast('⚠️ Please pick an image file.'); return; }
+  if(f.size > 5*1024*1024){ showToast('⚠️ Photo must be 5MB or smaller.'); return; }
+  _stagedAvatarFile = f; _removeAvatarFlag = false;
+  renderAvatarPreview();
+}
+function removeAvatarPhoto(){
+  _stagedAvatarFile = null; _removeAvatarFlag = true;
+  const avInput = document.getElementById('ep-avatar-input');
+  if(avInput) avInput.value = '';
+  renderAvatarPreview();
+  showToast('↩️ Letter avatar restored — Save to confirm.');
 }
 
 // ══════════════════════════════════════════════════════
@@ -449,8 +491,8 @@ function renderPortfolioHeader(){
       : `<span class="skill-pill" style="opacity:.6">No skills added yet</span>`;
   }
 
-  setAvatar('s-portfolio-avatar', currentProfile.full_name);
-  setAvatar('s-sidebar-avatar', currentProfile.full_name);
+  setAvatar('s-portfolio-avatar', currentProfile.full_name, currentProfile.avatar_url);
+  setAvatar('s-sidebar-avatar', currentProfile.full_name, currentProfile.avatar_url);
   renderContactQr();
 }
 
@@ -509,6 +551,11 @@ function openEditProfile(){
   renderSkillChips();
   renderSkillPicker();
   document.getElementById('ep-skill-picker').style.display = 'none';
+  // Avatar picker: show current photo (or letter default), reset staging
+  _stagedAvatarFile = null; _removeAvatarFlag = false;
+  const avInput = document.getElementById('ep-avatar-input');
+  if(avInput) avInput.value = '';
+  renderAvatarPreview();
   document.getElementById('editProfileOverlay').classList.add('open');
   renderTransferNote(); // fire-and-forget: pending transfer status under Section
 }
@@ -674,11 +721,29 @@ async function saveProfileEdits(){
   // target) — manual dropdown value survives only for digit-less sections.
   const year_level = yearFromSection(activeSection) || epYearManual;
   showToast('💾 Saving profile…');
-  // The QR opt-in column needs supabase-qr-social.sql (run once). If it isn't
+  // Avatar: upload newly picked photo first (images ≤5MB). Remove = null (letter default).
+  let avatar_url = (currentProfile && currentProfile.avatar_url) || null;
+  if(_removeAvatarFlag) avatar_url = null;
+  if(_stagedAvatarFile){
+    try{
+      showToast('📷 Uploading photo…');
+      const up = await uploadToCloudinary(_stagedAvatarFile);
+      avatar_url = up.url;
+    }catch(upErr){ showToast('❌ Photo upload failed: '+(upErr.message || upErr)); return; }
+  }
+  // The QR opt-in + avatar columns need their SQL run once. If either isn't
   // there yet, save everything else instead of failing the whole profile edit.
-  let { error } = await sb.from('user_profiles').update({
-    full_name, section: activeSection, year_level, social_link, skills: editSkills, show_social_on_qr
-  }).eq('user_id', currentUser.id);
+  const fullRow = {
+    full_name, section: activeSection, year_level, social_link, skills: editSkills, show_social_on_qr, avatar_url
+  };
+  let { error } = await sb.from('user_profiles').update(fullRow).eq('user_id', currentUser.id);
+  let avatarSaved = true;
+  if(error && /avatar_url/i.test(error.message || '')){
+    console.info('[profile] avatar column missing — run supabase-avatar.sql. Saving the rest of the profile.');
+    delete fullRow.avatar_url;
+    avatarSaved = false;
+    ({ error } = await sb.from('user_profiles').update(fullRow).eq('user_id', currentUser.id));
+  }
   if(error && /show_social_on_qr/i.test(error.message || '')){
     console.info('[profile] QR opt-in column missing — run supabase-qr-social.sql. Saving the rest of the profile.');
     ({ error } = await sb.from('user_profiles').update({
@@ -691,6 +756,9 @@ async function saveProfileEdits(){
   currentProfile.year_level  = year_level;
   currentProfile.social_link = social_link;
   currentProfile.show_social_on_qr = show_social_on_qr;
+  if(avatarSaved) currentProfile.avatar_url = avatar_url;
+  else if(avatar_url && avatar_url !== currentProfile.avatar_url) showToast('⚠️ Photo uploaded but not saved — run supabase-avatar.sql, then re-save.');
+  _stagedAvatarFile = null; _removeAvatarFlag = false;
   currentProfile.skills      = editSkills;
   const firstName = full_name.split(' ')[0] || 'Student';
   document.getElementById('s-sidebar-name').textContent = full_name;
@@ -2045,7 +2113,7 @@ async function openPublicProfile(userId){
 
   const { data: profile, error: profErr } = await sb
     .from('user_profiles')
-    .select('user_id, full_name, student_id, section, year_level, social_link, show_social_on_qr, skills')
+    .select('user_id, full_name, student_id, section, year_level, social_link, show_social_on_qr, skills, avatar_url')
     .eq('user_id', userId)
     .maybeSingle();
   if(profErr || !profile){ showToast('❌ Could not load this profile.'); console.error(profErr); return; }
@@ -2071,7 +2139,9 @@ async function openPublicProfile(userId){
   document.getElementById('pp-skills').innerHTML = skills.length
     ? skills.map(sk=>`<span class="skill-pill">${esc(sk)}</span>`).join('')
     : `<span class="skill-pill" style="opacity:.6">No skills added yet</span>`;
-  document.getElementById('pp-avatar').innerHTML = `<div class="avatar-initial" style="background:${avatarColor(profile.full_name)}">${esc(studentInitial(profile.full_name))}</div>`;
+  document.getElementById('pp-avatar').innerHTML = profile.avatar_url
+    ? `<img src="${esc(profile.avatar_url)}" alt="" style="width:100%;height:100%;object-fit:cover;"/>`
+    : `<div class="avatar-initial" style="background:${avatarColor(profile.full_name)}">${esc(studentInitial(profile.full_name))}</div>`;
   // Contact QR on the public header — shown ONLY when the student opted in
   // (Edit Profile checkbox). Strangers never see the raw social link text;
   // the QR encodes it for scanners. No opt-in = no box at all.
@@ -2489,7 +2559,7 @@ async function doLoginProf(){
   currentUser    = data.user;
   currentProfile = profile;
   document.getElementById('p-sidebar-name').textContent = profile.full_name||'';
-  setAvatar('p-sidebar-avatar', profile.full_name);
+  setAvatar('p-sidebar-avatar', profile.full_name, profile.avatar_url);
   playLoginWipe(()=>{ go('s-professor'); pPage('p-dashboard'); });
   showToast('✅ Signed in as '+profile.full_name);
   sendLoginAlert(email, true);
@@ -2660,7 +2730,7 @@ async function verifyProfOtp(){
   currentUser    = data.user;
   currentProfile = profile;
   document.getElementById('p-sidebar-name').textContent = profile?.full_name||'';
-  setAvatar('p-sidebar-avatar', profile?.full_name);
+  setAvatar('p-sidebar-avatar', profile?.full_name, profile?.avatar_url);
   playLoginWipe(()=>{ go('s-professor'); pPage('p-dashboard'); });
   refreshProfViews();
   applyProfessorPermissions();
@@ -4894,7 +4964,7 @@ async function restoreSession(){
     populateSubjectDropdown();
   } else if(profile.role === 'professor' || profile.role === 'admin'){
     document.getElementById('p-sidebar-name').textContent = profile.full_name||'';
-    setAvatar('p-sidebar-avatar', profile.full_name);
+    setAvatar('p-sidebar-avatar', profile.full_name, profile.avatar_url);
     go('s-professor'); pPage('p-dashboard'); refreshProfViews();
     applyProfessorPermissions();
   }
