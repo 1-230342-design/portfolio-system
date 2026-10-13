@@ -256,9 +256,9 @@
         <input type="file" id="ep-avatar-input" accept="image/*" style="display:none" onchange="stageAvatarFile(event)"/>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn-outline" style="padding:8px 14px;font-size:12px;margin:0;" onclick="document.getElementById('ep-avatar-input').click()">📷 Change photo</button>
-          <button type="button" class="btn-cancel" id="ep-avatar-remove" style="padding:8px 14px;font-size:12px;" onclick="removeAvatarPhoto()">↩️ Use letter</button>
+          <button type="button" class="btn-cancel" id="ep-avatar-remove" style="padding:8px 14px;font-size:12px;" onclick="removeAvatarPhoto()">↩️ Use default</button>
         </div>
-        <div style="font-size:11px;color:var(--text3);">Letter avatar stays the default until you pick a photo.</div>
+        <div style="font-size:11px;color:var(--text3);">Default letter avatar stays until you pick a photo.</div>
       </div>
     </div>
 
@@ -336,7 +336,7 @@
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
 <script src="js/loader.js?v=52"></script>
-<script src="js/app.js?v=104"></script>
+<script src="js/app.js?v=105"></script>
 <script src="js/assignments.js?v=63"></script>
 <script src="js/grade-archives.js?v=53"></script>
 <script src="js/qr.js?v=53"></script>

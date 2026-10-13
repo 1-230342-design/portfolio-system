@@ -458,7 +458,7 @@ function removeAvatarPhoto(){
   const avInput = document.getElementById('ep-avatar-input');
   if(avInput) avInput.value = '';
   renderAvatarPreview();
-  showToast('↩️ Letter avatar restored — Save to confirm.');
+  showToast('↩️ Default avatar restored — Save to confirm.');
 }
 
 // ══════════════════════════════════════════════════════
@@ -721,34 +721,41 @@ async function saveProfileEdits(){
   // target) — manual dropdown value survives only for digit-less sections.
   const year_level = yearFromSection(activeSection) || epYearManual;
   showToast('💾 Saving profile…');
-  // Avatar: upload newly picked photo first (images ≤5MB). Remove = null (letter default).
+  // Avatar: upload newly picked photo first (images ≤5MB). Use-default = null (letter default).
+  // Old Cloudinary file is deleted after a successful save (revert or replace), best-effort.
+  const oldAvatarPublicId = (currentProfile && currentProfile.avatar_public_id) || null;
   let avatar_url = (currentProfile && currentProfile.avatar_url) || null;
-  if(_removeAvatarFlag) avatar_url = null;
+  let avatar_public_id = oldAvatarPublicId;
+  if(_removeAvatarFlag){ avatar_url = null; avatar_public_id = null; }
   if(_stagedAvatarFile){
     try{
       showToast('📷 Uploading photo…');
       const up = await uploadToCloudinary(_stagedAvatarFile);
       avatar_url = up.url;
+      avatar_public_id = up.publicId || null;
     }catch(upErr){ showToast('❌ Photo upload failed: '+(upErr.message || upErr)); return; }
   }
   // The QR opt-in + avatar columns need their SQL run once. If either isn't
   // there yet, save everything else instead of failing the whole profile edit.
   const fullRow = {
-    full_name, section: activeSection, year_level, social_link, skills: editSkills, show_social_on_qr, avatar_url
+    full_name, section: activeSection, year_level, social_link, skills: editSkills, show_social_on_qr, avatar_url, avatar_public_id
   };
   let { error } = await sb.from('user_profiles').update(fullRow).eq('user_id', currentUser.id);
   let avatarSaved = true;
-  if(error && /avatar_url/i.test(error.message || '')){
-    console.info('[profile] avatar column missing — run supabase-avatar.sql. Saving the rest of the profile.');
+  if(error && /avatar_(url|public_id)/i.test(error.message || '')){
+    console.info('[profile] avatar columns missing — run supabase-avatar.sql. Saving the rest of the profile.');
     delete fullRow.avatar_url;
+    delete fullRow.avatar_public_id;
     avatarSaved = false;
     ({ error } = await sb.from('user_profiles').update(fullRow).eq('user_id', currentUser.id));
   }
   if(error && /show_social_on_qr/i.test(error.message || '')){
     console.info('[profile] QR opt-in column missing — run supabase-qr-social.sql. Saving the rest of the profile.');
-    ({ error } = await sb.from('user_profiles').update({
+    const qrFallback = {
       full_name, section: activeSection, year_level, social_link, skills: editSkills
-    }).eq('user_id', currentUser.id));
+    };
+    if(avatarSaved){ qrFallback.avatar_url = avatar_url; qrFallback.avatar_public_id = avatar_public_id; }
+    ({ error } = await sb.from('user_profiles').update(qrFallback).eq('user_id', currentUser.id));
   }
   if(error){ showToast('❌ '+error.message); return; }
   currentProfile.full_name   = full_name;
@@ -756,7 +763,16 @@ async function saveProfileEdits(){
   currentProfile.year_level  = year_level;
   currentProfile.social_link = social_link;
   currentProfile.show_social_on_qr = show_social_on_qr;
-  if(avatarSaved) currentProfile.avatar_url = avatar_url;
+  if(avatarSaved){
+    currentProfile.avatar_url = avatar_url;
+    currentProfile.avatar_public_id = avatar_public_id;
+    // Delete the replaced/reverted Cloudinary photo — never fails the save.
+    const staleId = (oldAvatarPublicId && oldAvatarPublicId !== avatar_public_id) ? oldAvatarPublicId : null;
+    if(staleId){
+      try{ await sb.functions.invoke('delete-cloudinary-asset', { body: { publicId: staleId } }); }
+      catch(clErr){ console.warn('Old avatar cleanup skipped:', clErr); }
+    }
+  }
   else if(avatar_url && avatar_url !== currentProfile.avatar_url) showToast('⚠️ Photo uploaded but not saved — run supabase-avatar.sql, then re-save.');
   _stagedAvatarFile = null; _removeAvatarFlag = false;
   currentProfile.skills      = editSkills;
