@@ -3220,7 +3220,7 @@ function renderPortfolioPage(uid){
           <div class="pf-desc">${esc(p.desc||'No description')}</div>
         </div></div>`;
     };
-    personalEl.innerHTML = personal.length ? personal.map(personalCardHtml).join('') : `<div class="empty-state" style="text-align:center;"><p>No personal works yet. Use Upload Work (without the review checkbox) to build your private gallery.</p><button class="btn-submit-work" style="margin-top:12px;" onclick="sPage('upload')">⬆️ Upload Work</button></div>`;
+    personalEl.innerHTML = personal.length ? personal.map(personalCardHtml).join('') : `<div class="empty-state" style="text-align:center;"><button onclick="sPage('upload')" title="Upload Work" aria-label="Upload Work" style="width:64px;height:64px;border-radius:50%;background:var(--dark);border:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4l4 4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></button><p>No personal works yet. Use Upload Work (without the review checkbox) to build your private gallery.</p></div>`;
   }
 }
 
