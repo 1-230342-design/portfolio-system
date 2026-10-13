@@ -3615,6 +3615,7 @@ function renderGradesPage(uid){
         <div class="sim-by">Composition: <strong style="color:var(--ink)">${p.compositionScore ?? '—'}/25</strong></div>
       </div>
       ${p.gradeRemarks ? `<div class="sim-by" style="font-style:italic;">"${esc(p.gradeRemarks)}"</div>` : ''}
+      <div class="sim-by" style="margin-top:6px;">✅ Approved on ${fmtDate(p.decisionAt)}</div>
     </div>
   `).join('');
 }
