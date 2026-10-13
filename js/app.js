@@ -3220,7 +3220,7 @@ function renderPortfolioPage(uid){
           <div class="pf-desc">${esc(p.desc||'No description')}</div>
         </div></div>`;
     };
-    personalEl.innerHTML = personal.length ? personal.map(personalCardHtml).join('') : `<div class="empty-state"><p>No personal works yet. Use Upload Work (without the review checkbox) to build your private gallery.</p></div>`;
+    personalEl.innerHTML = personal.length ? personal.map(personalCardHtml).join('') : `<div class="empty-state" style="text-align:center;"><p>No personal works yet. Use Upload Work (without the review checkbox) to build your private gallery.</p><button class="btn-submit-work" style="margin-top:12px;" onclick="sPage('upload')">⬆️ Upload Work</button></div>`;
   }
 }
 
