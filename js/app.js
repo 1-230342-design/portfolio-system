@@ -256,6 +256,17 @@ function cardThumbHtml(p, frameCls, phCls, phStyle){
 function readFileAsDataUrl(file){
   return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(new Error('read failed')); r.readAsDataURL(file); });
 }
+let _navSuppressPush = false;
+let _lastPushedKey = '';
+function _pushNavState(screen, sub){
+  if(_navSuppressPush) return;
+  try{
+    const key = (screen || '') + '|' + (sub || '');
+    if(key === _lastPushedKey) return; // same view twice (e.g. re-render) — don't stack dupes
+    _lastPushedKey = key;
+    history.pushState({ screen, sub }, '');
+  }catch(e){}
+}
 function go(id){
   const el = document.getElementById(id);
   if(!el){
@@ -265,6 +276,32 @@ function go(id){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   el.classList.add('active');
   window.scrollTo(0,0);
+  _pushNavState(id, null);
+}
+// Chrome Back button support: pop through in-app screens instead of exiting.
+// Registered once — guard survives re-execution after cache-busted reloads.
+if(!window._artfolioPopAttached){
+  window._artfolioPopAttached = true;
+  try{ history.replaceState({ screen: null }, ''); }catch(e){}
+  window.addEventListener('popstate', (e)=>{
+    const st = (e && e.state) || {};
+    _navSuppressPush = true;
+    try{
+      if(st.sub && st.screen && document.getElementById(st.screen)){
+        // Sub-tab inside a dashboard (student sp-* / professor p-*)
+        go(st.screen);
+        if(st.screen === 's-student' && document.getElementById('sp-'+st.sub)) sPage(st.sub);
+        else if(st.screen === 's-professor' && document.getElementById(st.sub)) pPage(st.sub);
+        _lastPushedKey = st.screen + '|' + st.sub;
+      }else if(st.screen && document.getElementById(st.screen)){
+        go(st.screen);
+        _lastPushedKey = st.screen + '|';
+      }
+      // No state (first entry) → let Chrome do its default (exit/previous site)
+    }finally{
+      _navSuppressPush = false;
+    }
+  });
 }
 // Back navigation WITH a landing cascade entrance (search page's ← Back).
 // Order is the safety feature: go() first, animation class second — so even
@@ -2703,13 +2740,13 @@ async function sPage(page){
     return;
   }
   document.querySelectorAll('#s-student .main-content > div').forEach(d=>d.style.display='none');
-  target.style.display='block';
-  document.querySelectorAll('#s-student .snav-item').forEach(a=>{
+  target.style.display='block';  document.querySelectorAll('#s-student .snav-item').forEach(a=>{
     a.classList.toggle('active', a.getAttribute('onclick')&&a.getAttribute('onclick').includes("'"+page+"'"));
   });
   if(page==='notifications' && currentUser) markNotifsSeen(currentUser.id);
   if(currentUser) await loadProjectsForStudent(currentUser.id);
   refreshStudentViews();
+  _pushNavState('s-student', page);
 }
 
 // Origami bird courier: the dashboard "Upload New Work" button ITSELF folds
@@ -3797,6 +3834,7 @@ function pPage(page){
   // Defined in js/assignments.js — guarded in case that file hasn't loaded yet
   if(page==='p-assignments' && typeof renderProfAssignmentsPage === 'function') renderProfAssignmentsPage();
   if(page==='p-archives' && typeof renderArchivesPage === 'function') renderArchivesPage();
+  _pushNavState('s-professor', page);
 }
 
 // ══════════════════════════════════════════════════════
