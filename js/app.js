@@ -1395,7 +1395,7 @@ async function runSimilarityCheck(newItemId, newPhash, newTags, newEmbedding, as
 
 // Save uploaded item to Supabase using your real schema
 // Flow: find/create portfolio → insert portfolio_item
-async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPeriod, fileUrl, fileType, fileSize, cloudinaryId, phash, imaggaTags, embedding, sha256, forReview = true }){
+async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPeriod, fileUrl, fileType, fileSize, cloudinaryId, phash, imaggaTags, aiScore, embedding, sha256, forReview = true }){
   // 1. Find or create a portfolio for this student + grading_period (subject is optional)
   //
   // PERSONAL vs REVIEW portfolios are kept strictly separate using the
