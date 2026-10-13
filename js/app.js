@@ -3737,29 +3737,35 @@ async function submitWork(){
   // Checked = the old path — enters the professor review queue and can be graded.
   const sendForReview = !!(document.getElementById('up-send-review') && document.getElementById('up-send-review').checked);
   try{
-    // 1. Fingerprint locally first (dHash + AI embedding), then run the 90%+
-    // originality check BEFORE uploading to Cloudinary — a duplicate never
-    // leaves the browser, so no orphan file or DB row is ever created.
-    // The block check ignores Imagga tags (see SIMILARITY_BLOCK_THRESHOLD),
-    // so no Cloudinary URL is needed for this step.
-    const uploadKind = similarityKindLabel(pendingRawFile.type);
-    showToast(uploadKind === 'video' ? '🎬 Comparing video content…' : uploadKind === 'image' ? '🧠 Comparing image content…' : '🧠 Comparing file content…');
-    const [ourPhash, embedding, ourSha256] = await Promise.all([
-      computePerceptualHash(pendingRawFile),
-      (typeof embFromFile === 'function') ? embFromFile(pendingRawFile) : Promise.resolve(null),
-      computeSha256(pendingRawFile) // exact-file fingerprint — catches PDFs/ZIPs/etc too
-    ]);
+    // Personal gallery (unchecked) = private draft, never reviewed — skip ALL
+    // checks (similarity + AI) and go straight to upload. Checks run only when
+    // sharing for professor review, so personal work can never false-positive.
+    let ourPhash = null, embedding = null, ourSha256 = null;
+    if(sendForReview){
+      // 1. Fingerprint locally first (dHash + AI embedding), then run the 90%+
+      // originality check BEFORE uploading to Cloudinary — a duplicate never
+      // leaves the browser, so no orphan file or DB row is ever created.
+      // The block check ignores Imagga tags (see SIMILARITY_BLOCK_THRESHOLD),
+      // so no Cloudinary URL is needed for this step.
+      const uploadKind = similarityKindLabel(pendingRawFile.type);
+      showToast(uploadKind === 'video' ? '🎬 Comparing video content…' : uploadKind === 'image' ? '🧠 Comparing image content…' : '🧠 Comparing file content…');
+      [ourPhash, embedding, ourSha256] = await Promise.all([
+        computePerceptualHash(pendingRawFile),
+        (typeof embFromFile === 'function') ? embFromFile(pendingRawFile) : Promise.resolve(null),
+        computeSha256(pendingRawFile) // exact-file fingerprint — catches PDFs/ZIPs/etc too
+      ]);
 
-    // 1b. Play the originality-check scanning animation while comparing
-    // against every existing submission; blocks outright at 90%+ similarity
-    // — checked BEFORE uploading/saving, so a duplicate never becomes a
-    // real submission at all, not just a flagged one the professor has to
-    // catch manually.
-    const isDuplicate = await runOriginalityCheckUI(ourPhash, [], null, embedding, currentUser.id, ourSha256, uploadKind); // plain Upload Work — no assignment
-    if(isDuplicate){
-      pendingRawFile = null; pendingUploadFile = null;
-      document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
-      return;
+      // 1b. Play the originality-check scanning animation while comparing
+      // against every existing submission; blocks outright at 90%+ similarity
+      // — checked BEFORE uploading/saving, so a duplicate never becomes a
+      // real submission at all, not just a flagged one the professor has to
+      // catch manually.
+      const isDuplicate = await runOriginalityCheckUI(ourPhash, [], null, embedding, currentUser.id, ourSha256, uploadKind); // plain Upload Work — no assignment
+      if(isDuplicate){
+        pendingRawFile = null; pendingUploadFile = null;
+        document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
+        return;
+      }
     }
 
     // 1b2. AI-generation check on the LOCAL file (downscaled) — STRICTLY BEFORE
