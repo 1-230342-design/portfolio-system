@@ -2959,8 +2959,28 @@ async function renderNotifications(uid){
         .filter(r => r.status === 'approved' || r.status === 'rejected' || r.status === 'pending')
         .map(r => ({ _transfer: true, req: r, when: r.decided_at || r.created_at }));
       tCards.sort((a, b) => new Date(b.when) - new Date(a.when));
+      // NEW ACTIVITIES from professors ride the same inbox too — no new table:
+      // any assignment the student hasn't submitted yet shows as a card,
+      // newest first (capped), sharing the same unread badge + last-seen time.
+      // Unenrolled (no section) students are skipped, matching Classwork rules.
+      let aCards = [];
+      try{
+        if(typeof loadAssignments === 'function' && typeof loadMyAssignmentPortfolios === 'function'){
+          const enrolled = !!((currentProfile && currentProfile.section) || '').trim();
+          if(enrolled){
+            const [assignments, myPorts] = await Promise.all([loadAssignments(), loadMyAssignmentPortfolios(uid)]);
+            const done = {};
+            (myPorts || []).forEach(p => { if(p.status === 'submitted' || p.status === 'approved') done[p.assignment_id] = true; });
+            aCards = (assignments || [])
+              .filter(a => !done[a.id])
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+              .slice(0, 10)
+              .map(a => ({ _assign: true, a, when: a.created_at }));
+          }
+        }
+      }catch(aErr){ console.warn('[assign] notifications merge skipped:', aErr); }
       // Merge by time, transfers first on ties (decisions feel newer).
-      const merged = [...notifs.map(n => ({ _w: n, when: n.decisionAt || n.submittedAt })), ...tCards]
+      const merged = [...notifs.map(n => ({ _w: n, when: n.decisionAt || n.submittedAt })), ...tCards, ...aCards]
         .sort((a, b) => new Date(b.when) - new Date(a.when));
       renderNotifLists(uid, merged);
       return;
@@ -3010,16 +3030,27 @@ function renderNotifLists(uid, merged){
     </div>`;
   };
 
+  const assignCardHtml = m => {
+    const a = m.a;
+    const due = a.due_date ? ` · Due ${fmtDateTime(a.due_date)}` : '';
+    const period = a.grading_period ? ` · ${esc(a.grading_period)}` : '';
+    return `<div class="notif-item pending" style="position:relative;cursor:pointer;" onclick="sPage('assignments')">
+      ${unreadDot(m.when)}
+      <div class="ni-header"><span class="ni-icon">📚</span><span class="ni-title">New Activity: ${esc(a.title)}</span></div>
+      <div class="ni-body">${a.instructions ? esc((a.instructions || '').slice(0, 120)) + ((a.instructions || '').length > 120 ? '…' : '') + '<br>' : ''}Posted by your professor${period}${due}. Tap to open Classwork.</div>
+      <div class="ni-time">${fmtDate(m.when)}</div>
+    </div>`;
+  };
   const notifListEl = document.getElementById('s-notif-list');
   if(notifListEl){
     notifListEl.innerHTML = merged.length
-      ? merged.map(m => m._transfer ? transferCardHtml(m.req) : notifCardHtml(m._w)).join('')
+      ? merged.map(m => m._transfer ? transferCardHtml(m.req) : (m._assign ? assignCardHtml(m) : notifCardHtml(m._w))).join('')
       : `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No notifications yet.</div>`;
   }
 
   const dashRecentEl = document.getElementById('dash-recent-notifs');
   if(dashRecentEl){
-    const recent = merged.filter(m => !m._transfer).slice(0,3);
+    const recent = merged.filter(m => m._w && !m._transfer).slice(0,3);
     dashRecentEl.innerHTML = recent.length ? recent.map(m=>{
       const p = m._w;
       const isApproved = p.status==='approved';
