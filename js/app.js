@@ -294,9 +294,20 @@ if(!window._artfolioPopAttached){
         go(st.screen);
         if(st.screen === 's-student' && document.getElementById('sp-'+st.sub)) sPage(st.sub);
         else if(st.screen === 's-professor' && document.getElementById(st.sub)) pPage(st.sub);
+        else if(st.screen === 's-public-search'){
+          // Step 2 (students in a section) vs Step 1 (sections list)
+          if(String(st.sub).indexOf('sec:') === 0 && _publicSearchData && _publicSearchData.length){
+            openPublicSection(String(st.sub).slice(4), true);
+            _pubSecPushed = true;
+          }else{
+            showPublicSections();
+            _pubSecPushed = false;
+          }
+        }
         _lastPushedKey = st.screen + '|' + st.sub;
       }else if(st.screen && document.getElementById(st.screen)){
         go(st.screen);
+        if(st.screen === 's-public-search'){ showPublicSections(); _pubSecPushed = false; }
         _lastPushedKey = st.screen + '|';
       }
       // No state (first entry) → let Chrome do its default (exit/previous site)
@@ -2022,6 +2033,7 @@ function renderBrowseSections(students, sectionNames){
   if(sectionsView)  sectionsView.style.display  = 'block';
   if(inSectionView) inSectionView.style.display = 'none';
   currentPublicSectionName = null;
+  _pubSecPushed = false; // fresh results = step 1; any pushed in-section entry is stale
 
   const resultsEl = document.getElementById('public-search-results');
   const counts = {};
@@ -2076,6 +2088,7 @@ function renderStudentResults(data){
   if(sectionsView)  sectionsView.style.display  = 'block';
   if(inSectionView) inSectionView.style.display = 'none';
   currentPublicSectionName = null;
+  _pubSecPushed = false; // fresh results = step 1; any pushed in-section entry is stale
 
   const resultsEl = document.getElementById('public-search-results');
   if(!_publicSearchData.length){
@@ -2111,7 +2124,24 @@ function renderStudentResults(data){
 
 // STEP 2: students within one section, from the results already loaded
 // in Step 1 — no extra Supabase round-trip needed.
-function openPublicSection(name){
+let _pubSecPushed = false; // true while a pushed in-section history entry is on top
+function showPublicSections(){
+  document.getElementById('public-search-in-section').style.display = 'none';
+  document.getElementById('public-search-sections').style.display = 'block';
+  currentPublicSectionName = null;
+}
+function backFromPublicSearch(){
+  const inSection = document.getElementById('public-search-in-section');
+  if(inSection && inSection.style.display !== 'none'){
+    // Drill-in pushed a history entry — let Chrome pop it so Back/forward stay
+    // consistent; fall back to a manual swap when there's nothing to pop.
+    if(_pubSecPushed && history.length > 1){ history.back(); return; }
+    showPublicSections();
+    return;
+  }
+  backToLanding();
+}
+function openPublicSection(name, skipPush){
   currentPublicSectionName = name;
   _publicSectionStudents = _publicSearchData.filter(s=>(s.section || 'No Section') === name);
 
@@ -2131,6 +2161,12 @@ function openPublicSection(name){
       <button class="btn-view-sm" onclick="event.stopPropagation();openPublicProfile('${s.user_id}')">👁 View Portfolio</button>
     </div>`;
   }).join('') : `<div class="empty-state"><p>There's no student enrolled in this section yet.</p></div>`;
+  // Push so Chrome Back steps back to the sections list instead of exiting.
+  if(!skipPush){
+    _pubSecPushed = true;
+    try{ history.pushState({ screen: 's-public-search', sub: 'sec:' + name }, ''); }catch(e){}
+    _lastPushedKey = 's-public-search|sec:' + name;
+  }
 }
 
 let _publicProfileWorks = [];
