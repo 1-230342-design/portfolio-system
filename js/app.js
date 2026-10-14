@@ -560,6 +560,13 @@ function openEditProfile(){
   renderTransferNote(); // fire-and-forget: pending transfer status under Section
 }
 
+// Face for list rows: uploaded photo when the student set one, initial letter otherwise.
+// Keeps every existing size (wrappers already size it) — photo just covers the circle.
+function avatarFaceHtml(name, photoUrl){
+  if(photoUrl) return `<img src="${esc(photoUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;"/>`;
+  return `<div class="avatar-initial" style="background:${avatarColor(name)};width:100%;height:100%;">${esc(studentInitial(name))}</div>`;
+}
+
 // ── SECTION TRANSFER REQUESTS ──
 // Changing sections while enrolled files a request instead of switching
 // instantly (needs supabase-section-requests.sql, run once). First-time picks
@@ -1950,7 +1957,7 @@ async function runLandingSearch(inputId){
   try{
     ({ data, error } = await sb
       .from('user_profiles')
-      .select('user_id, full_name, student_id, section, year_level')
+      .select('user_id, full_name, student_id, section, year_level, avatar_url')
       .eq('role', 'student')
       .or(`full_name.ilike.%${q}%,student_id.ilike.%${q}%`)
       .limit(30));
@@ -1977,7 +1984,7 @@ async function browseAllStudents(){
   try{
     ({ data, error } = await sb
       .from('user_profiles')
-      .select('user_id, full_name, student_id, section, year_level')
+      .select('user_id, full_name, student_id, section, year_level, avatar_url')
       .eq('role', 'student')
       .order('full_name', { ascending: true })
       .limit(500));
@@ -2116,7 +2123,7 @@ function openPublicSection(name){
   el.innerHTML = _publicSectionStudents.length ? _publicSectionStudents.map(s=>{
     const meta = [maskStudentId(s.student_id)||'No ID', s.year_level||'Year Level'].join(' · ');
     return `<div class="student-row" onclick="openPublicProfile('${s.user_id}')">
-      <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(s.full_name)};width:100%;height:100%;">${esc(studentInitial(s.full_name))}</div></div>
+      <div class="student-ava">${avatarFaceHtml(s.full_name, s.avatar_url)}</div>
       <div class="student-row-info">
         <div class="student-row-name">${esc(s.full_name||'Student')}</div>
         <div class="student-row-meta">${esc(meta)}</div>
@@ -4020,7 +4027,7 @@ let currentSectionId       = null;  // section currently open in the "students i
 async function loadAllStudentProfiles(){
   const { data, error } = await sb
     .from('user_profiles')
-    .select('user_id, full_name, student_id, section, year_level, social_link, show_social_on_qr')
+    .select('user_id, full_name, student_id, section, year_level, social_link, show_social_on_qr, avatar_url')
     .eq('role', 'student')
     .order('full_name');
   if(error){ console.error('loadAllStudentProfiles error:', error); return []; }
@@ -4250,7 +4257,7 @@ function renderSectionStudentsList(students){
       ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Remove this student from the section" onclick="event.stopPropagation();unenrollStudent('${s.user_id}','${esc((s.full_name||'this student').replace(/'/g,"\\'"))}')">↩️ Unenroll</button>`
       : '';
     return `<div class="student-row" onclick="viewStudentProfile('${s.user_id}')">
-      <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(s.full_name)};width:100%;height:100%;">${esc(studentInitial(s.full_name))}</div></div>
+      <div class="student-ava">${avatarFaceHtml(s.full_name, s.avatar_url)}</div>
       <div class="student-row-info">
         <div class="student-row-name">${esc(s.full_name||'Student')}</div>
         <div class="student-row-meta">${esc(meta)}</div>
@@ -4333,7 +4340,9 @@ async function viewStudentProfile(userId){
     esc(student.student_id||'No student ID'),
     ([student.section, student.year_level].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ') || 'Section · Year Level')
   ].join('<br>');
-  document.getElementById('psd-avatar').innerHTML = `<div class="avatar-initial" style="background:${avatarColor(student.full_name)}">${esc(studentInitial(student.full_name))}</div>`;
+  document.getElementById('psd-avatar').innerHTML = student.avatar_url
+    ? `<img src="${esc(student.avatar_url)}" alt="" style="width:100%;height:100%;object-fit:cover;"/>`
+    : `<div class="avatar-initial" style="background:${avatarColor(student.full_name)}">${esc(studentInitial(student.full_name))}</div>`;
   // Contact QR on the professor's student header — same box as the public
   // showcase. Professors see it whenever the student set a social link
   // (they're the student's teacher, not a stranger); the public header still
@@ -4430,7 +4439,7 @@ async function loadOverallRankings(){
   if(studentIds.length){
     const { data: profiles, error: profErr } = await sb
       .from('user_profiles')
-      .select('user_id, full_name, student_id, section, year_level')
+      .select('user_id, full_name, student_id, section, year_level, avatar_url')
       .in('user_id', studentIds);
     if(profErr) console.error('rankings profile fetch error:', profErr);
     (profiles||[]).forEach(pr=>{ profileMap[pr.user_id] = pr; });
@@ -4449,6 +4458,7 @@ async function loadOverallRankings(){
   const list = Object.values(byStudent).map(s=>({
     userId:     s.userId,
     name:       s.profile.full_name || 'Student',
+    photo:      s.profile.avatar_url || null,
     studentId:  s.profile.student_id || '',
     section:    s.profile.section || '',
     sectionYear: [s.profile.section, s.profile.year_level].filter(Boolean).join(' · ') || 'Year & Section',
@@ -4491,7 +4501,7 @@ async function loadAndRenderRankings(){
     const ribbonHtml = `<div class="podium-ribbon-wrap"><div class="podium-ribbon ${ribbonCls}"><span class="rb-medal">${ribbonMedal}</span><span class="rb-place">${place===1?'1st':place===2?'2nd':'3rd'}</span></div></div>`;
     return `<div class="podium-card ${isFirst?'first':''}" style="width:${isFirst?200:180}px;${isFirst?'border:2px solid var(--ink);':''}">
       ${ribbonHtml}
-      <div class="podium-avatar"><div class="avatar-initial" style="background:${avatarColor(s.name)};width:100%;height:100%;">${esc(studentInitial(s.name))}</div></div>
+      <div class="podium-avatar">${avatarFaceHtml(s.name, s.photo)}</div>
       <div class="podium-name">${esc(s.name)}</div>
       <div class="podium-meta">${esc(s.studentId||'No ID')} · ${esc(s.sectionYear)}</div>
       <div class="podium-stars"><span class="podium-score">${s.avgGrade.toFixed(1)}/100</span></div>
@@ -4503,7 +4513,7 @@ async function loadAndRenderRankings(){
   listEl.innerHTML = rest.length ? rest.map((s, i)=>`
     <div class="rank-item">
       <div class="rank-num">${i+4}</div>
-      <div class="rank-ava"><div class="avatar-initial" style="background:${avatarColor(s.name)};width:100%;height:100%;">${esc(studentInitial(s.name))}</div></div>
+      <div class="rank-ava">${avatarFaceHtml(s.name, s.photo)}</div>
       <div class="rank-info"><div class="rank-name">${esc(s.name)}</div><div class="rank-meta">${esc(s.studentId||'No ID')} · ${esc(s.sectionYear)}</div></div>
       <div style="text-align:right"><div class="rank-score">${s.avgGrade.toFixed(1)}/100</div><div class="rank-reviews">${s.graded} Graded Work${s.graded===1?'':'s'}</div></div>
       <button class="btn-view-sm" style="margin-left:12px" onclick="viewRankedStudent('${s.userId}')">👁 View</button>
@@ -4525,7 +4535,7 @@ async function loadAndRenderRankings(){
       ${groups[sec].slice(0, 3).map((s, i)=>`
       <div class="rank-item">
         <div class="rank-num">${i+1}</div>
-        <div class="rank-ava"><div class="avatar-initial" style="background:${avatarColor(s.name)};width:100%;height:100%;">${esc(studentInitial(s.name))}</div></div>
+        <div class="rank-ava">${avatarFaceHtml(s.name, s.photo)}</div>
         <div class="rank-info"><div class="rank-name">${esc(s.name)}</div><div class="rank-meta">${esc(s.studentId||'No ID')} · ${esc(s.sectionYear)}</div></div>
         <div style="text-align:right"><div class="rank-score">${s.avgGrade.toFixed(1)}/100</div><div class="rank-reviews">${s.graded} Graded Work${s.graded===1?'':'s'}</div></div>
         <button class="btn-view-sm" style="margin-left:12px" onclick="viewRankedStudent('${s.userId}')">👁 View</button>
