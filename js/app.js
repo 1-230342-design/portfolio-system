@@ -1128,16 +1128,20 @@ async function fetchImaggaTags(imageUrl){
   }
 }
 
-// ── SIGHTENGINE AI-GENERATION CHECK (advisory + quarantine flag) ──
+// ── SIGHTENGINE AI-GENERATION CHECK (two bands) ──
 // Free 'genai' model via our own 'detect-ai' Edge Function (keys stay
 // server-side, same pattern as Imagga above). Returns { score: 0..1,
 // generator } or null when unchecked (videos, quota spent, function not
-// deployed yet). Scores NEVER auto-block or auto-grade — at or above
-// AI_QUARANTINE_THRESHOLD the work is simply flagged loudly for the
-// professor (student is told at submit, red banner in review). The human
-// always decides: detectors can misflag real digital art.
+// deployed yet).
+//   ≥ AI_QUARANTINE_THRESHOLD (0.85) → FLAGGED: submits normally but the
+//     student is told at submit and the professor sees a red review banner.
+//   ≥ AI_BLOCK_THRESHOLD (0.95)     → BLOCKED outright at submit.
+// The bands are deliberately separate: AI-image detectors are known to
+// false-positive on real digital art (illustration, airbrushed shading,
+// stylised work — i.e. most of what a multimedia-arts school submits), so
+// only near-certain scores hard-block. 0.85–0.94 always reaches a human.
 const AI_QUARANTINE_THRESHOLD = 0.85;
-const AI_BLOCK_THRESHOLD = 0.85; // >=85% AI likelihood = blocked at submit (nothing AI reaches professor)
+const AI_BLOCK_THRESHOLD = 0.95; // >=95% AI likelihood = blocked at submit; 85–94% flags for professor review instead
 function showAiBlocked(score){
   document.getElementById('oc-scanning').style.display = 'none';
   document.getElementById('oc-result-clear').style.display = 'none';
