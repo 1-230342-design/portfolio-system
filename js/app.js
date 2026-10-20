@@ -1236,6 +1236,31 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
           title: r.title, file_url: r.file_url, file_type: r.file_type,
           portfolios: { assignment_id: r.assignment_id, student_id: r.student_id }
         }));
+        // The RPC excludes the uploader's own work by design (resubmit-after-
+        // withdraw must not self-match). But that same exclusion also let a
+        // student attach byte-identical copies to ONE assignment over and over
+        // — nothing in scope ever matched itself. Pull the student's own rows
+        // directly (RLS always lets a student read their own) and add back
+        // only their ACTIVE submissions in this assignment; drafts (withdrawn
+        // copies / private personal works) stay excluded so resubmission of
+        // your own withdrawn file still works.
+        if(ownerStudentId){
+          try{
+            const { data: ownRows } = await sb.from('portfolio_items')
+              .select('id, phash, sha256, title, file_url, file_type, portfolios(assignment_id, student_id, status)' + (useAI ? ', embedding' : ''));
+            if(Array.isArray(ownRows)){
+              const ownScoped = ownRows.filter(o => {
+                if(excludeItemId && o.id === excludeItemId) return false;
+                const port = o.portfolios || {};
+                if(port.student_id !== ownerStudentId) return false;
+                if((port.assignment_id || null) !== targetAssignmentId) return false;
+                return port.status !== 'draft';
+              });
+              scoped = scoped.concat(ownScoped);
+              if(ownScoped.length) console.log('[originality] gate also compared against ' + ownScoped.length + ' own active submission(s) in this assignment.');
+            }
+          }catch(ownEx){ console.warn('[originality] own-item comparison skipped:', ownEx); }
+        }
         console.log('[originality] gate compared via RPC against ' + scoped.length + ' submission(s).');
       } else if(rpcErr){
         console.info('[originality] similarity RPC not available yet — run supabase-similarity-rpc.sql in the SQL Editor. Falling back to direct query. (' + (rpcErr.message || rpcErr) + ')');
@@ -1249,7 +1274,7 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
       // but is typically BLIND for students under owner-only RLS (returns no
       // other-student rows). Kept so the gate still functions before the SQL
       // setup above is run.
-      let query = sb.from('portfolio_items').select('id, phash, imagga_tags, title, file_url, file_type, portfolios(assignment_id, student_id)' + (useAI ? ', embedding' : ''));
+      let query = sb.from('portfolio_items').select('id, phash, imagga_tags, title, file_url, file_type, portfolios(assignment_id, student_id, status)' + (useAI ? ', embedding' : ''));
       if(excludeItemId) query = query.neq('id', excludeItemId);
       const { data: others, error } = await query;
       if(error || !others || others.length === 0){
@@ -1263,14 +1288,15 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
       // assignment's submissions, so unrelated classwork can't false-positive
       // against each other just for existing in the same system.
       //
-      // Also excludes the SAME student's own other items (e.g. a withdrawn
-      // submission still sitting in the table with status='draft'). Without this,
-      // unsubmitting and then re-attaching the exact same file matched the
-      // student's own earlier copy at ~100% and got blocked as "plagiarism" of
-      // themselves — resubmitting your own work should never be flagged at all.
+      // The SAME student's DRAFTS (withdrawn submissions, private personal
+      // works) stay excluded — unsubmitting and re-attaching the exact same
+      // file must never match your own earlier copy. But the student's other
+      // ACTIVE submissions to the same assignment are compared: attaching
+      // identical/90%+ copies to one assignment is duplicate spam, not a
+      // resubmission, and must be blocked like any other duplicate.
       scoped = others.filter(o => {
         const port = o.portfolios || {};
-        if(ownerStudentId && port.student_id === ownerStudentId) return false;
+        if(ownerStudentId && port.student_id === ownerStudentId && port.status === 'draft') return false;
         return (port.assignment_id || null) === targetAssignmentId;
       });
       console.log('[originality] gate compared via direct query against ' + scoped.length + ' submission(s).');
@@ -1459,15 +1485,18 @@ async function runSimilarityCheck(newItemId, newPhash, newTags, newEmbedding, as
     const useAI = !!newEmbedding && (typeof embeddingColumnAvailable === 'function') && await embeddingColumnAvailable();
     const { data: others, error } = await sb
       .from('portfolio_items')
-      .select('id, phash, title, file_url, portfolios(assignment_id, student_id)' + (useAI ? ', embedding' : ''))
+      .select('id, phash, title, file_url, portfolios(assignment_id, student_id, status)' + (useAI ? ', embedding' : ''))
       .neq('id', newItemId);
     if(error || !others || others.length === 0) return;
 
-    // Same-assignment scoping, and same-student exclusion — see findBestSimilarityMatch() for why.
+    // Same-assignment scoping. Same-student DRAFTS stay excluded (withdrawn
+    // copies / private personal works must never self-match a resubmission),
+    // but the student's other ACTIVE submissions to the same assignment are
+    // compared — identical copies attached to one assignment are duplicates.
     const targetAssignmentId = assignmentId || null;
     const scoped = others.filter(o => {
       const port = o.portfolios || {};
-      if(ownerStudentId && port.student_id === ownerStudentId) return false;
+      if(ownerStudentId && port.student_id === ownerStudentId && port.status === 'draft') return false;
       return (port.assignment_id || null) === targetAssignmentId;
     });
 
@@ -1740,18 +1769,20 @@ async function computeAndCacheSimilarity(itemId){
 
     const { data: others, error } = await sb
       .from('portfolio_items')
-      .select('id, phash, title, file_url, file_type, portfolio_id, portfolios(assignment_id, student_id)' + (useAI ? ', embedding' : ''))
+      .select('id, phash, title, file_url, file_type, portfolio_id, portfolios(assignment_id, student_id, status)' + (useAI ? ', embedding' : ''))
       .neq('id', itemId);
     if(error || !others || others.length === 0) return null; // truly nothing to compare against
 
-    // Same-assignment scoping, and same-student exclusion — see findBestSimilarityMatch()
-    // for why a student's own other submissions (e.g. an earlier withdrawn copy) should
-    // never show up here as a "similarity match" against themselves.
+    // Same-assignment scoping. Same-student DRAFTS stay excluded (withdrawn
+    // copies / private personal works must never self-match a resubmission),
+    // but the student's other ACTIVE submissions to the same assignment are
+    // compared — identical copies attached to one assignment are duplicates
+    // the professor must see flagged, not "No similar submissions detected."
     const myAssignmentId = (self.portfolios && self.portfolios.assignment_id) || null;
     const myStudentId    = (self.portfolios && self.portfolios.student_id) || null;
     const scopedOthers = others.filter(o => {
       const port = o.portfolios || {};
-      if(myStudentId && port.student_id === myStudentId) return false;
+      if(myStudentId && port.student_id === myStudentId && port.status === 'draft') return false;
       return (port.assignment_id || null) === myAssignmentId;
     });
     if(!scopedOthers.length) return null; // nothing else in this assignment (or plain-upload pool) yet
