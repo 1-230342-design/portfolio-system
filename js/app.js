@@ -1128,19 +1128,38 @@ async function fetchImaggaTags(imageUrl){
   }
 }
 
-// ── SIGHTENGINE AI-GENERATION CHECK (advisory flag only) ──
+// ── SIGHTENGINE AI-GENERATION CHECK (confirmed-block, flag fallback) ──
 // Free 'genai' model via our own 'detect-ai' Edge Function (keys stay
 // server-side, same pattern as Imagga above). Returns { score: 0..1,
-// generator } or null when unchecked (videos, quota spent, function not
-// deployed yet).
-// Scores NEVER block an upload. At or above AI_QUARANTINE_THRESHOLD (0.85)
-// the work is flagged loudly: the student is told at submit and the professor
-// sees a red review banner and decides. AI-image detectors are known to
-// false-positive on REAL digital art — illustration, airbrushed shading,
-// stylised work, i.e. most of what a multimedia-arts school submits — and
-// one school testing this system had genuine student art scored 95%+ "AI".
-// No automatic rejection on a probabilistic detector; the human decides.
+// generator, generatorScore } or null when unchecked (videos, quota spent,
+// function not deployed yet).
+// Two bands, and the block band demands CONFIRMATION:
+//   ≥ AI_QUARANTINE_THRESHOLD (0.85), unconfirmed → FLAGGED: submits, student
+//     is told at submit, professor sees a red review banner and decides.
+//   ≥ AI_QUARANTINE_THRESHOLD (0.85) AND a specific generator scores
+//     ≥ AI_GENERATOR_CONFIRM (0.5) AND the file has no human authoring
+//     metadata → BLOCKED outright at submit.
+// Why the confirmation: AI-image detectors are known to false-positive on
+// REAL digital art (illustration, airbrushed shading, stylised work — most
+// of what a multimedia-arts school submits), and one genuine student
+// artwork in testing scored 95%+ "AI" on the aggregate alone. Real
+// Midjourney/DALL-E/Stable-Diffusion output almost always confidently names
+// its generator; human art stays diffuse across generators, and real
+// exports from Photoshop/cameras carry EXIF/APP14 metadata generators
+// never produce. Only a confirmed signal hard-blocks.
 const AI_QUARANTINE_THRESHOLD = 0.85;
+const AI_GENERATOR_CONFIRM = 0.5; // top specific-generator score required to HARD-BLOCK
+function showAiBlocked(score, generator){
+  document.getElementById('oc-scanning').style.display = 'none';
+  document.getElementById('oc-result-clear').style.display = 'none';
+  document.getElementById('oc-result-blocked').style.display = 'block';
+  const titleEl = document.getElementById('oc-blocked-title');
+  if(titleEl) titleEl.textContent = 'AI-Generated Output Detected';
+  const pct = Math.round((score || 0) * 100);
+  document.getElementById('oc-blocked-text').textContent =
+    `AI-generated content detected (${pct}% likelihood${generator ? ', matches ' + generator : ''}). This work cannot be submitted. Please upload original human-made work.`;
+  document.getElementById('originalityCheckOverlay').classList.add('open');
+}
 async function fetchAiScore(src){
   // src: Cloudinary URL string (post-upload path) OR { imageData } base64
   // data-URL (pre-upload path — analyzed before anything leaves the browser
@@ -1150,11 +1169,47 @@ async function fetchAiScore(src){
     const { data, error } = await sb.functions.invoke('detect-ai', { body });
     if(error){ console.error('AI detection error:', error); return null; }
     const s = data && typeof data.aiScore === 'number' ? data.aiScore : null;
-    return (s == null) ? null : { score: s, generator: data.generator || null };
+    const gs = data && typeof data.generatorScore === 'number' ? data.generatorScore : null;
+    return (s == null) ? null : { score: s, generator: data.generator || null, generatorScore: gs };
   }catch(err){
     console.error('AI detection error:', err);
     return null; // fail quietly — upload continues without the hint
   }
+}
+
+// Minimal authoring-metadata sniff (no deps): photos and real exports from
+// editors (Photoshop APP14 "Adobe", JPEG EXIF, Procreate/Krita text chunks)
+// carry these byte signatures in the file header. AI-generator downloads
+// never do. Scans only the first 16KB (where headers live) so compressed
+// pixel data can't random-match. A hit = strong human-made evidence → the
+// hard block is suppressed and the work is flagged for the professor instead.
+async function fileHasAuthoringMetadata(file){
+  try{
+    if(!file || !file.slice || !(file.type||'').startsWith('image/')) return false;
+    const head = new Uint8Array(await file.slice(0, 16384).arrayBuffer());
+    const txt = new TextDecoder('latin1').decode(head);
+    return ['Exif','Adobe','Photoshop','Procreate','GIMP','Krita','Camera Model','Canon','NIKON','SONY','samsung','Huawei','Xiaomi']
+      .some(p => txt.includes(p));
+  }catch(e){ return false; }
+}
+
+// Runs the AI screen on a LOCAL file and decides the outcome:
+//   'clear' — below threshold (or unchecked) → submit normally
+//   'flag'  — ≥85% but NOT confirmed → submit + professor red banner
+//   'block' — ≥85% AND confident generator AND no human metadata → reject
+// Shared by the Upload Work flow (this file) and Classwork attach
+// (assignments.js) so both paths always decide identically.
+async function aiScreenFile(file){
+  const small = await downscaleForAnalysis(file);
+  const res = (small) ? await fetchAiScore({ imageData: small }) : null;
+  const score = res ? res.score : null;
+  const generator = res ? res.generator : null;
+  const genScore = res && typeof res.generatorScore === 'number' ? res.generatorScore : null;
+  if(score == null) return { score: null, generator: null, action: 'clear' };
+  if(score < AI_QUARANTINE_THRESHOLD) return { score, generator, action: 'clear' };
+  const genConfirmed = genScore != null && genScore >= AI_GENERATOR_CONFIRM;
+  const humanMeta = await fileHasAuthoringMetadata(file);
+  return { score, generator, action: (genConfirmed && !humanMeta) ? 'block' : 'flag' };
 }
 
 // Downscale a local image File to a compact JPEG data-URL purely for
@@ -3996,18 +4051,23 @@ async function submitWork(){
 
     // 1b2. AI-generation check on the LOCAL file (downscaled) — STRICTLY BEFORE
     // Cloudinary upload. Nothing AI ever leaves the browser, no orphan files.
-    // Advisory only: ≥85% is flagged for the professor, never hard-blocked —
-    // detectors false-positive on real digital art (see AI_QUARANTINE_THRESHOLD).
+    // aiScreenFile: ≥85% unconfirmed → flag only; ≥85% WITH a confident
+    // generator signature and no human authoring metadata → hard block.
     const wantAi = sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/');
     let aiScore = null;
     if(wantAi){
       showToast('🤖 Checking for AI-generated content…');
-      const small = await downscaleForAnalysis(pendingRawFile);
-      const aiRes = (small) ? await fetchAiScore({ imageData: small }) : null;
-      aiScore = aiRes ? aiRes.score : null;
-      console.log('[AI-check] pre-upload score=', aiScore, 'flag threshold=', AI_QUARANTINE_THRESHOLD);
-      if(aiScore != null && aiScore >= AI_QUARANTINE_THRESHOLD){
-        showToast(`🤖 AI check: ${Math.round(aiScore*100)}% — flagged for professor review before grading.`);
+      const scr = await aiScreenFile(pendingRawFile);
+      aiScore = scr.score;
+      console.log('[AI-check] pre-upload score=', aiScore, 'generator=', scr.generator, 'action=', scr.action);
+      if(scr.action === 'block'){
+        showAiBlocked(aiScore, scr.generator);
+        pendingRawFile = null; pendingUploadFile = null;
+        document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
+        return;
+      }
+      if(scr.action === 'flag'){
+        showToast(`🤖 AI check: ${Math.round(aiScore*100)}%${scr.generator ? ' (likely ' + scr.generator + ')' : ''} — flagged for professor review before grading.`);
       }else{
         showToast(`🤖 AI check: ${Math.round((aiScore||0)*100)}% ✓`);
       }

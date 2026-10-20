@@ -377,20 +377,23 @@ async function submitAttachedWork(){
 
     // AI-generation check on the LOCAL file (downscaled) — STRICTLY BEFORE
     // Cloudinary upload. Nothing AI ever leaves the browser, no orphan files.
-    // Advisory only: ≥85% is flagged for the professor, never hard-blocked —
-    // detectors false-positive on real digital art (see AI_QUARANTINE_THRESHOLD
-    // in app.js).
+    // aiScreenFile (app.js): ≥85% unconfirmed → flag only; ≥85% WITH a
+    // confident generator signature and no human authoring metadata → hard block.
     const wantAi = attachRawFile.type && attachRawFile.type.startsWith('image/');
     let aiScore = null;
     if(wantAi){
       showToast('🤖 Checking for AI-generated content…');
-      const small = await downscaleForAnalysis(attachRawFile);
-      const aiRes = (small) ? await fetchAiScore({ imageData: small }) : null;
-      aiScore = aiRes ? aiRes.score : null;
-      const AI_FLAG = (typeof AI_QUARANTINE_THRESHOLD === 'number') ? AI_QUARANTINE_THRESHOLD : 0.85;
-      console.log('[AI-check] attach pre-upload score=', aiScore, 'flag threshold=', AI_FLAG);
-      if(aiScore != null && aiScore >= AI_FLAG){
-        showToast(`🤖 AI check: ${Math.round(aiScore*100)}% — flagged for professor review before grading.`);
+      const scr = await aiScreenFile(attachRawFile);
+      aiScore = scr.score;
+      console.log('[AI-check] attach pre-upload score=', aiScore, 'generator=', scr.generator, 'action=', scr.action);
+      if(scr.action === 'block'){
+        showAiBlocked(aiScore, scr.generator);
+        attachRawFile = null;
+        document.getElementById('aw-drop-text').textContent = 'Drop files here or click to upload';
+        return;
+      }
+      if(scr.action === 'flag'){
+        showToast(`🤖 AI check: ${Math.round(aiScore*100)}%${scr.generator ? ' (likely ' + scr.generator + ')' : ''} — flagged for professor review before grading.`);
       }else{
         showToast(`🤖 AI check: ${Math.round((aiScore||0)*100)}% ✓`);
       }

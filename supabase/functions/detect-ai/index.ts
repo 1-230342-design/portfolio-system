@@ -24,6 +24,12 @@
 //  uploaded to Cloudinary. Sent to Sightengine as a multipart file upload
 //  (same 1 operation). If you deployed v1, re-paste this file and Deploy
 //  again to enable it.
+//
+//  v3 — CONFIRMED-BLOCK SUPPORT: also returns { generatorScore } (the top
+//  specific-generator confidence, 0..1). The app hard-blocks an upload only
+//  when the aggregate score AND a specific generator are both high — human
+//  art that the model misreads stays diffuse across generators. If you
+//  deployed v1/v2, re-paste this file and Deploy again to enable it.
 // ═══════════════════════════════════════════════════════════════════
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 
@@ -77,21 +83,25 @@ serve(async (req) => {
       return json({ aiScore: null }); // quota spent / bad URL — upload must never fail because of this
     }
     const score = j?.type?.ai_generated;
-    // top-scoring generator, for the review badge footnote (may be null)
+    // top-scoring generator + its score — the client HARD-BLOCKS only when a
+    // specific generator is confidently detected (not just the aggregate),
+    // which is what separates real AI from human art the model misreads.
     let generator: string | null = null;
+    let generatorScore: number | null = null;
     try {
       const gens = j?.type?.ai_generators;
       if (gens && typeof gens === 'object') {
         let best = -1;
         for (const [name, v] of Object.entries(gens)) {
-          if (typeof v === 'number' && v > best) { best = v; generator = name; }
+          if (typeof v === 'number' && v > best) { best = v; generator = name; generatorScore = v; }
         }
-        if (best < 0.05) generator = null;
+        if (best < 0.05) { generator = null; generatorScore = null; }
       }
-    } catch { generator = null; }
+    } catch { generator = null; generatorScore = null; }
     return json({
       aiScore: typeof score === 'number' ? score : null,
       generator,
+      generatorScore,
     });
   } catch (err) {
     console.error('[detect-ai] unexpected error:', err);
