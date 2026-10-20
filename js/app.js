@@ -2141,6 +2141,20 @@ function backFromPublicSearch(){
   }
   backToLanding();
 }
+// "← Back to search" on a public profile: return to the SECTIONS list (step 1),
+// not the student list (step 2) that was left visible under the profile. The
+// profile entry sits on top of the optional sec: entry — pop both together so
+// Chrome Back stays consistent afterwards. Without an in-section entry under
+// us (direct load / odd stack), just show step 1 manually.
+function backFromPublicProfile(){
+  if(_pubSecPushed && history.length > 1){
+    history.go(-2); // profile + in-section → lands on the search/sections entry; popstate restores step 1
+    return;
+  }
+  showPublicSections();
+  _pubSecPushed = false;
+  go('s-public-search');
+}
 function openPublicSection(name, skipPush){
   currentPublicSectionName = name;
   _publicSectionStudents = _publicSearchData.filter(s=>(s.section || 'No Section') === name);
