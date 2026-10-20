@@ -2141,19 +2141,36 @@ function backFromPublicSearch(){
   }
   backToLanding();
 }
-// "← Back to search" on a public profile: return to the SECTIONS list (step 1),
-// not the student list (step 2) that was left visible under the profile. The
-// profile entry sits on top of the optional sec: entry — pop both together so
-// Chrome Back stays consistent afterwards. Without an in-section entry under
-// us (direct load / odd stack), just show step 1 manually.
+// "← Back to search" on a public profile: back ONE level — to the student list
+// (step 2) it was opened from — by popping the profile history entry; popstate
+// restores the section view. From there the existing chain finishes the trip:
+// student list → sections list → landing (one level per click). Never push a
+// duplicate search entry here — the old go() did, which made student-list Back
+// bounce straight back to the profile and trapped visitors in a loop.
 function backFromPublicProfile(){
+  const fallback = ()=>{
+    _pubSecPushed = false;
+    // Rebuild step 2 from the already-loaded data when we know the section;
+    // otherwise show step 1 so the button always lands somewhere useful.
+    if(currentPublicSectionName && _publicSearchData.length){
+      go('s-public-search');
+      openPublicSection(currentPublicSectionName, true);
+      return;
+    }
+    showPublicSections();
+    go('s-public-search');
+  };
   if(_pubSecPushed && history.length > 1){
-    history.go(-2); // profile + in-section → lands on the search/sections entry; popstate restores step 1
+    history.back(); // profile entry → sec: entry → popstate shows the student list
+    // Guard: if the pop landed nowhere (stack built under the old buggy code /
+    // mid-flow refresh), force the view after a beat so the button is never dead.
+    setTimeout(()=>{
+      const p = document.getElementById('s-public-profile');
+      if(p && p.classList.contains('active')) fallback();
+    }, 350);
     return;
   }
-  showPublicSections();
-  _pubSecPushed = false;
-  go('s-public-search');
+  fallback();
 }
 function openPublicSection(name, skipPush){
   currentPublicSectionName = name;
