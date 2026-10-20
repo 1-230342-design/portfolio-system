@@ -378,7 +378,7 @@ async function submitAttachedWork(){
     // AI-generation check on the LOCAL file (downscaled) — STRICTLY BEFORE
     // Cloudinary upload. Nothing AI ever leaves the browser, no orphan files.
     // aiScreenFile (app.js): ≥85% unconfirmed → flag only; ≥85% WITH a
-    // confident generator signature and no human authoring metadata → hard block.
+    // confident specific-generator hit → hard block.
     const wantAi = attachRawFile.type && attachRawFile.type.startsWith('image/');
     let aiScore = null;
     if(wantAi){

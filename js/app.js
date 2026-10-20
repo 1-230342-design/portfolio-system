@@ -1137,16 +1137,14 @@ async function fetchImaggaTags(imageUrl){
 //   ≥ AI_QUARANTINE_THRESHOLD (0.85), unconfirmed → FLAGGED: submits, student
 //     is told at submit, professor sees a red review banner and decides.
 //   ≥ AI_QUARANTINE_THRESHOLD (0.85) AND a specific generator scores
-//     ≥ AI_GENERATOR_CONFIRM (0.5) AND the file has no human authoring
-//     metadata → BLOCKED outright at submit.
+//     ≥ AI_GENERATOR_CONFIRM (0.5) → BLOCKED outright at submit.
 // Why the confirmation: AI-image detectors are known to false-positive on
 // REAL digital art (illustration, airbrushed shading, stylised work — most
 // of what a multimedia-arts school submits), and one genuine student
 // artwork in testing scored 95%+ "AI" on the aggregate alone. Real
 // Midjourney/DALL-E/Stable-Diffusion output almost always confidently names
-// its generator; human art stays diffuse across generators, and real
-// exports from Photoshop/cameras carry EXIF/APP14 metadata generators
-// never produce. Only a confirmed signal hard-blocks.
+// its generator; human art stays diffuse across generators. Only a
+// confirmed generator hit hard-blocks.
 const AI_QUARANTINE_THRESHOLD = 0.85;
 const AI_GENERATOR_CONFIRM = 0.5; // top specific-generator score required to HARD-BLOCK
 function showAiBlocked(score, generator){
@@ -1177,12 +1175,10 @@ async function fetchAiScore(src){
   }
 }
 
-// Minimal authoring-metadata sniff (no deps): photos and real exports from
-// editors (Photoshop APP14 "Adobe", JPEG EXIF, Procreate/Krita text chunks)
-// carry these byte signatures in the file header. AI-generator downloads
-// never do. Scans only the first 16KB (where headers live) so compressed
-// pixel data can't random-match. A hit = strong human-made evidence → the
-// hard block is suppressed and the work is flagged for the professor instead.
+// Minimal authoring-metadata sniff — kept for future tuning/display only;
+// it deliberately does NOT affect the block decision (see aiScreenFile):
+// real AI images get edited/saved in Photoshop and must not be rescued by
+// an Adobe/EXIF stamp. Scans only the first 16KB (headers live there).
 async function fileHasAuthoringMetadata(file){
   try{
     if(!file || !file.slice || !(file.type||'').startsWith('image/')) return false;
@@ -1196,9 +1192,13 @@ async function fileHasAuthoringMetadata(file){
 // Runs the AI screen on a LOCAL file and decides the outcome:
 //   'clear' — below threshold (or unchecked) → submit normally
 //   'flag'  — ≥85% but NOT confirmed → submit + professor red banner
-//   'block' — ≥85% AND confident generator AND no human metadata → reject
+//   'block' — ≥85% AND a confident specific-generator hit → reject
 // Shared by the Upload Work flow (this file) and Classwork attach
 // (assignments.js) so both paths always decide identically.
+// Metadata (EXIF/Adobe stamps) is deliberately NOT consulted: real AI
+// images get edited and screenshotted in Photoshop, and that must never
+// rescue a confirmed generator hit. Human art the model misreads stays
+// diffuse across generators — that diffuse case is the 'flag' band.
 async function aiScreenFile(file){
   const small = await downscaleForAnalysis(file);
   const res = (small) ? await fetchAiScore({ imageData: small }) : null;
@@ -1208,8 +1208,7 @@ async function aiScreenFile(file){
   if(score == null) return { score: null, generator: null, action: 'clear' };
   if(score < AI_QUARANTINE_THRESHOLD) return { score, generator, action: 'clear' };
   const genConfirmed = genScore != null && genScore >= AI_GENERATOR_CONFIRM;
-  const humanMeta = await fileHasAuthoringMetadata(file);
-  return { score, generator, action: (genConfirmed && !humanMeta) ? 'block' : 'flag' };
+  return { score, generator, action: genConfirmed ? 'block' : 'flag' };
 }
 
 // Downscale a local image File to a compact JPEG data-URL purely for
@@ -4052,7 +4051,7 @@ async function submitWork(){
     // 1b2. AI-generation check on the LOCAL file (downscaled) — STRICTLY BEFORE
     // Cloudinary upload. Nothing AI ever leaves the browser, no orphan files.
     // aiScreenFile: ≥85% unconfirmed → flag only; ≥85% WITH a confident
-    // generator signature and no human authoring metadata → hard block.
+    // specific-generator hit → hard block.
     const wantAi = sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/');
     let aiScore = null;
     if(wantAi){
