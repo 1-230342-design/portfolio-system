@@ -377,6 +377,9 @@ async function submitAttachedWork(){
 
     // AI-generation check on the LOCAL file (downscaled) — STRICTLY BEFORE
     // Cloudinary upload. Nothing AI ever leaves the browser, no orphan files.
+    // Advisory only: ≥85% is flagged for the professor, never hard-blocked —
+    // detectors false-positive on real digital art (see AI_QUARANTINE_THRESHOLD
+    // in app.js).
     const wantAi = attachRawFile.type && attachRawFile.type.startsWith('image/');
     let aiScore = null;
     if(wantAi){
@@ -384,14 +387,12 @@ async function submitAttachedWork(){
       const small = await downscaleForAnalysis(attachRawFile);
       const aiRes = (small) ? await fetchAiScore({ imageData: small }) : null;
       aiScore = aiRes ? aiRes.score : null;
-      const AI_BLOCK = (typeof AI_BLOCK_THRESHOLD === 'number') ? AI_BLOCK_THRESHOLD : 0.85;
-      console.log('[AI-block check] attach pre-upload score=', aiScore, 'threshold=', AI_BLOCK);
-      showToast(`🤖 AI check: ${Math.round((aiScore||0)*100)}% (block ≥${Math.round(AI_BLOCK*100)}%)`);
-      if(aiScore != null && aiScore >= AI_BLOCK && typeof showAiBlocked === 'function'){
-        showAiBlocked(aiScore);
-        attachRawFile = null;
-        document.getElementById('aw-drop-text').textContent = 'Drop files here or click to upload';
-        return;
+      const AI_FLAG = (typeof AI_QUARANTINE_THRESHOLD === 'number') ? AI_QUARANTINE_THRESHOLD : 0.85;
+      console.log('[AI-check] attach pre-upload score=', aiScore, 'flag threshold=', AI_FLAG);
+      if(aiScore != null && aiScore >= AI_FLAG){
+        showToast(`🤖 AI check: ${Math.round(aiScore*100)}% — flagged for professor review before grading.`);
+      }else{
+        showToast(`🤖 AI check: ${Math.round((aiScore||0)*100)}% ✓`);
       }
     }
 

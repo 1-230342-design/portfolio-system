@@ -1128,31 +1128,19 @@ async function fetchImaggaTags(imageUrl){
   }
 }
 
-// ── SIGHTENGINE AI-GENERATION CHECK (two bands) ──
+// ── SIGHTENGINE AI-GENERATION CHECK (advisory flag only) ──
 // Free 'genai' model via our own 'detect-ai' Edge Function (keys stay
 // server-side, same pattern as Imagga above). Returns { score: 0..1,
 // generator } or null when unchecked (videos, quota spent, function not
 // deployed yet).
-//   ≥ AI_QUARANTINE_THRESHOLD (0.85) → FLAGGED: submits normally but the
-//     student is told at submit and the professor sees a red review banner.
-//   ≥ AI_BLOCK_THRESHOLD (0.95)     → BLOCKED outright at submit.
-// The bands are deliberately separate: AI-image detectors are known to
-// false-positive on real digital art (illustration, airbrushed shading,
-// stylised work — i.e. most of what a multimedia-arts school submits), so
-// only near-certain scores hard-block. 0.85–0.94 always reaches a human.
+// Scores NEVER block an upload. At or above AI_QUARANTINE_THRESHOLD (0.85)
+// the work is flagged loudly: the student is told at submit and the professor
+// sees a red review banner and decides. AI-image detectors are known to
+// false-positive on REAL digital art — illustration, airbrushed shading,
+// stylised work, i.e. most of what a multimedia-arts school submits — and
+// one school testing this system had genuine student art scored 95%+ "AI".
+// No automatic rejection on a probabilistic detector; the human decides.
 const AI_QUARANTINE_THRESHOLD = 0.85;
-const AI_BLOCK_THRESHOLD = 0.95; // >=95% AI likelihood = blocked at submit; 85–94% flags for professor review instead
-function showAiBlocked(score){
-  document.getElementById('oc-scanning').style.display = 'none';
-  document.getElementById('oc-result-clear').style.display = 'none';
-  document.getElementById('oc-result-blocked').style.display = 'block';
-  const titleEl = document.getElementById('oc-blocked-title');
-  if(titleEl) titleEl.textContent = 'AI-Generated Output Detected';
-  const pct = Math.round((score || 0) * 100);
-  document.getElementById('oc-blocked-text').textContent =
-    `AI-generated content detected (${pct}% likelihood). This work cannot be submitted. Please upload original human-made work.`;
-  document.getElementById('originalityCheckOverlay').classList.add('open');
-}
 async function fetchAiScore(src){
   // src: Cloudinary URL string (post-upload path) OR { imageData } base64
   // data-URL (pre-upload path — analyzed before anything leaves the browser
@@ -4008,7 +3996,8 @@ async function submitWork(){
 
     // 1b2. AI-generation check on the LOCAL file (downscaled) — STRICTLY BEFORE
     // Cloudinary upload. Nothing AI ever leaves the browser, no orphan files.
-    // Slightly slower than parallel (AI + upload sequential), but guarantees block pre-upload.
+    // Advisory only: ≥85% is flagged for the professor, never hard-blocked —
+    // detectors false-positive on real digital art (see AI_QUARANTINE_THRESHOLD).
     const wantAi = sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/');
     let aiScore = null;
     if(wantAi){
@@ -4016,13 +4005,11 @@ async function submitWork(){
       const small = await downscaleForAnalysis(pendingRawFile);
       const aiRes = (small) ? await fetchAiScore({ imageData: small }) : null;
       aiScore = aiRes ? aiRes.score : null;
-      console.log('[AI-block check] pre-upload score=', aiScore, 'threshold=', AI_BLOCK_THRESHOLD);
-      showToast(`🤖 AI check: ${Math.round((aiScore||0)*100)}% (block ≥${Math.round(AI_BLOCK_THRESHOLD*100)}%)`);
-      if(aiScore != null && aiScore >= AI_BLOCK_THRESHOLD){
-        showAiBlocked(aiScore);
-        pendingRawFile = null; pendingUploadFile = null;
-        document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
-        return;
+      console.log('[AI-check] pre-upload score=', aiScore, 'flag threshold=', AI_QUARANTINE_THRESHOLD);
+      if(aiScore != null && aiScore >= AI_QUARANTINE_THRESHOLD){
+        showToast(`🤖 AI check: ${Math.round(aiScore*100)}% — flagged for professor review before grading.`);
+      }else{
+        showToast(`🤖 AI check: ${Math.round((aiScore||0)*100)}% ✓`);
       }
     }
 
