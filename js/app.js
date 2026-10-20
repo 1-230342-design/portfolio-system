@@ -1128,25 +1128,28 @@ async function fetchImaggaTags(imageUrl){
   }
 }
 
-// ── SIGHTENGINE AI-GENERATION CHECK (confirmed-block, flag fallback) ──
+// ── SIGHTENGINE AI-GENERATION CHECK (threshold-block, flag fallback) ──
 // Free 'genai' model via our own 'detect-ai' Edge Function (keys stay
 // server-side, same pattern as Imagga above). Returns { score: 0..1,
 // generator, generatorScore } or null when unchecked (videos, quota spent,
 // function not deployed yet).
-// Two bands, and the block band demands CONFIRMATION:
-//   ≥ AI_QUARANTINE_THRESHOLD (0.85), unconfirmed → FLAGGED: submits, student
-//     is told at submit, professor sees a red review banner and decides.
-//   ≥ AI_QUARANTINE_THRESHOLD (0.85) AND a specific generator scores
-//     ≥ AI_GENERATOR_CONFIRM (0.5) → BLOCKED outright at submit.
-// Why the confirmation: AI-image detectors are known to false-positive on
-// REAL digital art (illustration, airbrushed shading, stylised work — most
-// of what a multimedia-arts school submits), and one genuine student
-// artwork in testing scored 95%+ "AI" on the aggregate alone. Real
-// Midjourney/DALL-E/Stable-Diffusion output almost always confidently names
-// its generator; human art stays diffuse across generators. Only a
-// confirmed generator hit hard-blocks.
+// Note: Sightengine's per-generator breakdown (ai_generators) is a
+// GATED feature on paid plans ("contact us for finer-grained analysis"),
+// so the free tier always returns generator = null. The block decision
+// therefore rests on the aggregate aiScore alone, calibrated against
+// measured samples: real student uploads scored 0.001 and 0.34, an
+// original Midjourney output scored 0.99.
+// Three bands:
+//   < AI_QUARANTINE_THRESHOLD (0.85) → CLEAR: submit normally.
+//   0.85 .. < AI_HARD_BLOCK_THRESHOLD (0.97) → FLAGGED: submits, student
+//     is told at submit, professor sees a red review banner and decides
+//     (this band absorbs detector false-positives on stylised human art).
+//   ≥ AI_HARD_BLOCK_THRESHOLD (0.97) → BLOCKED outright at submit.
+// A confirmed generator hit (paid-tier field, currently always null)
+// also hard-blocks, kept for future plan upgrades.
 const AI_QUARANTINE_THRESHOLD = 0.85;
-const AI_GENERATOR_CONFIRM = 0.5; // top specific-generator score required to HARD-BLOCK
+const AI_HARD_BLOCK_THRESHOLD = 0.97; // aggregate aiScore required to HARD-BLOCK
+const AI_GENERATOR_CONFIRM = 0.5; // top specific-generator score also HARD-BLOCKS (paid tier)
 function showAiBlocked(score, generator){
   document.getElementById('oc-scanning').style.display = 'none';
   document.getElementById('oc-result-clear').style.display = 'none';
@@ -1190,15 +1193,15 @@ async function fileHasAuthoringMetadata(file){
 }
 
 // Runs the AI screen on a LOCAL file and decides the outcome:
-//   'clear' — below threshold (or unchecked) → submit normally
-//   'flag'  — ≥85% but NOT confirmed → submit + professor red banner
-//   'block' — ≥85% AND a confident specific-generator hit → reject
+//   'clear' — below 0.85 (or unchecked) → submit normally
+//   'flag'  — 0.85 .. <0.97 → submit + professor red banner
+//   'block' — ≥0.97, or a confident specific-generator hit → reject
 // Shared by the Upload Work flow (this file) and Classwork attach
 // (assignments.js) so both paths always decide identically.
 // Metadata (EXIF/Adobe stamps) is deliberately NOT consulted: real AI
 // images get edited and screenshotted in Photoshop, and that must never
-// rescue a confirmed generator hit. Human art the model misreads stays
-// diffuse across generators — that diffuse case is the 'flag' band.
+// rescue a high-confidence hit. Stylised human art the model over-scores
+// lands in the 'flag' band for professor review, not auto-rejection.
 async function aiScreenFile(file){
   const small = await downscaleForAnalysis(file);
   const res = (small) ? await fetchAiScore({ imageData: small }) : null;
@@ -1208,7 +1211,8 @@ async function aiScreenFile(file){
   if(score == null) return { score: null, generator: null, action: 'clear' };
   if(score < AI_QUARANTINE_THRESHOLD) return { score, generator, action: 'clear' };
   const genConfirmed = genScore != null && genScore >= AI_GENERATOR_CONFIRM;
-  return { score, generator, action: genConfirmed ? 'block' : 'flag' };
+  if(score >= AI_HARD_BLOCK_THRESHOLD || genConfirmed) return { score, generator, action: 'block' };
+  return { score, generator, action: 'flag' };
 }
 
 // Downscale a local image File to a compact JPEG data-URL purely for
@@ -4050,8 +4054,7 @@ async function submitWork(){
 
     // 1b2. AI-generation check on the LOCAL file (downscaled) — STRICTLY BEFORE
     // Cloudinary upload. Nothing AI ever leaves the browser, no orphan files.
-    // aiScreenFile: ≥85% unconfirmed → flag only; ≥85% WITH a confident
-    // specific-generator hit → hard block.
+    // aiScreenFile: 85–97% → flag only; ≥97% (or confirmed generator) → hard block.
     const wantAi = sendForReview && pendingRawFile.type && pendingRawFile.type.startsWith('image/');
     let aiScore = null;
     if(wantAi){
