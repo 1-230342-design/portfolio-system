@@ -159,6 +159,11 @@
 
   /* features — asymmetric bento instead of four equal cards, flat tint fields instead of border+shadow cards */
   #s-landing .lp-section{ padding:clamp(44px,6vh,64px) clamp(16px,4vw,32px); }
+  /* anchor links land just below the sticky header so section headings
+     aren't hidden behind it (About half-cut, Features overscrolled) */
+  #s-landing .lp-about-band,
+  #s-landing .lp-section,
+  #s-landing .lp-explore{ scroll-margin-top: 76px; }
   #s-landing #lp-features{ position:relative; overflow:hidden; }
   #s-landing .lp-features-watermark{
     position:absolute; right:20px; top:20px;
