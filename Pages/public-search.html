@@ -25,11 +25,11 @@
 <img src="images/D2.png" alt="" class="ps-decor ps-decor-2" onload="(function(i){try{var c=document.createElement('canvas'),w=i.naturalWidth,h=i.naturalHeight;c.width=w;c.height=h;var x=c.getContext('2d');x.drawImage(i,0,0);var d=x.getImageData(0,0,w,h).data,y,k,p;for(y=h-1;y>=0;y--){for(k=0;k<w;k++){p=(y*w+k)*4;if(Math.abs(d[p]-d[0])+Math.abs(d[p+1]-d[1])+Math.abs(d[p+2]-d[2])+Math.abs(d[p+3]-d[3])>30){i.style.setProperty('--gap',((h-1-y)/h*100)+'%');return;}}}}catch(e){}})(this)"/>
   <nav class="landing-nav" style="position:relative;z-index:1;">
     <div class="landing-logo" style="cursor:pointer;display:flex;align-items:center;gap:8px;color:#fff;" onclick="go('s-landing')">
-      <div style="display:flex;align-items:center;gap:8px;padding:5px 9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:11px;">
-        <span style="width:22px;height:22px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><img src="images/asia.png" alt="ASIATECH" class="site-logo-img" style="height:17px;"></span>
-        <span style="width:1px;height:16px;background:rgba(255,255,255,.24);"></span>
-        <img src="https://raw.githubusercontent.com/1-230342-design/portfolio-system/main/images/ARTFOLIO_NEW_LOGO.png" alt="Artfolio" class="site-logo-img" style="height:48px;">
-      </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:5px 9px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:11px;width:fit-content;">
+          <span class="lp-logo-chip lp-logo-chip--seal" style="margin-left:6px;"><img src="https://raw.githubusercontent.com/1-230342-design/portfolio-system/main/images/asia.png" alt="ASIATECH" class="site-logo-img" style="width:42px;height:42px;object-fit:contain;"></span>
+          <span class="lp-logo-divider"></span>
+          <span class="lp-logo-chip"><img src="https://raw.githubusercontent.com/1-230342-design/portfolio-system/main/images/ARTFOLIO_NEW_LOGO.png" alt="Artfolio" class="site-logo-img" style="width:58px;height:58px;object-fit:contain;"></span>
+        </div>
       <span>Artfolio</span>
     </div>
     <div class="landing-nav-right">
