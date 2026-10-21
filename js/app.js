@@ -5298,7 +5298,7 @@ function initSunMotes(){
   if(!skies.length) return;
   window._motesDone = true;
   const cols = ['rgba(201,162,39,', 'rgba(47,143,82,', 'rgba(184,145,42,'];
-  const moteLogos = ['images/asia.png', 'images/new logo.png', 'images/CCSIT.png'];
+  const moteLogos = ['images/asia.png', 'images/ARTFOLIO NEW LOGO.png', 'images/CCSIT.png'];
   skies.forEach((sky)=>{
     const count = parseInt(sky.dataset.motes || '40', 10) || 40;
     const frag = document.createDocumentFragment();
