@@ -149,7 +149,10 @@
 
   /* about — a stated line paired with supporting copy instead of one flat centered paragraph */
   #s-landing .lp-about-band{ background:var(--lp-surface-tint); padding:clamp(40px,6vh,60px) clamp(16px,4vw,32px); }
-  #s-landing .lp-about-grid{ max-width:1000px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:start; }
+  /* shared centered container — every section's content (heading, cards,
+     grids) lines up on the same left/right edges at any screen width */
+  #s-landing .lp-section-inner{ max-width:1240px; margin:0 auto; position:relative; z-index:1; }
+  #s-landing .lp-about-grid{ max-width:1240px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:start; }
   #s-landing .lp-about-lede{ font-size:26px; line-height:1.35; font-style:italic; }
   #s-landing .lp-about-body{ font-size:14px; color:var(--lp-ink-soft); line-height:1.75; padding-top:6px; }
   @media(max-width:760px){ #s-landing .lp-about-grid{ grid-template-columns:1fr; gap:18px; } }
@@ -406,8 +409,9 @@
 </section>
 
 <section class="lp-section" id="lp-features">
-  <h2 class="lp-section-heading lp-serif">Everything you create, in one place.</h2>
-  <div class="lp-features-layout">
+  <div class="lp-section-inner">
+    <h2 class="lp-section-heading lp-serif">Everything you create, in one place.</h2>
+    <div class="lp-features-layout">
     <div class="lp-feature-grid">
       <div class="lp-feature-card">
         <span class="lp-feature-icon">◧</span>
@@ -434,6 +438,7 @@
       <img src="images/new logo 2.png" alt="Artfolio logo" onerror="this.style.outline='3px dashed red';this.style.background='yellow';this.alt='⚠️ image not found: images/new logo 2.png';"/>
       <img class="lp-seal-ccs" src="images/CCSIT.png" alt="CCSIT seal" onerror="this.style.outline='3px dashed red';this.style.background='yellow';this.alt='⚠️ image not found: images/CCSIT.png';"/>
     </aside>
+    </div>
   </div>
 </section>
 
