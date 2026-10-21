@@ -95,8 +95,17 @@
   #s-landing .lp-btn-ghost{ background:transparent; border-color:var(--lp-border); color:var(--lp-ink); width:100%; justify-content:center; padding:13px; }
   #s-landing .lp-btn-ghost:hover{ border-color:var(--lp-ink); background:var(--lp-surface-tint); }
 
-  /* hero */
-  #s-landing .lp-hero{ padding:clamp(36px,5.5vh,64px) clamp(16px,4vw,32px) clamp(44px,7.5vh,84px); position:relative; overflow:hidden; }
+  /* hero — always fills the first screen: min-height ties the hero to the
+     viewport (header sits above it as normal flow), content is vertically
+     centered so every device shows the same hero-first view. On short
+     screens the content defines the height and nothing is clipped. */
+  #s-landing .lp-hero{
+    padding:clamp(36px,5.5vh,64px) clamp(16px,4vw,32px) clamp(44px,7.5vh,84px);
+    position:relative; overflow:hidden;
+    display:flex; flex-direction:column; justify-content:center;
+    min-height:calc(100vh - 70px);
+    min-height:calc(100svh - 70px);
+  }
   /* "morning mirror" — daylight counterpart of the dark aurora. Three soft
      washes over the cream base, edges only: emerald breath top-left behind
      the seal, gold pool behind the login card, white lift keeping the middle
