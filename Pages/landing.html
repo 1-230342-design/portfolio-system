@@ -59,7 +59,7 @@
   #s-landing .lp-hero-grid > *{ position:relative; z-index:1; }
   @media(max-width:900px){ #s-landing .lp-hero-watermark{ width:360px; height:360px; left:-180px; top:0; } }
   @media(max-width:640px){ #s-landing .lp-hero-watermark{ display:none; } }
-  #s-landing .lp-nav{ display:flex; align-items:center; justify-content:space-between; padding:16px 32px; max-width:1240px; margin:0 auto; position:relative; }
+  #s-landing .lp-nav{ display:flex; align-items:center; justify-content:space-between; padding:14px clamp(14px,3vw,32px); max-width:1240px; margin:0 auto; position:relative; }
   #s-landing .lp-brandmark{ display:flex; align-items:center; gap:14px; cursor:pointer; }
   #s-landing .lp-logo-pair{ display:flex; align-items:center; gap:9px; padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); border-radius:12px; }
   #s-landing .lp-logo-chip{ display:flex; align-items:center; justify-content:center; width:28px; height:28px; flex-shrink:0; }
@@ -96,7 +96,7 @@
   #s-landing .lp-btn-ghost:hover{ border-color:var(--lp-ink); background:var(--lp-surface-tint); }
 
   /* hero */
-  #s-landing .lp-hero{ padding:64px 32px 84px; position:relative; overflow:hidden; }
+  #s-landing .lp-hero{ padding:clamp(36px,5.5vh,64px) clamp(16px,4vw,32px) clamp(44px,7.5vh,84px); position:relative; overflow:hidden; }
   /* "morning mirror" — daylight counterpart of the dark aurora. Three soft
      washes over the cream base, edges only: emerald breath top-left behind
      the seal, gold pool behind the login card, white lift keeping the middle
@@ -109,7 +109,10 @@
       radial-gradient(520px 420px at 50% 58%, rgba(255,255,255,.6), rgba(255,255,255,0) 70%),
       var(--lp-bg);
   }
-  #s-landing .lp-hero-grid{ max-width:1240px; margin:0 auto; display:grid; grid-template-columns:1.15fr .85fr; gap:44px; align-items:start; position:relative; }
+  #s-landing .lp-hero-grid{ max-width:1240px; margin:0 auto; display:grid; grid-template-columns:1.15fr .85fr; gap:clamp(24px,3.5vw,44px); align-items:start; position:relative; }
+  /* side-by-side hero: vertically center both columns against each other so
+     the headline and login card never look staggered at any screen height */
+  @media(min-width:981px){ #s-landing .lp-hero-grid{ align-items:center; } }
   #s-landing .lp-kicker{ display:flex; align-items:center; gap:8px; color:var(--lp-green-dark); font-weight:600; font-size:12.5px; margin-bottom:16px; }
   #s-landing .lp-kicker::before{ content:'';width:6px;height:6px;border-radius:50%;background:var(--lp-gold); }
   #s-landing .lp-display{ font-size:clamp(38px,4.6vw,58px); line-height:1.06; letter-spacing:-.01em; margin:0 0 20px; text-wrap:balance; }
@@ -136,14 +139,14 @@
   #s-landing .lp-signup-line a{ color:var(--lp-green); font-weight:600; cursor:pointer; }
 
   /* about — a stated line paired with supporting copy instead of one flat centered paragraph */
-  #s-landing .lp-about-band{ background:var(--lp-surface-tint); padding:60px 32px; }
+  #s-landing .lp-about-band{ background:var(--lp-surface-tint); padding:clamp(40px,6vh,60px) clamp(16px,4vw,32px); }
   #s-landing .lp-about-grid{ max-width:1000px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:start; }
   #s-landing .lp-about-lede{ font-size:26px; line-height:1.35; font-style:italic; }
   #s-landing .lp-about-body{ font-size:14px; color:var(--lp-ink-soft); line-height:1.75; padding-top:6px; }
   @media(max-width:760px){ #s-landing .lp-about-grid{ grid-template-columns:1fr; gap:18px; } }
 
   /* features — asymmetric bento instead of four equal cards, flat tint fields instead of border+shadow cards */
-  #s-landing .lp-section{ padding:64px 32px; }
+  #s-landing .lp-section{ padding:clamp(44px,6vh,64px) clamp(16px,4vw,32px); }
   #s-landing #lp-features{ position:relative; overflow:hidden; }
   #s-landing .lp-features-watermark{
     position:absolute; right:20px; top:20px;
@@ -187,7 +190,7 @@
   }
 
   /* explore */
-  #s-landing .lp-explore{ padding:64px 32px 76px; }
+  #s-landing .lp-explore{ padding:clamp(44px,6vh,64px) clamp(16px,4vw,32px) clamp(50px,7vh,76px); }
   #s-landing .lp-explore-head{ max-width:1240px; margin:0 auto 30px; display:flex; justify-content:space-between; align-items:flex-end; gap:22px; flex-wrap:wrap; }
   #s-landing .lp-explore-head h2{ font-size:24px; margin:0 0 6px; font-weight:600; }
   #s-landing .lp-explore-head p{ color:var(--lp-ink-soft); font-size:13px; margin:0; }
@@ -212,9 +215,27 @@
   #s-landing .lp-footer-right{ font-size:12px; color:rgba(255,255,255,.45); }
 
   /* responsive */
+  /* mid-width laptops (981–1150): tighten the hero gap and card padding so
+     neither column crowds the other */
+  @media(max-width:1150px){
+    #s-landing .lp-login-card{ padding:22px; }
+    #s-landing .lp-login-wrap{ padding-left:14px; }
+    #s-landing .lp-hero-copy{ margin-bottom:24px; }
+  }
+  /* short windows (<730px tall): scale the headline down and ease the hero
+     padding so the full hero fits without cutting anything off */
+  @media(max-height:730px) and (min-width:981px){
+    #s-landing .lp-display{ font-size:clamp(30px,3.6vw,44px); margin-bottom:14px; }
+    #s-landing .lp-kicker{ margin-bottom:10px; }
+    #s-landing .lp-hero-copy{ margin-bottom:18px; line-height:1.6; }
+    #s-landing .lp-hero{ padding-top:28px; padding-bottom:40px; }
+    #s-landing .lp-login-card{ padding:20px 22px; }
+    #s-landing .lp-login-sub{ margin-bottom:14px; }
+    #s-landing .lp-field{ margin-bottom:10px; }
+  }
   @media(max-width:980px){
     #s-landing .lp-hero-grid{ grid-template-columns:1fr; }
-    #s-landing .lp-login-wrap{ max-width:440px; }
+    #s-landing .lp-login-wrap{ max-width:440px; margin:6px auto 0; }
     #s-landing .lp-portfolio-grid{ grid-template-columns:repeat(3,1fr); }
   }
   @media(max-width:640px){
