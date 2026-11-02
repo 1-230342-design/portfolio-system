@@ -387,6 +387,7 @@ async function submitAttachedWork(){
       aiScore = scr.score;
       console.log('[AI-check] attach pre-upload score=', aiScore, 'generator=', scr.generator, 'action=', scr.action);
       if(scr.action === 'block'){
+        logIntegrityAttempt('ai_generated', aiScore, null, assignment.id, 'blocked');
         showAiBlocked(aiScore, scr.generator);
         attachRawFile = null;
         document.getElementById('aw-drop-text').textContent = 'Drop files here or click to upload';

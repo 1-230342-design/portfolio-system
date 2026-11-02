@@ -266,12 +266,34 @@
         </div>
       </div>
 
-      <!-- OVERALL RANKINGS -->
+      <!-- OVERALL RANKINGS + ACADEMIC INTEGRITY -->
       <div id="p-rankings" style="display:none">
-        <div class="page-title">Overall Rankings</div>
-        <div class="rankings-podium" id="rankings-podium"></div>
-        <div class="rankings-list" id="rankings-list"></div>
-        <div id="rankings-sections"></div>
+        <div class="page-title" id="rankings-page-title">Overall Rankings</div>
+
+        <!-- Two-tab switch: the merit board, and the misconduct list -->
+        <div class="filter-tabs" style="margin-bottom:22px;">
+          <button class="filter-tab active" id="rtab-board" onclick="rankingsTab('board')">🏆 Rankings</button>
+          <button class="filter-tab" id="rtab-integrity" onclick="rankingsTab('integrity')">🛡️ Integrity</button>
+        </div>
+
+        <div id="rankings-board">
+          <div class="rankings-podium" id="rankings-podium"></div>
+          <div class="rankings-list" id="rankings-list"></div>
+          <div id="rankings-sections"></div>
+        </div>
+
+        <!-- INTEGRITY — who was flagged for AI work / submitted a near-copy.
+             Full-access professors only; the RPC re-checks the department. -->
+        <div id="rankings-integrity" style="display:none">
+          <div id="integrity-summary"></div>
+          <div class="filter-tabs" id="integrity-filters">
+            <button class="filter-tab active" onclick="integrityFilter('all', this)">All</button>
+            <button class="filter-tab" onclick="integrityFilter('ai', this)">🤖 AI-generated</button>
+            <button class="filter-tab" onclick="integrityFilter('duplicate', this)">📄 Similar work</button>
+            <button class="filter-tab" onclick="integrityFilter('blocked', this)">🚫 Blocked attempts</button>
+          </div>
+          <div class="rankings-list" id="integrity-list"></div>
+        </div>
       </div>
 
       <!-- GRADE ARCHIVES — manage Sections, preview + download grades per section -->

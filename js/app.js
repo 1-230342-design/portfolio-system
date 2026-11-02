@@ -1462,6 +1462,31 @@ function animateOcPercent(targetPct, durationMs){
   });
 }
 
+// ── Integrity log (optional — supabase-integrity-attempts.sql) ──
+// Both gates below run BEFORE anything reaches Cloudinary or the database,
+// so without this call a blocked attempt leaves no trace anywhere and the
+// professor can never see who tried. Fire-and-forget by design: a missing
+// table/RPC must never delay or break an upload.
+let _integrityLogWarned = false;
+function logIntegrityAttempt(kind, score, matchedItemId, assignmentId, outcome){
+  // Fire-and-forget: this must never delay or break the upload gate.
+  (async () => {
+    try{
+      const res = await sb.rpc('log_integrity_attempt', {
+        p_kind: kind,
+        p_score: (typeof score === 'number' && isFinite(score)) ? Math.round(score * 10000) / 10000 : null,
+        p_matched_item_id: matchedItemId || null,
+        p_assignment_id: assignmentId || null,
+        p_outcome: outcome || 'blocked'
+      });
+      if(res && res.error && !_integrityLogWarned){
+        _integrityLogWarned = true;
+        console.info('[integrity] attempt log unavailable — run supabase-integrity-attempts.sql. Blocked attempts will not appear in Rankings → Integrity.');
+      }
+    }catch(e){ /* never break the upload path */ }
+  })();
+}
+
 // Runs the real duplicate check behind the scanning animation, then reveals
 // the result. Returns true if the submission must be BLOCKED (100% match),
 // false if it's clear to proceed with saving.
@@ -1497,6 +1522,9 @@ async function runOriginalityCheckUI(phash, tags, assignmentId, embedding, owner
   // is 90%, which made a genuine 90-99% AI-detected block look like a display bug.
   const blocked = bestScore >= SIMILARITY_BLOCK_THRESHOLD;
   if(blocked){
+    // Recorded before the modal is even shown, so "tried and was stopped"
+    // survives after the student closes the dialog and walks away.
+    logIntegrityAttempt(bestScore >= 0.999 ? 'exact_copy' : 'duplicate', bestScore, best && best.id, assignmentId, 'blocked');
     document.getElementById('oc-scanning').style.display = 'none';
     document.getElementById('oc-result-blocked').style.display = 'block';
     const titleEl = document.getElementById('oc-blocked-title');
@@ -2501,11 +2529,11 @@ function buildAlertActionUrl(action, email){
 // ── Where did the attempt come from? ──
 // Fetch JSON but give up after a few seconds, so a slow or blocked lookup
 // can never hang the alert.
-async function fetchJsonWithTimeout(url, ms){
+async function fetchJsonWithTimeout(url, ms, init){
   const ctrl  = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms || 4000);
   try{
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await fetch(url, Object.assign({ signal: ctrl.signal }, init || {}));
     if(!res.ok) throw new Error('HTTP ' + res.status);
     return await res.json();
   } finally {
@@ -2568,38 +2596,118 @@ async function reverseGeocode(lat, lon){
   }
 }
 
-// IP-based guess. Tries a few free services in order (any one can be blocked by an ad blocker
-// or rate-limited — school Wi-Fi shares one public IP across many students). Never throws.
+// ── The browser's own IANA time zone ("Asia/Manila"). Needs no network, no
+//    permission, and cannot be blocked — so the alert never has to say
+//    "Unknown" for the place when the IP lookups all fail.
+function deviceTimeZone(){
+  try{ return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }catch(e){ return ''; }
+}
+function deviceTimeZoneCity(){
+  const tz = deviceTimeZone();
+  if(!tz) return '';
+  return tz.split('/').pop().replace(/_/g, ' ');
+}
+
+// Resolve with the FIRST promise that yields a truthy value, or null once all
+// of them are done. Providers are raced instead of tried one after another:
+// before, three slow/blocked services could burn ~11 s and still end in
+// "Unknown" (which is what the owner received). Never rejects.
+function firstValue(promises){
+  return new Promise(resolve => {
+    let left = promises.length;
+    if(!left){ resolve(null); return; }
+    promises.forEach(p => {
+      Promise.resolve(p)
+        .then(v => { if(v && left > 0){ left = -1; resolve(v); } })
+        .catch(() => {})
+        .finally(() => { if(left > 0 && --left === 0) resolve(null); });
+    });
+  });
+}
+
+// The IP of the request the browser JUST made, read by our own database
+// (supabase-login-context.sql). Nothing third-party, so ad blockers, privacy
+// browsers and campus filters can't blank it out. Optional: if the script has
+// not been run the RPC errors and we fall through to the public services.
+let _loginContextState = 'unknown'; // 'unknown' | 'ok' | 'missing'
+async function lookupRequestIp(){
+  if(_loginContextState === 'missing') return null; // don't 404 on every single attempt
+  try{
+    const { data, error } = await sb.rpc('get_login_context');
+    if(error) throw error;
+    _loginContextState = 'ok';
+    const row = Array.isArray(data) ? data[0] : data;
+    const ip  = row && (row.ip || row.client_ip);
+    return (ip && ip !== 'Unknown') ? String(ip) : null;
+  }catch(err){
+    _loginContextState = 'missing';
+    console.info('[login alert] exact-IP RPC not available yet — run supabase-login-context.sql in the Supabase SQL Editor. Falling back to public IP services.');
+    return null;
+  }
+}
+
+// Free, key-less geo services. Any one of them can be blocked by an ad blocker
+// or rate-limited (school Wi-Fi shares one public IP across many students),
+// which is why we race several and only need one to answer.
+const IP_PROVIDERS = [
+  { name:'ipwho.is',
+    url: ip => 'https://ipwho.is/' + (ip || ''),
+    read: d => (d && d.success !== false && d.ip)
+      ? { ip:d.ip, city:d.city, region:d.region, country:d.country, lat:d.latitude, lon:d.longitude } : null },
+  { name:'ipapi.co',
+    url: ip => ip ? 'https://ipapi.co/' + ip + '/json/' : 'https://ipapi.co/json/',
+    read: d => (d && !d.error && d.ip)
+      ? { ip:d.ip, city:d.city, region:d.region, country:d.country_name, lat:d.latitude, lon:d.longitude } : null },
+  { name:'geojs.io',
+    url: ip => ip ? 'https://get.geojs.io/v1/ip/geo/' + ip + '.json' : 'https://get.geojs.io/v1/ip/geo.json',
+    read: d => (d && d.ip)
+      ? { ip:d.ip, city:d.city, region:d.region, country:d.country, lat:Number(d.latitude) || null, lon:Number(d.longitude) || null } : null }
+];
+// Only ever paste something that looks like an IP into a provider URL.
+function safeIp(ip){ return (ip && /^[0-9a-fA-F:.]+$/.test(ip)) ? ip : ''; }
+
+// IP-based guess. Never throws; always returns an IP or "Unknown" plus a
+// best-available location (geo service → device time zone → "Unknown").
 async function lookupByIp(){
-  let ip = 'Unknown', location = 'Unknown', lat = null, lon = null;
-  const providers = [
-    { url:'https://ipwho.is/',
-      read: d => (d && d.success !== false) ? { ip:d.ip, city:d.city, region:d.region, country:d.country, lat:d.latitude, lon:d.longitude } : null },
-    { url:'https://ipapi.co/json/',
-      read: d => (d && !d.error) ? { ip:d.ip, city:d.city, region:d.region, country:d.country_name, lat:d.latitude, lon:d.longitude } : null }
-  ];
-  for(const p of providers){
+  // 1) Ask our own backend who is calling (blocker-proof, real request IP).
+  const knownIp = await lookupRequestIp();
+
+  // 2) Race the public geo services, handing them the IP we already know so
+  //    they don't have to resolve the caller themselves.
+  const geo = await firstValue(IP_PROVIDERS.map(p => (async () => {
     try{
-      const info = p.read(await fetchJsonWithTimeout(p.url, 4000));
-      if(info && info.ip){
-        ip = info.ip;
-        location = [info.city, info.region, info.country].filter(Boolean).join(', ') || 'Unknown';
-        lat = info.lat ?? null; lon = info.lon ?? null;
-        break;
-      }
+      const info = p.read(await fetchJsonWithTimeout(p.url(safeIp(knownIp)), 5000));
+      return (info && info.ip) ? info : null;
     }catch(err){
-      console.warn('[login alert] lookup failed (' + p.url + '):', err);
+      console.warn('[login alert] ' + p.name + ' lookup failed:', err && err.message || err);
+      return null;
+    }
+  })()));
+
+  let ip       = knownIp || (geo && geo.ip) || 'Unknown';
+  const mapQuery = geo ? [geo.city, geo.region, geo.country].filter(Boolean).join(', ') : '';
+  let location = mapQuery;
+  let lat = geo ? geo.lat : null;
+  let lon = geo ? geo.lon : null;
+
+  // 3) Still no IP? One last, IP-only service (already allowed by our CSP).
+  if(ip === 'Unknown'){
+    try{
+      const d = await fetchJsonWithTimeout('https://api.bigdatacloud.net/data/client-ip', 3000);
+      if(d && (d.ipString || d.ip)) ip = d.ipString || d.ip;
+    }catch(err){
+      console.warn('[login alert] client-ip lookup failed:', err && err.message || err);
     }
   }
-  if(ip === 'Unknown'){ // last resort — at least get the IP address
-    try{
-      const d = await fetchJsonWithTimeout('https://api.ipify.org?format=json', 3000);
-      if(d && d.ip) ip = d.ip;
-    }catch(err){
-      console.warn('[login alert] IP-only lookup failed:', err);
-    }
+
+  // 4) Honest fallback for the place: the device's time zone is a real,
+  //    country-level hint the owner can act on, and is always available.
+  if(!location){
+    const tzCity = deviceTimeZoneCity();
+    location = tzCity ? tzCity + ' (device time zone)' : 'Unknown';
   }
-  return { ip, location, lat, lon };
+
+  return { ip, location, lat, lon, mapQuery: mapQuery || deviceTimeZoneCity() };
 }
 
 // Combines both: the IP lookup (for the IP address + a fallback guess) and, if allowed,
@@ -2616,11 +2724,12 @@ async function getLoginAttemptInfo(){
     const place = await reverseGeocode(precise.lat, precise.lon);
     location = (place || `${precise.lat.toFixed(4)}, ${precise.lon.toFixed(4)}`) + ` (device location, within ${precise.acc} m)`;
   }
-  // Exact pin only when we really have the device's position. For an IP-based guess, link to a
-  // map search of the area name instead, so the map doesn't suggest a precise spot it can't know.
+  // Exact pin only when we really have the device's position. For an IP-based guess (or a
+  // time-zone hint), link to a map SEARCH of the plain place name instead, so the map never
+  // pretends to know a precise spot — and never searches for "(device time zone)" text.
   const mapUrl = precise
     ? `https://www.google.com/maps?q=${lat},${lon}`
-    : (location !== 'Unknown' ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}` : '');
+    : (ipInfo.mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ipInfo.mapQuery)}` : '');
   return { ip: ipInfo.ip, location, device: describeDevice(), mapUrl };
 }
 
@@ -2652,7 +2761,7 @@ async function sendLoginAlert(email, success){
   }
   try{
     const { ip, location, device, mapUrl } = await getLoginAttemptInfo();
-    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_LOGIN_ALERT_TEMPLATE_ID, {
+    const payload = {
       to_email: email,
       status:   success ? 'Successful login' : 'Failed login attempt',
       ip, location, device,
@@ -2660,11 +2769,27 @@ async function sendLoginAlert(email, success){
       time: alertTimestamp(),
       change_password_url: buildAlertActionUrl('changepw', email),
       keep_password_url:   buildAlertActionUrl('keep', email)
-    });
+    };
+    try{
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_LOGIN_ALERT_TEMPLATE_ID, payload);
+    }catch(firstErr){
+      // One retry for transport-shaped failures (404 from a proxy/extension
+      // that mangles the request, 5xx, network reset). Never retry the 4xx
+      // answers that mean "this will never work": bad key (401), quota (402),
+      // bad template/service (400) or a rejected recipient (422).
+      const code = firstErr && firstErr.status;
+      if(code === 400 || code === 401 || code === 402 || code === 413 || code === 422) throw firstErr;
+      console.warn('[login alert] first send failed (' + (code || 'network') + '), retrying once…');
+      await new Promise(r => setTimeout(r, 1200));
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_LOGIN_ALERT_TEMPLATE_ID, payload);
+    }
     console.log('[login alert] sent to', email, '|', location, '|', ip);
   }catch(err){
     clearAlertCooldown(key); // sending failed — don't block the next try
-    console.error('[login alert] EmailJS send failed:', err); // EmailJS errors look like { status, text }
+    // EmailJS rejects with { status, text }; log both so the console says
+    // WHY (e.g. "404 — The template ID not found") instead of an object name.
+    console.error('[login alert] EmailJS send failed:',
+      (err && err.status ? err.status + ' — ' : '') + (err && err.text || err && err.message || err));
   }
 }
 
@@ -4063,6 +4188,7 @@ async function submitWork(){
       aiScore = scr.score;
       console.log('[AI-check] pre-upload score=', aiScore, 'generator=', scr.generator, 'action=', scr.action);
       if(scr.action === 'block'){
+        logIntegrityAttempt('ai_generated', aiScore, null, null, 'blocked');
         showAiBlocked(aiScore, scr.generator);
         pendingRawFile = null; pendingUploadFile = null;
         document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
@@ -4154,7 +4280,15 @@ function pPage(page){
   });
   if(page==='p-dashboard'||page==='p-submissions') refreshProfViews();
   if(page==='p-students') renderStudentsPage();
-  if(page==='p-rankings') loadAndRenderRankings();
+  if(page==='p-rankings'){
+    if(_rankingsTab==='integrity'){
+      const titleEl = document.getElementById('rankings-page-title');
+      if(titleEl) titleEl.textContent = 'Academic Integrity';
+      loadAndRenderIntegrity();
+    } else {
+      loadAndRenderRankings();
+    }
+  }
   // Defined in js/assignments.js — guarded in case that file hasn't loaded yet
   if(page==='p-assignments' && typeof renderProfAssignmentsPage === 'function') renderProfAssignmentsPage();
   if(page==='p-archives' && typeof renderArchivesPage === 'function') renderArchivesPage();
@@ -4700,6 +4834,546 @@ async function viewRankedStudent(userId){
   currentSectionId = null; // arriving from Rankings, not from a section drill-down
   if(!_allStudentsCache || !_allStudentsCache.length) await loadAndRenderStudents();
   viewStudentProfile(userId);
+}
+
+
+// ══════════════════════════════════════════════════════
+//  RANKINGS → INTEGRITY
+//  The second tab inside p-rankings. It answers the program
+//  manager's question ("who tried to pass off AI work or a
+//  copy?") from three sources:
+//    1. portfolio_items.ai_score >= 0.85  → AI flag that was
+//       allowed through (the 0.85–0.97 advisory band)
+//    2. similarity_logs.similarity_score >= 0.85 → accepted
+//       work that was still very close to another submission
+//    3. integrity_attempts → attempts BLOCKED before upload
+//       (supabase-integrity-attempts.sql; optional, fails open)
+//  Everything is joined in JS: portfolios.student_id and
+//  user_profiles.user_id both point at auth.users, with no FK
+//  between them, so PostgREST cannot embed the rows.
+// ══════════════════════════════════════════════════════
+let _rankingsTab        = 'board';   // 'board' | 'integrity'
+let _integrityCache     = [];        // flattened flag/attempt events
+let _integrityFilter    = 'all';     // 'all' | 'ai' | 'duplicate' | 'blocked'
+let _integrityOpen      = new Set(); // student keys whose detail is expanded
+let _integrityLoading   = false;
+let _integrityAttemptsMissing = false;
+let _integrityAttemptWarned   = false;
+
+// Switch between the merit board and the integrity ledger.
+async function rankingsTab(tab){
+  _rankingsTab = tab === 'integrity' ? 'integrity' : 'board';
+
+  const boardEl = document.getElementById('rankings-board');
+  const intEl   = document.getElementById('rankings-integrity');
+  const boardBtn = document.getElementById('rtab-board');
+  const intBtn   = document.getElementById('rtab-integrity');
+  const titleEl  = document.getElementById('rankings-page-title');
+  if(boardEl)  boardEl.style.display = _rankingsTab === 'board' ? '' : 'none';
+  if(intEl)    intEl.style.display   = _rankingsTab === 'integrity' ? '' : 'none';
+  if(titleEl)  titleEl.textContent   = _rankingsTab === 'integrity' ? 'Academic Integrity' : 'Overall Rankings';
+  if(boardBtn) boardBtn.classList.toggle('active', _rankingsTab === 'board');
+  if(intBtn)   intBtn.classList.toggle('active', _rankingsTab === 'integrity');
+
+  if(_rankingsTab === 'integrity') await loadAndRenderIntegrity();
+  else if(!_rankingsCache.length)  await loadAndRenderRankings();
+}
+
+// Filter chips above the list. `btn` is the clicked element so the
+// active pill moves without re-querying by label.
+function integrityFilter(value, btn){
+  _integrityFilter = value || 'all';
+  document.querySelectorAll('#integrity-filters .filter-tab')
+    .forEach(b => b.classList.toggle('active', b === btn));
+  renderIntegrity();
+}
+
+// ── small batch fetchers (chunked so the URL never gets too long) ──
+async function _integrityFetchItemsByIds(ids){
+  const out = [];
+  const uniq = [...new Set((ids || []).filter(Boolean))];
+  for(let i = 0; i < uniq.length; i += 120){
+    const { data, error } = await sb.from('portfolio_items')
+      .select('id, portfolio_id, title, file_url, file_type, uploaded_at')
+      .in('id', uniq.slice(i, i + 120));
+    if(error){ console.error('integrity item lookup:', error); continue; }
+    if(data) out.push(...data);
+  }
+  return out;
+}
+
+async function _integrityFetchPortfolios(ids){
+  const out = [];
+  const uniq = [...new Set((ids || []).filter(Boolean))];
+  for(let i = 0; i < uniq.length; i += 120){
+    const { data, error } = await sb.from('portfolios')
+      .select('id, student_id, assignment_id, status')
+      .in('id', uniq.slice(i, i + 120));
+    if(error){ console.error('integrity portfolio lookup:', error); continue; }
+    if(data) out.push(...data);
+  }
+  return out;
+}
+
+async function _integrityFetchAssignments(ids){
+  const out = [];
+  const uniq = [...new Set((ids || []).filter(Boolean))];
+  for(let i = 0; i < uniq.length; i += 120){
+    const { data, error } = await sb.from('assignments')
+      .select('id, title')
+      .in('id', uniq.slice(i, i + 120));
+    if(error){ console.error('integrity assignment lookup:', error); continue; }
+    if(data) out.push(...data);
+  }
+  return out;
+}
+
+// Pull the three sources and flatten them into one event list.
+async function loadIntegrityData(){
+  const AI_FLAG  = (typeof AI_QUARANTINE_THRESHOLD === 'number') ? AI_QUARANTINE_THRESHOLD : 0.85;
+  const AI_BLOCK = (typeof AI_HARD_BLOCK_THRESHOLD === 'number') ? AI_HARD_BLOCK_THRESHOLD : 0.97;
+
+  const profiles = (_allStudentsCache && _allStudentsCache.length)
+    ? _allStudentsCache
+    : await loadAllStudentProfiles();
+  if(profiles.length) _allStudentsCache = profiles;
+  const profById = new Map(profiles.map(p => [p.user_id, p]));
+
+  // 1) AI-generated images that were saved but carry a high score.
+  const aiP = (async () => {
+    const { data, error } = await sb.from('portfolio_items')
+      .select('id, portfolio_id, title, file_url, file_type, ai_score, uploaded_at')
+      .gte('ai_score', AI_FLAG)
+      .order('uploaded_at', { ascending:false })
+      .limit(1000);
+    if(error){
+      if(/ai_score/i.test(error.message || '')){
+        console.info('[integrity] ai_score column missing — run supabase-ai-score.sql. AI-generated rows will not appear.');
+      } else {
+        console.error('integrity AI rows:', error);
+      }
+      return [];
+    }
+    return data || [];
+  })();
+
+  // 2) Accepted works that were still 85%+ similar to an existing submission.
+  const logsP = (async () => {
+    const { data, error } = await sb.from('similarity_logs')
+      .select('id, checked_item_id, matched_item_id, similarity_score, flagged, checked_at')
+      .gte('similarity_score', SIMILARITY_LOG_THRESHOLD)
+      .order('checked_at', { ascending:false })
+      .limit(1000);
+    if(error){ console.error('integrity similarity rows:', error); return []; }
+    return data || [];
+  })();
+
+  // 3) Attempts blocked before upload — optional SQL, fails open.
+  const attemptsP = (async () => {
+    const { data, error } = await sb.rpc('list_integrity_attempts', { p_limit: 2000 });
+    if(error){
+      _integrityAttemptsMissing = true;
+      if(!_integrityAttemptWarned){
+        _integrityAttemptWarned = true;
+        console.info('[integrity] attempt log unavailable — run supabase-integrity-attempts.sql. Blocked attempts will not appear in Rankings → Integrity.');
+      }
+      return [];
+    }
+    _integrityAttemptsMissing = false;
+    return data || [];
+  })();
+
+  const [aiItems, logs, attempts] = await Promise.all([aiP, logsP, attemptsP]);
+
+  // Resolve every item referenced by a similarity row (checked + matched).
+  const referencedIds = [];
+  logs.forEach(l => { referencedIds.push(l.checked_item_id, l.matched_item_id); });
+  const lookedUp = await _integrityFetchItemsByIds(referencedIds);
+  const itemById = new Map();
+  aiItems.forEach(i => itemById.set(i.id, i));
+  lookedUp.forEach(i => itemById.set(i.id, i));
+
+  // Portfolios are needed only for the items we actually show.
+  const portIds = [];
+  aiItems.forEach(i => portIds.push(i.portfolio_id));
+  logs.forEach(l => {
+    const it = itemById.get(l.checked_item_id);
+    if(it) portIds.push(it.portfolio_id);
+  });
+  const portfolios = await _integrityFetchPortfolios(portIds);
+  const portById = new Map(portfolios.map(p => [p.id, p]));
+
+  // Assignment titles for the "what was it for" line.
+  const assignIds = [];
+  portfolios.forEach(p => assignIds.push(p.assignment_id));
+  attempts.forEach(a => assignIds.push(a.assignment_id));
+  const assignments = await _integrityFetchAssignments(assignIds);
+  const assignTitle = new Map(assignments.map(a => [a.id, a.title]));
+
+  const events = [];
+
+  // ── source 1: saved AI-flagged work ──
+  aiItems.forEach(item => {
+    const port = portById.get(item.portfolio_id);
+    if(!port || port.status === 'draft') return; // drafts are private, never reviewed
+    const prof  = profById.get(port.student_id);
+    const score = Number(item.ai_score);
+    events.push({
+      source: 'ai',
+      kind: 'ai_generated',
+      studentId: port.student_id,
+      studentName: prof ? prof.full_name : 'Unknown student',
+      studentNumber: prof ? prof.student_id : '',
+      section: prof ? prof.section : '',
+      photo: prof ? prof.avatar_url : '',
+      score: isFinite(score) ? score : null,
+      outcome: score >= AI_BLOCK ? 'blocked' : 'flagged',
+      // The portfolio's own review decision is the closest thing this
+      // source has to a verdict: rejected = the professor already said no,
+      // approved = they saw the flag and let the work stand.
+      status: port.status === 'rejected' ? 'dismissed'
+            : port.status === 'approved' ? 'allowed'
+            : 'flagged',
+      title: item.title || 'Untitled work',
+      itemId: item.id,
+      matchedItemId: null,
+      matchedTitle: '',
+      assignmentTitle: assignTitle.get(port.assignment_id) || '',
+      createdAt: item.uploaded_at || null,
+      fileUrl: item.file_url || '',
+      fileType: item.file_type || ''
+    });
+  });
+
+  // ── source 2: accepted but highly similar ──
+  logs.forEach(log => {
+    const checked = itemById.get(log.checked_item_id);
+    if(!checked) return;
+    const port = portById.get(checked.portfolio_id);
+    if(!port || port.status === 'draft') return;
+    const prof    = profById.get(port.student_id);
+    const matched = log.matched_item_id ? itemById.get(log.matched_item_id) : null;
+    const score   = Number(log.similarity_score);
+    events.push({
+      source: 'similarity',
+      kind: score >= 0.999 ? 'exact_copy' : 'duplicate',
+      studentId: port.student_id,
+      studentName: prof ? prof.full_name : 'Unknown student',
+      studentNumber: prof ? prof.student_id : '',
+      section: prof ? prof.section : '',
+      photo: prof ? prof.avatar_url : '',
+      score: isFinite(score) ? score : null,
+      outcome: 'flagged',
+      status: port.status === 'rejected' ? 'dismissed'
+            : port.status === 'approved' ? 'allowed'
+            : 'flagged',
+      title: checked.title || 'Untitled work',
+      itemId: checked.id,
+      matchedItemId: log.matched_item_id || null,
+      matchedTitle: matched ? (matched.title || '') : '',
+      assignmentTitle: assignTitle.get(port.assignment_id) || '',
+      createdAt: log.checked_at || checked.uploaded_at || null,
+      fileUrl: checked.file_url || '',
+      fileType: checked.file_type || ''
+    });
+  });
+
+  // ── source 3: blocked attempts (the "tried and got stopped" signal) ──
+  attempts.forEach(a => {
+    const prof = profById.get(a.student_id);
+    events.push({
+      source: 'attempt',
+      attemptId: a.id,
+      kind: a.kind || 'duplicate',
+      studentId: a.student_id,
+      studentName: (a.student_name && a.student_name !== 'Student')
+        ? a.student_name
+        : (prof ? prof.full_name : 'Unknown student'),
+      studentNumber: a.student_number || (prof ? prof.student_id : ''),
+      section: a.section || (prof ? prof.section : ''),
+      photo: prof ? prof.avatar_url : '',
+      score: a.score == null ? null : Number(a.score),
+      outcome: a.outcome || 'blocked',
+      status: a.status || 'pending',
+      title: 'Blocked upload attempt',
+      itemId: null,
+      matchedItemId: a.matched_item_id || null,
+      matchedTitle: a.matched_title || '',
+      assignmentTitle: assignTitle.get(a.assignment_id) || '',
+      createdAt: a.created_at || null,
+      fileUrl: '',
+      fileType: ''
+    });
+  });
+
+  events.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  return events;
+}
+
+function integrityWhen(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '—';
+  const opts = { month:'short', day:'numeric' };
+  if(d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString('en-US', opts);
+}
+
+function integrityFilteredEvents(){
+  if(_integrityFilter === 'ai')        return _integrityCache.filter(e => e.kind === 'ai_generated');
+  if(_integrityFilter === 'duplicate') return _integrityCache.filter(e => e.kind !== 'ai_generated');
+  if(_integrityFilter === 'blocked')   return _integrityCache.filter(e => e.outcome === 'blocked');
+  return _integrityCache;
+}
+
+function _integritySummaryHtml(events){
+  const students = new Set(events.map(e => e.studentId || 'unknown')).size;
+  const blocked  = events.filter(e => e.outcome === 'blocked').length;
+  const ai       = events.filter(e => e.kind === 'ai_generated').length;
+  const dup      = events.length - ai;
+  const pending  = events.filter(e => e.status === 'pending').length;
+  return `<div class="int-summary">
+    <div class="int-stat"><div class="int-stat-num">${students}</div><div class="int-stat-label">Students flagged</div></div>
+    <div class="int-stat danger"><div class="int-stat-num">${blocked}</div><div class="int-stat-label">Blocked attempts</div></div>
+    <div class="int-stat"><div class="int-stat-num">${ai}</div><div class="int-stat-label">AI-generated</div></div>
+    <div class="int-stat"><div class="int-stat-num">${dup}</div><div class="int-stat-label">Similar work</div></div>
+    <div class="int-stat"><div class="int-stat-num">${pending}</div><div class="int-stat-label">Awaiting decision</div></div>
+  </div>`;
+}
+
+function _integrityGroups(events){
+  const map = new Map();
+  events.forEach(e => {
+    const key = e.studentId || 'unknown';
+    let g = map.get(key);
+    if(!g){
+      g = {
+        key,
+        name: e.studentName || 'Unknown student',
+        number: e.studentNumber || '',
+        section: e.section || '',
+        photo: e.photo || '',
+        events: []
+      };
+      map.set(key, g);
+    }
+    g.events.push(e);
+    if(!g.photo && e.photo) g.photo = e.photo;
+    if((!g.name || g.name === 'Unknown student') && e.studentName) g.name = e.studentName;
+  });
+
+  const groups = [...map.values()];
+  groups.forEach(g => {
+    g.events.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    g.last    = g.events[0] ? g.events[0].createdAt : null;
+    g.ai      = g.events.filter(e => e.kind === 'ai_generated').length;
+    g.dup     = g.events.length - g.ai;
+    g.blocked = g.events.filter(e => e.outcome === 'blocked').length;
+    g.pending = g.events.filter(e => e.status === 'pending').length;
+  });
+
+  // Most blocked attempts first, then most recently active.
+  groups.sort((a, b) =>
+    (b.blocked - a.blocked) || (new Date(b.last || 0) - new Date(a.last || 0))
+  );
+  return groups;
+}
+
+function _integrityEventHtml(e){
+  const labels = {
+    ai_generated: 'AI-generated',
+    duplicate: 'Similar work',
+    exact_copy: 'Exact file copy',
+    cross_assignment: 'Cross-assignment copy'
+  };
+  const kindLabel  = labels[e.kind] || 'Integrity flag';
+  const kindCls    = e.kind === 'ai_generated' ? 'ai' : 'dup';
+  const statusLabel = e.status === 'confirmed' ? 'Confirmed'
+                    : e.status === 'dismissed' ? 'False positive'
+                    : e.status === 'allowed' ? 'Allowed'
+                    : e.status === 'flagged' ? 'Flagged'
+                    : 'Pending';
+  const statusCls  = e.status || 'pending';
+
+  const pct = (e.score == null || !isFinite(Number(e.score)))
+    ? '—'
+    : ((Number(e.score) * 100).toFixed(1).replace(/\.0$/, '') + '%');
+
+  const metaBits = [];
+  if(e.assignmentTitle) metaBits.push(esc(e.assignmentTitle));
+  if(e.createdAt)       metaBits.push(esc(integrityWhen(e.createdAt)));
+  if(e.matchedTitle)    metaBits.push('matched “' + esc(e.matchedTitle) + '”');
+
+  const actions = [];
+  if(e.source === 'attempt' && e.attemptId){
+    if(e.status === 'pending'){
+      actions.push(`<button class="int-btn ok" onclick="decideIntegrity('${e.attemptId}','confirmed',event)">Confirm</button>`);
+      actions.push(`<button class="int-btn no" onclick="decideIntegrity('${e.attemptId}','dismissed',event)">False positive</button>`);
+    } else {
+      actions.push(`<button class="int-btn ghost" onclick="decideIntegrity('${e.attemptId}','pending',event)">Reopen</button>`);
+    }
+  } else if(e.itemId){
+    actions.push(`<button class="int-btn ghost" onclick="openIntegrityWork('${e.itemId}')">Review work</button>`);
+  }
+  if(e.matchedItemId && e.matchedItemId !== e.itemId){
+    actions.push(`<button class="int-btn ghost" onclick="openIntegrityWork('${e.matchedItemId}')">View match</button>`);
+  }
+
+  const isImage = e.fileUrl && /^https?:\/\//i.test(e.fileUrl) && /image/i.test(e.fileType || 'image');
+  const thumb = isImage
+    ? `<img src="${esc(e.fileUrl)}" alt="" loading="lazy"/>`
+    : `<span>${e.kind === 'ai_generated' ? '🤖' : e.outcome === 'blocked' ? '🚫' : '📄'}</span>`;
+
+  return `<div class="int-ev">
+    <div class="int-thumb">${thumb}</div>
+    <div class="int-ev-main">
+      <div class="int-ev-title"><span class="int-badge ${kindCls}">${esc(kindLabel)}</span> ${esc(e.title)}</div>
+      <div class="int-ev-meta">${metaBits.join(' · ')}</div>
+    </div>
+    <div class="int-ev-right">
+      <div class="int-ev-score">
+        <span class="int-score">${pct}</span>
+        <span class="int-status ${statusCls}">${esc(statusLabel)}</span>
+      </div>
+      <div class="int-ev-actions">${actions.join('')}</div>
+    </div>
+  </div>`;
+}
+
+function _integrityGroupHtml(g){
+  const key  = String(g.key).replace(/[^A-Za-z0-9_-]/g, '') || 'unknown';
+  const open = _integrityOpen.has(key);
+  const meta = [(g.number || 'No ID'), (g.section || 'No section')].join(' · ');
+
+  const chips = [];
+  if(g.blocked) chips.push(`<span class="int-chip blocked">🚫 ${g.blocked} blocked</span>`);
+  if(g.ai)      chips.push(`<span class="int-chip ai">🤖 ${g.ai} AI</span>`);
+  if(g.dup)     chips.push(`<span class="int-chip dup">📄 ${g.dup} similar</span>`);
+  if(g.pending) chips.push(`<span class="int-chip pending">${g.pending} pending</span>`);
+
+  return `<div class="int-student${open ? ' int-open' : ''}">
+    <div class="int-head" role="button" tabindex="0"
+         onclick="toggleIntegrityRow('${key}')"
+         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleIntegrityRow('${key}');}">
+      <div class="rank-ava">${avatarFaceHtml(g.name, g.photo)}</div>
+      <div class="rank-info">
+        <div class="rank-name">${esc(g.name)}</div>
+        <div class="rank-meta">${esc(meta)}</div>
+      </div>
+      <div class="int-chips">${chips.join('')}</div>
+      <div class="int-last">Last: ${esc(integrityWhen(g.last))}</div>
+      <svg class="int-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="int-detail${open ? ' open' : ''}" id="int-row-${key}">
+      ${g.events.map(_integrityEventHtml).join('')}
+    </div>
+  </div>`;
+}
+
+function renderIntegrity(){
+  const summaryEl = document.getElementById('integrity-summary');
+  const listEl    = document.getElementById('integrity-list');
+  if(!listEl) return;
+
+  const all   = _integrityCache;
+  const shown = integrityFilteredEvents();
+
+  if(summaryEl){
+    let extra = '';
+    if(_integrityAttemptsMissing){
+      extra += `<div class="int-hint">Blocked attempts aren't being recorded yet. Run <code>supabase-integrity-attempts.sql</code> in Supabase to capture them.</div>`;
+    }
+    extra += `<div class="int-note">AI scores are advisory. Confirm a case only after reviewing the work — stylised or digital art can trip the detector.</div>`;
+    summaryEl.innerHTML = all.length ? _integritySummaryHtml(all) + extra : extra;
+  }
+
+  if(!all.length){
+    listEl.innerHTML = `<div class="int-empty"><div class="int-empty-icon">🛡️</div><strong>No integrity flags</strong><p>No AI-flagged work, near-duplicate submissions, or blocked attempts have been recorded.</p></div>`;
+    return;
+  }
+  if(!shown.length){
+    listEl.innerHTML = `<div class="int-empty"><p>No records match this filter.</p></div>`;
+    return;
+  }
+  listEl.innerHTML = _integrityGroups(shown).map(_integrityGroupHtml).join('');
+}
+
+function toggleIntegrityRow(key){
+  const el = document.getElementById('int-row-' + key);
+  if(!el) return;
+  const open = el.classList.toggle('open');
+  if(el.parentElement) el.parentElement.classList.toggle('int-open', open);
+  if(open) _integrityOpen.add(key);
+  else     _integrityOpen.delete(key);
+}
+
+function _renderIntegrityLocked(){
+  const summaryEl = document.getElementById('integrity-summary');
+  const listEl    = document.getElementById('integrity-list');
+  const filtersEl = document.getElementById('integrity-filters');
+  if(summaryEl) summaryEl.innerHTML = '';
+  if(filtersEl) filtersEl.style.display = 'none';
+  if(listEl){
+    listEl.innerHTML = `<div class="int-empty"><div class="int-empty-icon">🔒</div><strong>Restricted section</strong><p>Only Multimedia Arts professors can view integrity records.</p></div>`;
+  }
+}
+
+async function loadAndRenderIntegrity(){
+  const summaryEl = document.getElementById('integrity-summary');
+  const listEl    = document.getElementById('integrity-list');
+  const filtersEl = document.getElementById('integrity-filters');
+  if(!listEl) return;
+
+  // Server-side RLS enforces this too — this is only so reviewers see a
+  // clear explanation instead of an empty list.
+  if(!isFullProfessor()){ _renderIntegrityLocked(); return; }
+  if(filtersEl) filtersEl.style.display = 'flex';
+  if(_integrityLoading) return;
+
+  _integrityLoading = true;
+  if(summaryEl) summaryEl.innerHTML = '';
+  listEl.innerHTML = loadingHtml('Loading integrity records…');
+  try{
+    _integrityCache = await loadIntegrityData();
+    renderIntegrity();
+  }catch(err){
+    console.error('integrity load error:', err);
+    listEl.innerHTML = `<div class="int-empty"><strong>Could not load integrity records</strong><p>${esc(err && err.message || 'Unknown error')}</p></div>`;
+  }finally{
+    _integrityLoading = false;
+  }
+}
+
+// Confirm / dismiss / reopen — only available for rows that came from
+// integrity_attempts (the other two sources have no verdict column).
+async function decideIntegrity(attemptId, status, ev){
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  if(!attemptId) return;
+  const row = _integrityCache.find(x => x.source === 'attempt' && x.attemptId === attemptId);
+  try{
+    showToastLoading('Saving decision…');
+    const { error } = await sb.rpc('decide_integrity_attempt', { p_id: attemptId, p_status: status });
+    if(error) throw error;
+    if(row) row.status = status;
+    renderIntegrity();
+    showToast(status === 'confirmed' ? '✅ Case confirmed'
+            : status === 'dismissed' ? '✅ Marked as a false positive'
+            : '↩️ Case reopened');
+  }catch(err){
+    console.error('decide integrity error:', err);
+    showToast('⚠️ Could not save the decision');
+  }
+}
+
+// Open the professor review panel for a work referenced by an integrity row.
+async function openIntegrityWork(itemId){
+  if(!itemId) return;
+  if(!_profItems || !_profItems.length) _profItems = await loadAllItemsForProfessor();
+  if(!_profItems.some(x => x.id === itemId)){
+    showToast('⚠️ That work is no longer available');
+    return;
+  }
+  openReviewById(itemId);
 }
 
 
