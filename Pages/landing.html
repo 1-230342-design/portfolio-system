@@ -62,14 +62,15 @@
   #s-landing .lp-nav{ display:flex; align-items:center; justify-content:space-between; padding:14px clamp(14px,3vw,32px); max-width:1240px; margin:0 auto; position:relative; }
   #s-landing .lp-brandmark{ display:flex; align-items:center; gap:14px; cursor:pointer; }
   #s-landing .lp-logo-pair{ display:flex; align-items:center; gap:9px; padding:5px 9px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); border-radius:12px; }
-  #s-landing .lp-logo-chip{ display:flex; align-items:center; justify-content:center; width:64px; height:64px; flex-shrink:0; }
-  #s-landing .lp-logo-chip img{ height:48px; width:auto; object-fit:contain; display:block; }
+  /* Logos scale with the viewport so they read the same on small laptops and large monitors. */
+  #s-landing .lp-logo-chip{ display:flex; align-items:center; justify-content:center; width:clamp(66px,5.2vw,92px); height:clamp(66px,5.2vw,92px); flex-shrink:0; }
+  #s-landing .lp-logo-chip img{ height:clamp(58px,4.6vw,84px); width:auto; object-fit:contain; display:block; }
   #s-landing .lp-logo-chip:not(.lp-logo-chip--seal) img{ border-radius:6px; } /* current logo carries its own colors — never invert it */
-  #s-landing .lp-logo-chip--seal{ width:30px; height:30px; border-radius:50%; background:#fff; }
-  #s-landing .lp-logo-chip--seal img{ height:24px; }
-  #s-landing .lp-logo-divider{ width:1px; height:64px; background:rgba(255,255,255,.24); flex-shrink:0; margin-left:14px; }
-  #s-landing .lp-logo{ font-size:19px; font-weight:600; color:#fff; }
-  #s-landing .lp-logo-sub{ font-size:11px; color:rgba(255,255,255,.6); margin-top:1px; }
+  #s-landing .lp-logo-chip--seal{ width:clamp(42px,3.35vw,58px); height:clamp(42px,3.35vw,58px); border-radius:50%; background:#fff; }
+  #s-landing .lp-logo-chip--seal img{ height:clamp(38px,3vw,52px); width:auto; }
+  #s-landing .lp-logo-divider{ width:1px; height:clamp(58px,4.6vw,84px); background:rgba(255,255,255,.24); flex-shrink:0; margin-left:14px; }
+  #s-landing .lp-logo{ font-size:clamp(17px,1.35vw,22px); font-weight:600; color:#fff; }
+  #s-landing .lp-logo-sub{ font-size:clamp(10px,.82vw,12px); color:rgba(255,255,255,.6); margin-top:1px; }
   @media(max-width:640px){ #s-landing .lp-brandmark{ gap:10px; } #s-landing .lp-logo-sub{ display:none; } }
   #s-landing .lp-nav-links{ display:flex; gap:30px; font-size:13.5px; }
   #s-landing .lp-nav-links a{ position:relative; padding-bottom:5px; color:rgba(255,255,255,.72); cursor:pointer; transition:color .25s ease; }
@@ -177,7 +178,7 @@
   /* features layout — all cards stacked on the LEFT, seal parked on the RIGHT */
   #s-landing .lp-features-layout{ max-width:1240px; margin:0 auto; display:grid; grid-template-columns:1.25fr .75fr; gap:28px; align-items:start; position:relative; z-index:1; }
   #s-landing .lp-features-seal{ position:sticky; top:100px; display:flex; flex-direction:column; align-items:center; justify-content:flex-start; gap:28px; padding:0 16px 32px; }
-  #s-landing .lp-features-seal img{ width:100%; max-width:420px; height:auto; object-fit:contain; }
+  #s-landing .lp-features-seal img{ width:100%; max-width:clamp(300px,32vw,520px); height:auto; object-fit:contain; }
   #s-landing .lp-features-seal img.lp-seal-ccs{ max-width:360px; }
   #s-landing .lp-feature-grid{ max-width:none; margin:0; display:grid; grid-template-columns:1fr; gap:14px; }
   #s-landing .lp-feature-grid .lp-feature-card{ grid-column:auto !important; }
@@ -340,9 +341,9 @@
   <nav class="lp-nav">
     <div class="lp-brandmark" onclick="scrollLandingTo('s-landing')">
       <div class="lp-logo-pair">
-        <span class="lp-logo-chip lp-logo-chip--seal" style="margin-left:6px;"><img src="https://raw.githubusercontent.com/1-230342-design/portfolio-system/main/images/asia.png" alt="ASIATECH" class="site-logo-img" style="width:42px;height:42px;object-fit:contain;"></span>
+        <span class="lp-logo-chip lp-logo-chip--seal" style="margin-left:6px;"><img src="https://raw.githubusercontent.com/1-230342-design/portfolio-system/main/images/asia.png" alt="ASIATECH" class="site-logo-img" style="width:clamp(38px,3vw,52px);height:clamp(38px,3vw,52px);object-fit:contain;"></span>
         <span class="lp-logo-divider"></span>
-        <span class="lp-logo-chip"><img src="https://raw.githubusercontent.com/1-230342-design/portfolio-system/main/images/ARTF_NEW_01_1.png" alt="Artfolio" class="site-logo-img" style="width:58px;height:58px;object-fit:contain;"></span>
+        <span class="lp-logo-chip"><img src="https://raw.githubusercontent.com/1-230342-design/portfolio-system/main/images/ARTF_NEW_01_1.png" alt="Artfolio" class="site-logo-img" style="width:clamp(58px,4.6vw,84px);height:clamp(58px,4.6vw,84px);object-fit:contain;"></span>
       </div>
       <div>
         <div class="lp-logo lp-serif">Artfolio</div>
@@ -470,7 +471,7 @@
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
         <span style="width:26px;height:26px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><img src="https://raw.githubusercontent.com/1-230342-design/portfolio-system/main/images/asia.png" alt="ASIATECH" class="site-logo-img" style="height:20px;"></span>
         <span style="width:1px;height:18px;background:rgba(255,255,255,.24);"></span>
-        <img src="https://raw.githubusercontent.com/1-230342-design/portfolio-system/main/images/ARTF_NEW_01_1.png" alt="Artfolio" class="site-logo-img" style="height:48px;">
+        <img src="https://raw.githubusercontent.com/1-230342-design/portfolio-system/main/images/ARTF_NEW_01_1.png" alt="Artfolio" class="site-logo-img" style="height:clamp(46px,3.6vw,64px);width:auto;">
         <span class="lp-logo lp-serif">Artfolio</span>
       </div>
       <p>Web-based portfolio management system<br>for multimedia arts students</p>
