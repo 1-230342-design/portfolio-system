@@ -213,11 +213,20 @@ function fmtDateTime(iso){ return iso ? new Date(iso).toLocaleString('en-US',{mo
 function formatBytes(b){ if(b<1024)return b+' B'; if(b<1024*1024)return (b/1024).toFixed(1)+' KB'; return (b/1024/1024).toFixed(1)+' MB'; }
 function fileIsImage(f){
   if(!f||!f.dataUrl) return false;
-  return /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(f.dataUrl)||(f.mimeType&&f.mimeType.startsWith('image/'));
+  return /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(f.dataUrl)||/\/image\/upload\//i.test(f.dataUrl)||(f.mimeType&&f.mimeType.startsWith('image/'));
 }
 function fileIsVideo(f){
   if(!f||!f.dataUrl) return false;
-  return /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|$)/i.test(f.dataUrl)||(f.mimeType&&f.mimeType.startsWith('video/'));
+  return /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|$)/i.test(f.dataUrl)||/\/video\/upload\//i.test(f.dataUrl)||(f.mimeType&&f.mimeType.startsWith('video/'));
+}
+// Inline preview for the similarity panels. Images render as-is; videos show
+// their first frame (muted, metadata only) instead of a broken-image icon.
+function simPreviewHtml(url, type){
+  if(!url) return '<span style="font-size:20px;">🖼️</span>';
+  const f = { dataUrl: url, mimeType: type || '' };
+  if(fileIsVideo(f)) return `<video src="${esc(url)}" preload="metadata" muted playsinline disablepictureinpicture oncontextmenu="return false;" style="width:100%;height:100%;max-height:360px;object-fit:cover;display:block;"></video>`;
+  if(fileIsImage(f)) return `<img src="${esc(url)}" alt="" style="width:100%;height:100%;max-height:360px;object-fit:cover;display:block;"/>`;
+  return '<span style="font-size:20px;">📄</span>';
 }
 // Full-bleed showcase media (Unsplash-style): image or muted first-frame
 // video filling the card edge to edge. Anything else → 🖼️ tile.
@@ -1974,7 +1983,7 @@ async function computeAndCacheSimilarity(itemId){
     return {
       matched_item_id: best.id, similarity_score: bestScore, flagged,
       method: bestDetail.method, cos: bestDetail.cos,
-      portfolio_items: { title: best.title, file_url: best.file_url, portfolio_id: best.portfolio_id }
+      portfolio_items: { title: best.title, file_url: best.file_url, file_type: best.file_type, portfolio_id: best.portfolio_id }
     };
   }catch(err){
     console.error('live similarity compute error:', err);
@@ -5712,7 +5721,8 @@ async function renderReviewSimilarity(itemId, isRetry){
     const matched = top.portfolio_items || {};
     const ownerName = await getPortfolioOwnerName(matched.portfolio_id);
     if(!currentReview || currentReview.itemId !== itemId) return;
-    document.getElementById('sim-thumb-img').src   = matched.file_url || '';
+    const thumbBox = document.getElementById('sim-thumb-box');
+    if(thumbBox) thumbBox.innerHTML = simPreviewHtml(matched.file_url, matched.file_type);
     document.getElementById('sim-name').textContent = matched.title || 'Similar Item';
     document.getElementById('sim-by').textContent   = 'Submitted by '+ownerName;
     document.getElementById('sim-badge').textContent = pct+'% Match';
@@ -5734,7 +5744,7 @@ async function renderReviewSimilarity(itemId, isRetry){
     simItemEl.style.display = 'flex';
     simNoneEl.style.display = 'none';
     // Cache for the Inspect modal — this is the earlier submission it was checked against
-    currentSimilarMatch = { title: matched.title || 'Similar Item', fileUrl: matched.file_url || '', owner: ownerName, pct };
+    currentSimilarMatch = { title: matched.title || 'Similar Item', fileUrl: matched.file_url || '', fileType: matched.file_type || '', owner: ownerName, pct };
     if(top.flagged){
       warnTextEl.innerHTML = `<strong>Possible Similarity Detected.</strong> This submission shows high similarity (${pct}%) with existing content submitted by ${esc(ownerName)}. Please review carefully before approval.`;
       warnEl.style.display = 'flex';
@@ -5779,7 +5789,7 @@ function openReview(sk, id){ openReviewById(id); } // legacy compat
 let currentSimilarMatch = null;
 function inspectSimilarWork(){
   if(!currentSimilarMatch){ showToast('⚠️ No similar submission to inspect'); return; }
-  document.getElementById('inspect-sim-img').src = currentSimilarMatch.fileUrl;
+  document.getElementById('inspect-sim-box').innerHTML = simPreviewHtml(currentSimilarMatch.fileUrl, currentSimilarMatch.fileType);
   document.getElementById('inspect-sim-title').textContent = currentSimilarMatch.title;
   document.getElementById('inspect-sim-owner').textContent = 'Submitted by '+currentSimilarMatch.owner;
   document.getElementById('inspect-sim-badge').textContent = currentSimilarMatch.pct+'% Match';
