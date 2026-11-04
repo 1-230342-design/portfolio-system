@@ -473,16 +473,219 @@ function renderAvatarPreview(){
   const letter = match ? match[0].toUpperCase() : '?';
   box.innerHTML = `<div class="avatar-initial" style="background:${avatarColor(name)};font-size:26px;">${esc(letter)}</div>`;
 }
+
+// ── AVATAR EDITOR — crop / zoom / rotate / filter before upload ──
+// Picking a photo opens this instead of staging it straight away. The stage is
+// drawn at 600×600 so it stays sharp when scaled, and the final "Use this
+// photo" render outputs a fresh 512×512 JPEG (already cropped + filtered) into
+// _stagedAvatarFile, so saveProfileEdits() uploads exactly what was previewed.
+const AVATAR_EDITOR_SIZE = 600;
+const AVATAR_FILTERS = [
+  { id:'original', name:'Original', css:'none' },
+  { id:'warm',     name:'Warm',     css:'saturate(1.15) sepia(.18) brightness(1.04)' },
+  { id:'cool',     name:'Cool',     css:'saturate(1.05) hue-rotate(-10deg) brightness(1.03)' },
+  { id:'bw',       name:'B&W',      css:'grayscale(1) contrast(1.06)' },
+  { id:'vivid',    name:'Vivid',    css:'saturate(1.45) contrast(1.1)' },
+  { id:'soft',     name:'Soft',     css:'brightness(1.08) contrast(.9) saturate(.95)' }
+];
+let _avEdit = null; // { img, url, zoom, rot, x, y, filter }
+let _avDrag = null;
+
 function stageAvatarFile(e){
   const f = e && e.target && e.target.files && e.target.files[0];
   if(!f) return;
-  if(!f.type || !f.type.startsWith('image/')){ showToast('⚠️ Please pick an image file.'); return; }
-  if(f.size > 5*1024*1024){ showToast('⚠️ Photo must be 5MB or smaller.'); return; }
-  _stagedAvatarFile = f; _removeAvatarFlag = false;
-  renderAvatarPreview();
+  const input = e.target;
+  if(!f.type || !f.type.startsWith('image/')){ showToast('⚠️ Please pick an image file.'); input.value=''; return; }
+  if(f.size > 5*1024*1024){ showToast('⚠️ Photo must be 5MB or smaller.'); input.value=''; return; }
+  const url = URL.createObjectURL(f);
+  const img = new Image();
+  img.onload = () => openAvatarEditor(img, url);
+  img.onerror = () => { URL.revokeObjectURL(url); showToast('❌ Could not open that image.'); input.value=''; };
+  img.src = url;
 }
+
+function openAvatarEditor(img, url){
+  if(_avEdit && _avEdit.url) URL.revokeObjectURL(_avEdit.url);
+  _avEdit = { img, url, zoom:1, rot:0, x:0, y:0, filter:'none' };
+  _avDrag = null;
+  const zoom = document.getElementById('av-editor-zoom');
+  if(zoom) zoom.value = 100;
+  renderAvatarFilterChips();
+  clampAvatarPan();
+  drawAvatarEditor();
+  const ov = document.getElementById('avatarEditorOverlay');
+  if(ov) ov.classList.add('open');
+}
+
+function closeAvatarEditor(){
+  const ov = document.getElementById('avatarEditorOverlay');
+  if(ov) ov.classList.remove('open');
+  if(_avEdit && _avEdit.url) URL.revokeObjectURL(_avEdit.url);
+  _avEdit = null; _avDrag = null;
+  const inp = document.getElementById('ep-avatar-input');
+  if(inp) inp.value = '';
+}
+function cancelAvatarEdit(){ closeAvatarEditor(); }
+
+function avatarEditorCanvas(){
+  const c = document.getElementById('av-editor-canvas');
+  return c && c.getContext ? { c, ctx: c.getContext('2d'), S: c.width || AVATAR_EDITOR_SIZE } : null;
+}
+
+function avatarEditorGeometry(){
+  if(!_avEdit) return null;
+  const S = AVATAR_EDITOR_SIZE;
+  const img = _avEdit.img;
+  const cover = Math.max(S / img.naturalWidth, S / img.naturalHeight);
+  const scale = cover * _avEdit.zoom;
+  const sideways = (_avEdit.rot % 180) !== 0;
+  const rw = (sideways ? img.naturalHeight : img.naturalWidth) * scale;
+  const rh = (sideways ? img.naturalWidth : img.naturalHeight) * scale;
+  return { S, cover, scale, rw, rh };
+}
+
+function clampAvatarPan(){
+  if(!_avEdit) return;
+  const g = avatarEditorGeometry();
+  if(!g) return;
+  const maxX = Math.max(0, (g.rw - g.S) / 2);
+  const maxY = Math.max(0, (g.rh - g.S) / 2);
+  _avEdit.x = Math.max(-maxX, Math.min(maxX, _avEdit.x));
+  _avEdit.y = Math.max(-maxY, Math.min(maxY, _avEdit.y));
+}
+
+function drawAvatarEditor(){
+  const view = avatarEditorCanvas();
+  if(!view || !_avEdit) return;
+  const { c, ctx, S } = view;
+  const { img, x, y, rot, filter } = _avEdit;
+  const g = avatarEditorGeometry();
+  ctx.save();
+  ctx.clearRect(0, 0, S, S);
+  ctx.translate(S / 2 + x, S / 2 + y);
+  ctx.rotate(rot * Math.PI / 180);
+  ctx.scale(g.scale, g.scale);
+  ctx.filter = filter || 'none';
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+  ctx.restore();
+}
+
+function renderAvatarFilterChips(){
+  const row = document.getElementById('av-filter-row');
+  if(!row) return;
+  const active = (_avEdit && _avEdit.filter) || 'none';
+  row.innerHTML = AVATAR_FILTERS.map(f =>
+    `<button type="button" class="av-filter-chip${active === f.css ? ' active' : ''}" onclick="setAvatarFilter('${f.id}')">${esc(f.name)}</button>`
+  ).join('');
+}
+
+function setAvatarFilter(id){
+  if(!_avEdit) return;
+  const f = AVATAR_FILTERS.find(x => x.id === id);
+  if(!f) return;
+  _avEdit.filter = f.css;
+  renderAvatarFilterChips();
+  drawAvatarEditor();
+}
+
+function setAvatarZoom(percent){
+  if(!_avEdit) return;
+  const pct = Math.max(100, Math.min(300, Number(percent) || 100));
+  _avEdit.zoom = pct / 100;
+  const zoom = document.getElementById('av-editor-zoom');
+  if(zoom) zoom.value = Math.round(pct);
+  clampAvatarPan();
+  drawAvatarEditor();
+}
+
+function resetAvatarEdit(){
+  if(!_avEdit) return;
+  _avEdit.zoom = 1; _avEdit.rot = 0; _avEdit.x = 0; _avEdit.y = 0; _avEdit.filter = 'none';
+  const zoom = document.getElementById('av-editor-zoom');
+  if(zoom) zoom.value = 100;
+  renderAvatarFilterChips();
+  drawAvatarEditor();
+}
+
+function rotateAvatarEdit(){
+  if(!_avEdit) return;
+  _avEdit.rot = (_avEdit.rot + 90) % 360;
+  clampAvatarPan();
+  drawAvatarEditor();
+}
+
+function avatarEditorDown(e){
+  if(!_avEdit) return;
+  _avDrag = { px: e.clientX, py: e.clientY, ox: _avEdit.x, oy: _avEdit.y };
+  const c = e.currentTarget;
+  if(c && c.setPointerCapture){ try{ c.setPointerCapture(e.pointerId); }catch(_){} }
+  if(c) c.style.cursor = 'grabbing';
+}
+
+function avatarEditorMove(e){
+  if(!_avEdit || !_avDrag) return;
+  const c = e.currentTarget;
+  const rect = c.getBoundingClientRect();
+  const k = AVATAR_EDITOR_SIZE / (rect.width || AVATAR_EDITOR_SIZE);
+  _avEdit.x = _avDrag.ox + (e.clientX - _avDrag.px) * k;
+  _avEdit.y = _avDrag.oy + (e.clientY - _avDrag.py) * k;
+  clampAvatarPan();
+  drawAvatarEditor();
+}
+
+function avatarEditorUp(e){
+  if(!_avDrag) return;
+  _avDrag = null;
+  const c = e.currentTarget;
+  if(c && c.releasePointerCapture){ try{ c.releasePointerCapture(e.pointerId); }catch(_){} }
+  if(c) c.style.cursor = 'grab';
+}
+
+function avatarEditorWheel(e){
+  if(!_avEdit) return;
+  e.preventDefault();
+  const step = e.deltaY < 0 ? 10 : -10;
+  setAvatarZoom(Math.round(_avEdit.zoom * 100) + step);
+}
+
+async function applyAvatarEdit(){
+  if(!_avEdit) return;
+  try{
+    const OUT = 512;
+    const { img, zoom, rot, x, y, filter } = _avEdit;
+    const canvas = document.createElement('canvas');
+    canvas.width = OUT; canvas.height = OUT;
+    const ctx = canvas.getContext('2d');
+    const k = OUT / AVATAR_EDITOR_SIZE;             // editor px → output px
+    const cover = Math.max(OUT / img.naturalWidth, OUT / img.naturalHeight);
+    ctx.save();
+    ctx.translate(OUT / 2 + x * k, OUT / 2 + y * k);
+    ctx.rotate(rot * Math.PI / 180);
+    ctx.scale(cover * zoom, cover * zoom);
+    ctx.filter = filter || 'none';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+    ctx.restore();
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+    if(!blob) throw new Error('Could not process the photo.');
+    _stagedAvatarFile = new File([blob], 'avatar.jpg', { type:'image/jpeg' });
+    _removeAvatarFlag = false;
+    renderAvatarPreview();
+    closeAvatarEditor();
+    showToast('✅ Photo adjusted — press Save Changes to keep it.');
+  }catch(err){
+    console.error('avatar editor:', err);
+    showToast('❌ ' + (err.message || 'Could not process the photo.'));
+  }
+}
+
 function removeAvatarPhoto(){
   _stagedAvatarFile = null; _removeAvatarFlag = true;
+  closeAvatarEditor();
   const avInput = document.getElementById('ep-avatar-input');
   if(avInput) avInput.value = '';
   renderAvatarPreview();

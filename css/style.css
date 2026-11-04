@@ -774,6 +774,32 @@ video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{backgro
 .modal-title{font-family:'Fraunces',serif;font-size:20px;color:var(--ink);}
 .modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--text3);line-height:1;}
 .modal-close:hover{color:var(--ink);}
+
+/* ── AVATAR EDITOR (crop / zoom / rotate / filters) ── */
+.av-editor-stage{
+  position:relative;width:100%;max-width:320px;aspect-ratio:1 / 1;margin:0 auto;
+  border-radius:14px;overflow:hidden;background:var(--surface2);touch-action:none;
+}
+.av-editor-stage canvas{
+  display:block;width:100%;height:100%;touch-action:none;
+  cursor:grab;user-select:none;-webkit-user-drag:none;
+}
+.av-editor-ring{
+  position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  border:2px solid rgba(255,255,255,.9);
+  box-shadow:0 0 0 9999px rgba(0,0,0,.45);
+}
+.av-editor-hint{margin-top:8px;text-align:center;font-size:11px;color:var(--text3);}
+.av-editor-range{width:100%;accent-color:var(--dark);margin:2px 0 0;}
+.av-filter-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:2px;}
+.av-filter-chip{
+  border:1px solid var(--border);background:var(--surface2);color:var(--text2);
+  border-radius:20px;padding:6px 13px;font-size:12px;font-weight:600;
+  cursor:pointer;font-family:inherit;transition:background .15s,color .15s,border-color .15s;
+}
+.av-filter-chip:hover{border-color:var(--ink);color:var(--ink);}
+.av-filter-chip.active{background:var(--dark);border-color:var(--dark);color:#fff;}
+.av-editor-actions{display:flex;gap:8px;margin-top:18px;align-items:stretch;}
 .skill-chip-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;min-height:20px;}
 .skill-chip{
   background:var(--surface2);color:var(--ink);border-radius:20px;

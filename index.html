@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="images/favicon-artfolio.png"/>
 <link rel="apple-touch-icon" href="images/favicon-artfolio.png"/>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="css/style.css?v=41"/>
+<link rel="stylesheet" href="css/style.css?v=42"/>
 <!-- Pre-apply saved theme BEFORE first paint (no light-flash for dark users).
      Full toggle logic lives in toggleTheme()/syncThemeIcon() in js/app.js. -->
 <script>try{var t=localStorage.getItem('artfolio-theme');if(!t)t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -277,7 +277,7 @@
           <button type="button" class="btn-outline" style="padding:8px 14px;font-size:12px;margin:0;" onclick="document.getElementById('ep-avatar-input').click()">📷 Change photo</button>
           <button type="button" class="btn-cancel" id="ep-avatar-remove" style="padding:8px 14px;font-size:12px;" onclick="removeAvatarPhoto()">↩️ Use default</button>
         </div>
-        <div style="font-size:11px;color:var(--text3);">Default letter avatar stays until you pick a photo.</div>
+        <div style="font-size:11px;color:var(--text3);">Pick a photo to crop, zoom, rotate and add a filter — it previews in the circle.</div>
       </div>
     </div>
 
@@ -326,6 +326,42 @@
   </div>
 </div>
 
+<!-- AVATAR EDITOR — opens after picking a new profile photo, before it is
+     staged for upload. Crop/zoom/rotate/filter, with a circular preview mask
+     so the result matches how it will look app-wide. Sits after the Edit
+     Profile overlay so it paints on top (same z-index, later in DOM). -->
+<div class="modal-overlay" id="avatarEditorOverlay">
+  <div class="modal-box" style="max-width:430px;">
+    <div class="modal-head">
+      <div class="modal-title">Adjust Profile Photo</div>
+      <button class="modal-close" onclick="cancelAvatarEdit()">✕</button>
+    </div>
+
+    <div class="av-editor-stage">
+      <canvas id="av-editor-canvas" width="600" height="600"
+              onpointerdown="avatarEditorDown(event)"
+              onpointermove="avatarEditorMove(event)"
+              onpointerup="avatarEditorUp(event)"
+              onpointercancel="avatarEditorUp(event)"
+              onwheel="avatarEditorWheel(event)"></canvas>
+      <div class="av-editor-ring"></div>
+    </div>
+    <div class="av-editor-hint">Drag to reposition · scroll or use the Zoom slider</div>
+
+    <label class="flabel" style="margin-top:14px;">Zoom</label>
+    <input type="range" id="av-editor-zoom" class="av-editor-range" min="100" max="300" step="1" value="100" oninput="setAvatarZoom(this.value)"/>
+
+    <label class="flabel" style="margin-top:12px;">Filter</label>
+    <div class="av-filter-row" id="av-filter-row"></div>
+
+    <div class="av-editor-actions">
+      <button type="button" class="btn-cancel" style="padding:11px 14px;" onclick="resetAvatarEdit()" title="Reset crop and filter">↺ Reset</button>
+      <button type="button" class="btn-outline" style="padding:11px 14px;margin:0;" onclick="rotateAvatarEdit()" title="Rotate 90°">⟳ Rotate</button>
+      <button type="button" class="btn-full" style="margin:0;flex:1;" onclick="applyAvatarEdit()">Use this photo</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════════════════════════════════
      PAGE INCLUDES
      Each screen below lives in its own file and
@@ -355,7 +391,7 @@
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
 <script src="js/loader.js?v=52"></script>
-<script src="js/app.js?v=126"></script>
+<script src="js/app.js?v=127"></script>
 <script src="js/assignments.js?v=68"></script>
 <script src="js/grade-archives.js?v=53"></script>
 <script src="js/qr.js?v=53"></script>
