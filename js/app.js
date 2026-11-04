@@ -1472,14 +1472,25 @@ function logIntegrityAttempt(kind, score, matchedItemId, assignmentId, outcome, 
   // Fire-and-forget: this must never delay or break the upload gate.
   (async () => {
     try{
-      const res = await sb.rpc('log_integrity_attempt', {
+      const payload = {
         p_kind: kind,
         p_score: (typeof score === 'number' && isFinite(score)) ? Math.round(score * 10000) / 10000 : null,
         p_matched_item_id: matchedItemId || null,
         p_assignment_id: assignmentId || null,
-        p_outcome: outcome || 'blocked',
-        p_thumb: thumb || null
-      });
+        p_outcome: outcome || 'blocked'
+      };
+      // Only send the preview when we actually have one: the older 5-argument
+      // install rejects the call outright if p_thumb is unknown.
+      if(thumb) payload.p_thumb = thumb;
+
+      let res = await sb.rpc('log_integrity_attempt', payload);
+
+      // Database still on the old signature — keep the attempt, drop the preview.
+      if(thumb && res && res.error && res.error.code === 'PGRST202'){
+        delete payload.p_thumb;
+        res = await sb.rpc('log_integrity_attempt', payload);
+      }
+
       if(res && res.error && !_integrityLogWarned){
         _integrityLogWarned = true;
         console.info('[integrity] attempt log unavailable — run supabase-integrity-attempts.sql. Blocked attempts will not appear in Rankings → Integrity.');
