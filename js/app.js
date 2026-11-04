@@ -1468,7 +1468,7 @@ function animateOcPercent(targetPct, durationMs){
 // professor can never see who tried. Fire-and-forget by design: a missing
 // table/RPC must never delay or break an upload.
 let _integrityLogWarned = false;
-function logIntegrityAttempt(kind, score, matchedItemId, assignmentId, outcome){
+function logIntegrityAttempt(kind, score, matchedItemId, assignmentId, outcome, thumb){
   // Fire-and-forget: this must never delay or break the upload gate.
   (async () => {
     try{
@@ -1477,7 +1477,8 @@ function logIntegrityAttempt(kind, score, matchedItemId, assignmentId, outcome){
         p_score: (typeof score === 'number' && isFinite(score)) ? Math.round(score * 10000) / 10000 : null,
         p_matched_item_id: matchedItemId || null,
         p_assignment_id: assignmentId || null,
-        p_outcome: outcome || 'blocked'
+        p_outcome: outcome || 'blocked',
+        p_thumb: thumb || null
       });
       if(res && res.error && !_integrityLogWarned){
         _integrityLogWarned = true;
@@ -1485,6 +1486,78 @@ function logIntegrityAttempt(kind, score, matchedItemId, assignmentId, outcome){
       }
     }catch(e){ /* never break the upload path */ }
   })();
+}
+
+// Blocked work never reaches Cloudinary, so the Integrity list would only have
+// a generic icon. Capture a tiny JPEG preview (data URL, ~2–5 KB) from the
+// local file instead: an image as-is, or the middle frame of a video. PDFs and
+// other documents return null and keep the document icon.
+function makeIntegrityThumb(file){
+  return new Promise((resolve) => {
+    if(!file || !file.type) return resolve(null);
+    const MAX = 88;
+    const QUALITY = 0.68;
+
+    if(file.type.startsWith('image/')){
+      loadImageFromFile(file).then(img => {
+        try{
+          const scale = Math.min(1, MAX / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+          const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
+          const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
+          const c = document.createElement('canvas'); c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL('image/jpeg', QUALITY));
+        }catch(e){ resolve(null); }
+      }).catch(() => resolve(null));
+      return;
+    }
+
+    if(file.type.startsWith('video/')){
+      let settled = false;
+      const done = (v) => { if(!settled){ settled = true; resolve(v); } };
+      const timer = setTimeout(() => done(null), 6000);
+      try{
+        const url = URL.createObjectURL(file);
+        const vid = document.createElement('video');
+        vid.muted = true; vid.playsInline = true; vid.preload = 'auto';
+        const cleanup = () => { clearTimeout(timer); URL.revokeObjectURL(url); vid.removeAttribute('src'); vid.load(); };
+        vid.onloadedmetadata = () => {
+          const t = (vid.duration && isFinite(vid.duration)) ? Math.min(1, vid.duration / 2) : 0;
+          vid.onseeked = () => {
+            try{
+              const vw = vid.videoWidth, vh = vid.videoHeight;
+              if(!vw || !vh) throw new Error('no video dimensions');
+              const scale = Math.min(1, MAX / Math.max(vw, vh));
+              const w = Math.max(1, Math.round(vw * scale));
+              const h = Math.max(1, Math.round(vh * scale));
+              const c = document.createElement('canvas'); c.width = w; c.height = h;
+              c.getContext('2d').drawImage(vid, 0, 0, w, h);
+              done(c.toDataURL('image/jpeg', QUALITY));
+            }catch(e){ done(null); }
+            cleanup();
+          };
+          try{ vid.currentTime = t; }catch(e){ done(null); cleanup(); }
+        };
+        vid.onerror = () => { cleanup(); done(null); };
+        vid.src = url;
+      }catch(e){ clearTimeout(timer); done(null); }
+      return;
+    }
+
+    resolve(null); // PDF / ZIP / PSD / audio — keep the document icon
+  });
+}
+
+// Convenience wrapper: log the block immediately, then attach the preview once
+// the browser has generated it. If the thumbnail fails, the row is still saved.
+function logBlockedAttempt(kind, score, matchedItemId, assignmentId, file){
+  if(!file){
+    logIntegrityAttempt(kind, score, matchedItemId, assignmentId, 'blocked');
+    return;
+  }
+  makeIntegrityThumb(file)
+    .then(thumb => logIntegrityAttempt(kind, score, matchedItemId, assignmentId, 'blocked', thumb))
+    .catch(() => logIntegrityAttempt(kind, score, matchedItemId, assignmentId, 'blocked'));
 }
 
 // Runs the real duplicate check behind the scanning animation, then reveals
@@ -1497,7 +1570,7 @@ function similarityKindLabel(mimeType){
   if(mimeType && mimeType.startsWith('image/')) return 'image';
   return 'file';
 }
-async function runOriginalityCheckUI(phash, tags, assignmentId, embedding, ownerStudentId, sha256, kind){
+async function runOriginalityCheckUI(phash, tags, assignmentId, embedding, ownerStudentId, sha256, kind, sourceFile){
   showOriginalityScanning();
   // Label the scan for what's actually uploading ("Checking Video
   // Similarity…" vs "Checking Image Similarity…") instead of always saying image.
@@ -1523,8 +1596,9 @@ async function runOriginalityCheckUI(phash, tags, assignmentId, embedding, owner
   const blocked = bestScore >= SIMILARITY_BLOCK_THRESHOLD;
   if(blocked){
     // Recorded before the modal is even shown, so "tried and was stopped"
-    // survives after the student closes the dialog and walks away.
-    logIntegrityAttempt(bestScore >= 0.999 ? 'exact_copy' : 'duplicate', bestScore, best && best.id, assignmentId, 'blocked');
+    // survives after the student closes the dialog and walks away. A tiny
+    // preview of the blocked file rides along for the professor's list.
+    logBlockedAttempt(bestScore >= 0.999 ? 'exact_copy' : 'duplicate', bestScore, best && best.id, assignmentId, sourceFile);
     document.getElementById('oc-scanning').style.display = 'none';
     document.getElementById('oc-result-blocked').style.display = 'block';
     const titleEl = document.getElementById('oc-blocked-title');
@@ -4169,7 +4243,7 @@ async function submitWork(){
       // — checked BEFORE uploading/saving, so a duplicate never becomes a
       // real submission at all, not just a flagged one the professor has to
       // catch manually.
-      const isDuplicate = await runOriginalityCheckUI(ourPhash, [], null, embedding, currentUser.id, ourSha256, uploadKind); // plain Upload Work — no assignment
+      const isDuplicate = await runOriginalityCheckUI(ourPhash, [], null, embedding, currentUser.id, ourSha256, uploadKind, pendingRawFile); // plain Upload Work — no assignment
       if(isDuplicate){
         pendingRawFile = null; pendingUploadFile = null;
         document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
@@ -4188,7 +4262,7 @@ async function submitWork(){
       aiScore = scr.score;
       console.log('[AI-check] pre-upload score=', aiScore, 'generator=', scr.generator, 'action=', scr.action);
       if(scr.action === 'block'){
-        logIntegrityAttempt('ai_generated', aiScore, null, null, 'blocked');
+        logBlockedAttempt('ai_generated', aiScore, null, null, pendingRawFile);
         showAiBlocked(aiScore, scr.generator);
         pendingRawFile = null; pendingUploadFile = null;
         document.getElementById('up-drop-text').textContent = 'Drop files here or click to upload';
@@ -4970,7 +5044,8 @@ async function loadIntegrityData(){
 
   // 3) Attempts blocked before upload — optional SQL, fails open.
   const attemptsP = (async () => {
-    const { data, error } = await sb.rpc('list_integrity_attempts', { p_limit: 2000 });
+    // 500 keeps the response small now that each row can carry a preview.
+    const { data, error } = await sb.rpc('list_integrity_attempts', { p_limit: 500 });
     if(error){
       _integrityAttemptsMissing = true;
       if(!_integrityAttemptWarned){
@@ -5101,8 +5176,10 @@ async function loadIntegrityData(){
       matchedTitle: a.matched_title || '',
       assignmentTitle: assignTitle.get(a.assignment_id) || '',
       createdAt: a.created_at || null,
-      fileUrl: '',
-      fileType: ''
+      // A tiny JPEG preview captured at block time (data URL). Documents
+      // (PDF/ZIP/PSD) have no preview and keep the icon.
+      fileUrl: a.thumb || '',
+      fileType: a.thumb ? 'image/jpeg' : ''
     });
   });
 
@@ -5219,7 +5296,14 @@ function _integrityEventHtml(e){
     actions.push(`<button class="int-btn ghost" onclick="openIntegrityWork('${e.matchedItemId}')">View match</button>`);
   }
 
-  const isImage = e.fileUrl && /^https?:\/\//i.test(e.fileUrl) && /image/i.test(e.fileType || 'image');
+  const isImage = !!e.fileUrl && (
+    /^data:image\//i.test(e.fileUrl) ||
+    (/^https?:\/\//i.test(e.fileUrl) &&
+      (/^image\//i.test(e.fileType || '') ||
+       (!e.fileType && (
+         /\/image\/upload\//i.test(e.fileUrl) ||
+         /\.(jpe?g|png|gif|webp|avif)(\?|$)/i.test(e.fileUrl)))))
+  );
   const thumb = isImage
     ? `<img src="${esc(e.fileUrl)}" alt="" loading="lazy"/>`
     : `<span>${e.kind === 'ai_generated' ? '🤖' : e.outcome === 'blocked' ? '🚫' : '📄'}</span>`;
@@ -5972,7 +6056,7 @@ function initSunMotes(){
   if(!skies.length) return;
   window._motesDone = true;
   const cols = ['rgba(201,162,39,', 'rgba(47,143,82,', 'rgba(184,145,42,'];
-  const moteLogos = ['images/asia.png', 'images/ARTFOLIO_NEW_LOGO.png', 'images/CCSIT.png'];
+  const moteLogos = ['images/asia.png', 'images/ARTF_NEW_01_1.png', 'images/CCSIT.png'];
   skies.forEach((sky)=>{
     const count = parseInt(sky.dataset.motes || '40', 10) || 40;
     const frag = document.createDocumentFragment();

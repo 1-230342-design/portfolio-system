@@ -27,7 +27,9 @@
 --  HOW TO INSTALL (once, ~30 seconds):
 --    1. Supabase Dashboard → SQL Editor → New query.
 --    2. Paste this entire file and press Run.
---    3. Done — verify with:  select * from list_integrity_attempts();
+--    3. Done — verify with:  select kind, score, status, thumb is not null from integrity_attempts;
+--       (Calling list_integrity_attempts() here fails on purpose: the SQL
+--        editor has no signed-in user, so the department check rejects it.)
 -- ═══════════════════════════════════════════════════════════════════
 
 create table if not exists integrity_attempts (
@@ -38,6 +40,7 @@ create table if not exists integrity_attempts (
                   check (kind in ('duplicate', 'ai_generated', 'exact_copy', 'cross_assignment')),
   score           numeric(5,4),          -- 0.0000 .. 1.0000 (similarity or AI likelihood)
   matched_item_id uuid,                  -- the work it was too close to (may be deleted later)
+  thumb           text,                  -- tiny JPEG data-URL preview of the blocked file
   outcome         text not null default 'blocked'
                   check (outcome in ('blocked', 'flagged')),
   status          text not null default 'pending'
@@ -46,6 +49,9 @@ create table if not exists integrity_attempts (
   decided_at      timestamptz,
   created_at      timestamptz not null default now()
 );
+
+-- Re-running this script on an existing install adds the preview column.
+alter table integrity_attempts add column if not exists thumb text;
 
 create index if not exists integrity_attempts_student_idx on integrity_attempts (student_id);
 create index if not exists integrity_attempts_created_idx on integrity_attempts (created_at desc);
@@ -72,12 +78,17 @@ as $$
 $$;
 
 -- ── student-side: record a blocked attempt (fire-and-forget) ──
+-- Drop the previous 5-argument version so re-running this file upgrades
+-- cleanly instead of leaving two overloads behind.
+drop function if exists log_integrity_attempt(text, numeric, uuid, uuid, text);
+
 create or replace function log_integrity_attempt(
   p_kind            text,
   p_score           numeric default null,
   p_matched_item_id uuid    default null,
   p_assignment_id   uuid    default null,
-  p_outcome         text    default 'blocked'
+  p_outcome         text    default 'blocked',
+  p_thumb           text    default null
 )
 returns uuid
 language plpgsql
@@ -94,14 +105,20 @@ begin
     raise exception 'Unknown integrity check type: %', p_kind;
   end if;
 
-  insert into integrity_attempts (student_id, assignment_id, kind, score, matched_item_id, outcome)
+  insert into integrity_attempts (student_id, assignment_id, kind, score, matched_item_id, outcome, thumb)
   values (
     auth.uid(),
     p_assignment_id,
     p_kind,
     case when p_score is null then null else least(greatest(p_score, 0), 1) end,
     p_matched_item_id,
-    case when p_outcome in ('blocked', 'flagged') then p_outcome else 'blocked' end
+    case when p_outcome in ('blocked', 'flagged') then p_outcome else 'blocked' end,
+    -- Only accept a small inline JPEG preview. Anything else (or an
+    -- oversized payload) is discarded rather than stored as junk.
+    case when p_thumb is not null
+              and p_thumb like 'data:image/%'
+              and length(p_thumb) <= 40000
+         then p_thumb end
   )
   returning id into v_id;
 
@@ -110,6 +127,10 @@ end
 $$;
 
 -- ── professor-side: the list behind Rankings → Integrity ──
+-- Drop first: the return shape gains `thumb`, and CREATE OR REPLACE cannot
+-- change a function's return type.
+drop function if exists list_integrity_attempts(integer);
+
 create or replace function list_integrity_attempts(p_limit integer default 500)
 returns table(
   id             uuid,
@@ -124,6 +145,7 @@ returns table(
   status         text,
   matched_item_id uuid,
   matched_title  text,
+  thumb          text,
   created_at     timestamptz,
   decided_at     timestamptz
 )
@@ -149,6 +171,7 @@ begin
            a.status,
            a.matched_item_id,
            mi.title,
+           a.thumb,
            a.created_at,
            a.decided_at
       from integrity_attempts a
@@ -184,6 +207,6 @@ begin
 end
 $$;
 
-grant execute on function log_integrity_attempt(text, numeric, uuid, uuid, text) to authenticated;
+grant execute on function log_integrity_attempt(text, numeric, uuid, uuid, text, text) to authenticated;
 grant execute on function list_integrity_attempts(integer) to authenticated;
 grant execute on function decide_integrity_attempt(uuid, text) to authenticated;
