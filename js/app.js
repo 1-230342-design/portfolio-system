@@ -1509,24 +1509,36 @@ function logIntegrityAttempt(kind, score, matchedItemId, assignmentId, outcome, 
 }
 
 // Blocked work never reaches Cloudinary, so the Integrity list would only have
-// a generic icon. Capture a tiny JPEG preview (data URL, ~2–5 KB) from the
-// local file instead: an image as-is, or the middle frame of a video. PDFs and
-// other documents return null and keep the document icon.
+// a generic icon. Capture a JPEG preview (data URL) from the local file
+// instead: a downscaled copy of the image, or a frame from the video. Sized so
+// the professor can actually examine it in the Preview dialog, while staying
+// under the 400 KB cap log_integrity_attempt() enforces. PDFs and other
+// documents return null and keep the document icon.
+function _encodeIntegrityThumb(source, srcW, srcH){
+  // Step down until the data URL fits: full enough to inspect, small enough to store.
+  const steps = [[720, 0.72], [560, 0.66], [420, 0.6], [240, 0.55]];
+  let out = null;
+  for(const [maxDim, q] of steps){
+    const scale = Math.min(1, maxDim / Math.max(srcW || 1, srcH || 1));
+    const w = Math.max(1, Math.round((srcW || 1) * scale));
+    const h = Math.max(1, Math.round((srcH || 1) * scale));
+    try{
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      c.getContext('2d').drawImage(source, 0, 0, w, h);
+      out = c.toDataURL('image/jpeg', q);
+    }catch(e){ return null; }
+    if(out && out.length <= 380000) return out;
+  }
+  return out;
+}
 function makeIntegrityThumb(file){
   return new Promise((resolve) => {
     if(!file || !file.type) return resolve(null);
-    const MAX = 88;
-    const QUALITY = 0.68;
 
     if(file.type.startsWith('image/')){
       loadImageFromFile(file).then(img => {
         try{
-          const scale = Math.min(1, MAX / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
-          const w = Math.max(1, Math.round((img.naturalWidth || 1) * scale));
-          const h = Math.max(1, Math.round((img.naturalHeight || 1) * scale));
-          const c = document.createElement('canvas'); c.width = w; c.height = h;
-          c.getContext('2d').drawImage(img, 0, 0, w, h);
-          resolve(c.toDataURL('image/jpeg', QUALITY));
+          resolve(_encodeIntegrityThumb(img, img.naturalWidth, img.naturalHeight));
         }catch(e){ resolve(null); }
       }).catch(() => resolve(null));
       return;
@@ -1547,12 +1559,7 @@ function makeIntegrityThumb(file){
             try{
               const vw = vid.videoWidth, vh = vid.videoHeight;
               if(!vw || !vh) throw new Error('no video dimensions');
-              const scale = Math.min(1, MAX / Math.max(vw, vh));
-              const w = Math.max(1, Math.round(vw * scale));
-              const h = Math.max(1, Math.round(vh * scale));
-              const c = document.createElement('canvas'); c.width = w; c.height = h;
-              c.getContext('2d').drawImage(vid, 0, 0, w, h);
-              done(c.toDataURL('image/jpeg', QUALITY));
+              done(_encodeIntegrityThumb(vid, vw, vh));
             }catch(e){ done(null); }
             cleanup();
           };
@@ -5303,6 +5310,9 @@ function _integrityEventHtml(e){
 
   const actions = [];
   if(e.source === 'attempt' && e.attemptId){
+    if(e.fileUrl){
+      actions.push(`<button class="int-btn ghost" onclick="openIntegrityPreview('${e.attemptId}',event)">Preview</button>`);
+    }
     if(e.status === 'pending'){
       actions.push(`<button class="int-btn ok" onclick="decideIntegrity('${e.attemptId}','confirmed',event)">Confirm</button>`);
       actions.push(`<button class="int-btn no" onclick="decideIntegrity('${e.attemptId}','dismissed',event)">False positive</button>`);
@@ -5329,7 +5339,7 @@ function _integrityEventHtml(e){
     : `<span>${e.kind === 'ai_generated' ? '🤖' : e.outcome === 'blocked' ? '🚫' : '📄'}</span>`;
 
   return `<div class="int-ev">
-    <div class="int-thumb">${thumb}</div>
+    <div class="int-thumb"${e.fileUrl ? ` onclick="openIntegrityPreview('${e.attemptId}',event)" style="cursor:zoom-in;" title="Preview blocked upload"` : ''}>${thumb}</div>
     <div class="int-ev-main">
       <div class="int-ev-title"><span class="int-badge ${kindCls}">${esc(kindLabel)}</span> ${esc(e.title)}</div>
       <div class="int-ev-meta">${metaBits.join(' · ')}</div>
@@ -5446,6 +5456,30 @@ async function loadAndRenderIntegrity(){
   }finally{
     _integrityLoading = false;
   }
+}
+
+// Preview a blocked upload. Only the captured JPEG preview exists — the file
+// itself never left the student's browser — so this shows that preview large.
+function openIntegrityPreview(attemptId, ev){
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  const e = (_integrityCache || []).find(x => x.source === 'attempt' && x.attemptId === attemptId);
+  if(!e || !e.fileUrl){ showToast('⚠️ No preview was captured for this case'); return; }
+  const media = document.getElementById('integrity-preview-media');
+  if(media) media.innerHTML = `<img src="${esc(e.fileUrl)}" alt="Blocked upload preview" style="max-width:100%;max-height:min(70vh,560px);object-fit:contain;display:block;"/>`;
+  const titleEl = document.getElementById('integrity-preview-title');
+  if(titleEl) titleEl.textContent = e.title || 'Blocked upload';
+  const bits = [];
+  if(e.studentName) bits.push(e.studentName);
+  if(e.assignmentTitle) bits.push(e.assignmentTitle);
+  if(e.score != null && isFinite(Number(e.score))) bits.push(((Number(e.score)*100).toFixed(1).replace(/\.0$/, ''))+'% match');
+  if(e.createdAt) bits.push(integrityWhen(e.createdAt));
+  const metaEl = document.getElementById('integrity-preview-meta');
+  if(metaEl) metaEl.textContent = bits.join(' · ');
+  document.getElementById('integrityPreviewOverlay').classList.add('open');
+}
+function closeIntegrityPreview(){
+  const ov = document.getElementById('integrityPreviewOverlay');
+  if(ov) ov.classList.remove('open');
 }
 
 // Confirm / dismiss / reopen — only available for rows that came from

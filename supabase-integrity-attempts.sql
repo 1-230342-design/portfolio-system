@@ -40,7 +40,7 @@ create table if not exists integrity_attempts (
                   check (kind in ('duplicate', 'ai_generated', 'exact_copy', 'cross_assignment')),
   score           numeric(5,4),          -- 0.0000 .. 1.0000 (similarity or AI likelihood)
   matched_item_id uuid,                  -- the work it was too close to (may be deleted later)
-  thumb           text,                  -- tiny JPEG data-URL preview of the blocked file
+  thumb           text,                  -- JPEG preview of the blocked file (data URL)
   outcome         text not null default 'blocked'
                   check (outcome in ('blocked', 'flagged')),
   status          text not null default 'pending'
@@ -113,11 +113,11 @@ begin
     case when p_score is null then null else least(greatest(p_score, 0), 1) end,
     p_matched_item_id,
     case when p_outcome in ('blocked', 'flagged') then p_outcome else 'blocked' end,
-    -- Only accept a small inline JPEG preview. Anything else (or an
+    -- Only accept an inline JPEG preview. Anything else (or an
     -- oversized payload) is discarded rather than stored as junk.
     case when p_thumb is not null
               and p_thumb like 'data:image/%'
-              and length(p_thumb) <= 40000
+              and length(p_thumb) <= 400000
          then p_thumb end
   )
   returning id into v_id;
