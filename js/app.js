@@ -174,6 +174,14 @@ function avatarColor(name){
 //  UTILITIES
 // ══════════════════════════════════════════════════════
 function esc(s){ return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// "Category · Period" meta line for work cards. The grading period is optional
+// for personal-gallery saves now, so omit it (and the separator) when unset
+// instead of leaving a dangling " · ".
+function workMeta(p){
+  const cat = p && p.category ? esc(p.category) : '';
+  const per = (p && p.gradingPeriod && !p.neverSent) ? esc(p.gradingPeriod) : '';
+  return [cat, per].filter(Boolean).join(' · ');
+}
 // Masks the first 3 DIGITS of a student number for public-facing pages (no login required),
 // e.g. "1 - 230371" -> "• - ••0371". Dashes/spaces are left alone so the format still reads
 // the same. Returns null if there's no id at all, so callers can pick their own fallback text.
@@ -1716,9 +1724,15 @@ async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPerio
   // The review lookup below excludes submitted_at-NULL rows, so sending a
   // later work for review can never drag personal files into the review
   // queue, and a personal save can never land in a submitted portfolio.
+  // Grading period is optional for personal saves now (the Upload Work form
+  // only asks for it when the work is going to a professor). Store a valid
+  // bucket anyway: it satisfies the NOT NULL column and groups every personal
+  // save under one draft portfolio, while the UI hides the period for those
+  // works. Review-bound saves always arrive with a real period.
+  const periodKey = gradingPeriod || 'prelim';
   let portfolioId;
   if(!forReview){
-    let personalQuery = sb.from('portfolios').select('id').eq('student_id', userId).eq('grading_period', gradingPeriod)
+    let personalQuery = sb.from('portfolios').select('id').eq('student_id', userId).eq('grading_period', periodKey)
       .eq('status', 'draft').is('submitted_at', null);
     if(subjectId) personalQuery = personalQuery.eq('subject_id', subjectId);
     else personalQuery = personalQuery.is('subject_id', null);
@@ -1726,14 +1740,14 @@ async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPerio
     if(personalPort){
       portfolioId = personalPort.id;
     }else{
-      const newPersonal = { student_id: userId, grading_period: gradingPeriod, status: 'draft', submitted_at: null };
+      const newPersonal = { student_id: userId, grading_period: periodKey, status: 'draft', submitted_at: null };
       if(subjectId) newPersonal.subject_id = subjectId;
       const { data: newPort, error: pe } = await sb.from('portfolios').insert([newPersonal]).select().single();
       if(pe) throw pe;
       portfolioId = newPort.id;
     }
   }else{
-  let existingQuery = sb.from('portfolios').select('id, status').eq('student_id', userId).eq('grading_period', gradingPeriod)
+  let existingQuery = sb.from('portfolios').select('id, status').eq('student_id', userId).eq('grading_period', periodKey)
     .not('submitted_at', 'is', null); // never touch personal-gallery portfolios (see above)
   if(subjectId) existingQuery = existingQuery.eq('subject_id', subjectId);
   else existingQuery = existingQuery.is('subject_id', null);
@@ -1752,7 +1766,7 @@ async function saveItemToSupabase(userId, { title, desc, subjectId, gradingPerio
   } else {
     const newPortData = {
       student_id:     userId,
-      grading_period: gradingPeriod,
+      grading_period: periodKey,
       status:         'submitted',
       submitted_at:   new Date().toISOString()
     };
@@ -3610,7 +3624,7 @@ function renderPortfolioPage(uid){
       </div>
       <div class="pf-hover">
         <div class="pf-title">${esc(p.title)}</div>
-        <div class="pf-cat">${esc(p.category)} · ${esc(p.gradingPeriod)}</div>
+        <div class="pf-cat">${workMeta(p)}</div>
         <div class="pf-desc">${esc(p.desc||'No description')}</div>
       </div></div>`;
   };
@@ -3628,7 +3642,7 @@ function renderPortfolioPage(uid){
         </div>
         <div class="pf-hover">
           <div class="pf-title">${esc(p.title)}</div>
-          <div class="pf-cat">${esc(p.category)} · ${esc(p.gradingPeriod)}</div>
+          <div class="pf-cat">${workMeta(p)}</div>
           <div class="pf-desc">${esc(p.desc||'No description')}</div>
         </div></div>`;
     };
@@ -3683,7 +3697,7 @@ function viewStudentProject(itemId){
   currentPreviewItemId = itemId;
 
   document.getElementById('spv-title').textContent = p.title;
-  document.getElementById('spv-meta').textContent   = `${p.category} · ${p.gradingPeriod}`;
+  document.getElementById('spv-meta').textContent   = [p.category, (!p.neverSent && p.gradingPeriod) ? p.gradingPeriod : ''].filter(Boolean).join(' · ');
   document.getElementById('spv-desc').textContent   = p.desc || '(no description)';
 
   const badge = document.getElementById('spv-status-badge');
@@ -3976,7 +3990,7 @@ function renderProjectsPage(uid){
     return `<div class="project-card" style="cursor:pointer;" onclick="viewStudentProject('${p.id}')">${thumb}
       <div class="project-info">
         <div class="project-title">${esc(p.title)}</div>
-        <div class="project-cat">${esc(p.category)} · ${esc(p.gradingPeriod)}</div>
+        <div class="project-cat">${workMeta(p)}</div>
         <div class="project-desc">${esc(p.desc||'')}</div>
         ${feedbackHtml}
         ${rejectedHtml}
@@ -4223,12 +4237,25 @@ async function processUploadFile(file){
   }
 }
 
+// Upload Work — the grading period is only relevant to work that will be
+// graded, so the field appears only when "Send to professor for review" is on.
+// Unchecking clears any choice so a personal save can't carry a stale period.
+function toggleUploadReviewOptions(on){
+  const wrap = document.getElementById('up-period-wrap');
+  if(wrap) wrap.style.display = on ? 'block' : 'none';
+  if(!on){
+    const sel = document.getElementById('up-grading-period');
+    if(sel) sel.value = '';
+  }
+}
+
 function cancelUpload(){
   pendingRawFile=null; pendingUploadFile=null;
   document.getElementById('up-title').value='';
   document.getElementById('up-desc').value='';
   const reviewBox = document.getElementById('up-send-review');
   if(reviewBox) reviewBox.checked=false;
+  toggleUploadReviewOptions(false);
   document.getElementById('up-drop-text').textContent='Drop files here or click to upload';
   sPage('dashboard');
 }
@@ -4238,7 +4265,6 @@ async function submitWork(){
   const title         = document.getElementById('up-title').value.trim();
   const desc          = document.getElementById('up-desc').value.trim();
   const subjectId     = defaultSubjectId;
-  const gradingPeriod = document.getElementById('up-grading-period') ? document.getElementById('up-grading-period').value : 'prelim';
   if(!title)     { showToast('⚠️ Please enter a project title'); return; }
   // subjectId is optional for multimedia-only systems — we proceed with null if no subjects are configured
   if(!pendingRawFile){ showToast('⚠️ Please select a file to upload'); return; }
@@ -4246,6 +4272,15 @@ async function submitWork(){
   // the student's portfolio, never sent to any professor, never graded.
   // Checked = the old path — enters the professor review queue and can be graded.
   const sendForReview = !!(document.getElementById('up-send-review') && document.getElementById('up-send-review').checked);
+  // Grading period is optional for personal uploads; only review-bound work is
+  // grouped into (and graded within) a grading period, so it's required then.
+  const gradingPeriod = document.getElementById('up-grading-period') ? document.getElementById('up-grading-period').value : '';
+  if(sendForReview && !gradingPeriod){
+    showToast('⚠️ Please select a grading period before sending for review');
+    const sel = document.getElementById('up-grading-period');
+    if(sel) sel.focus();
+    return;
+  }
   try{
     // Personal gallery (unchecked) = private draft, never reviewed — skip ALL
     // checks (similarity + AI) and go straight to upload. Checks run only when
@@ -4341,6 +4376,7 @@ async function submitWork(){
     document.getElementById('up-title').value='';
     document.getElementById('up-desc').value='';
     document.getElementById('up-send-review').checked=false;
+    toggleUploadReviewOptions(false);
     document.getElementById('up-drop-text').textContent='Drop files here or click to upload';
     if(sendForReview){
       const flagged = aiScore != null && aiScore >= AI_QUARANTINE_THRESHOLD;
@@ -4762,7 +4798,7 @@ async function viewStudentProfile(userId){
       ${thumb}
       <div class="project-info">
         <div class="project-title">${esc(p.title)}</div>
-        <div class="project-cat">${esc(p.category)} · ${esc(p.gradingPeriod)}</div>
+        <div class="project-cat">${workMeta(p)}</div>
         <div class="project-desc">${esc(p.desc||'')}</div>
       </div></div>`;
   }).join('') : `<div class="empty-state" style="grid-column:1/-1;"><p>This student hasn't submitted any works yet.</p></div>`;
@@ -5601,7 +5637,7 @@ function submissionItemHtml(p){
   return `<div class="submission-item">${thumb}
     <div class="sub-info">
       <div class="sub-title">${esc(p.title)} <span class="upload-status-badge ${badge}" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">${p.status}</span></div>
-      <div class="sub-meta">by ${esc(p.studentName)} · ${esc(p.section)} · ${esc(p.gradingPeriod)} · ${fmtDate(p.submittedAt)}</div>
+      <div class="sub-meta">by ${esc(p.studentName)} · ${esc(p.section)} · ${p.gradingPeriod ? esc(p.gradingPeriod)+' · ' : ''}${fmtDate(p.submittedAt)}</div>
     </div>
     <button class="btn-review" onclick="openReviewById('${p.id}')">👁 Review</button>
     ${deleteBtn}

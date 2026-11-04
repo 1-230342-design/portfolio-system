@@ -161,18 +161,22 @@
           <input class="finput" id="up-title" placeholder="e.g., Brand Identity Design"/>
           <label class="flabel">Description</label>
           <textarea class="comment-area" id="up-desc" rows="3" placeholder="Tell us about your project…"></textarea>
-          <label class="flabel">Grading Period *</label>
-          <select class="fselect" id="up-grading-period">
-            <option value="">Select Grading Period</option>
-            <option value="prelim">Prelim</option>
-            <option value="midterm">Midterm</option>
-            <option value="prefinals">Pre-Finals</option>
-            <option value="finals">Finals</option>
-          </select>
           <label style="display:flex;gap:10px;align-items:flex-start;margin:16px 0 4px;font-size:13px;color:var(--text2);cursor:pointer;">
-            <input type="checkbox" id="up-send-review" style="margin-top:3px;width:16px;height:16px;accent-color:var(--dark);"/>
-            <span><strong style="color:var(--ink);">Send to professor for review</strong><br><span style="font-size:12px;color:var(--text3);">Off (default) = saves to your Personal gallery only — no professor sees it, no grade. On = enters the review queue and can be graded.</span></span>
+            <input type="checkbox" id="up-send-review" onchange="toggleUploadReviewOptions(this.checked)" style="margin-top:3px;width:16px;height:16px;accent-color:var(--dark);"/>
+            <span><strong style="color:var(--ink);">Send to professor for review</strong><br><span style="font-size:12px;color:var(--text3);">Off (default) = saves to your Personal gallery only — no professor sees it, no grade. On = enters the review queue and can be graded, and you'll pick a grading period.</span></span>
           </label>
+          <!-- Grading period is only needed for graded work, so it stays hidden
+               until the student ticks "Send to professor for review". -->
+          <div id="up-period-wrap" style="display:none;">
+            <label class="flabel">Grading Period *</label>
+            <select class="fselect" id="up-grading-period">
+              <option value="">Select Grading Period</option>
+              <option value="prelim">Prelim</option>
+              <option value="midterm">Midterm</option>
+              <option value="prefinals">Pre-Finals</option>
+              <option value="finals">Finals</option>
+            </select>
+          </div>
           <div class="form-actions">
             <button class="btn-cancel" onclick="cancelUpload()">✕ Cancel</button>
             <button class="btn-submit-work" id="up-submit-btn" onclick="submitWork()">
