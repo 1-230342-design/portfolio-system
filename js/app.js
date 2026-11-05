@@ -206,14 +206,6 @@ function yearFromSection(section){
   const ord = n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : n + 'th';
   return ord + ' Year';
 }
-// Edit Profile live-sync: picking a section immediately shows the year it
-// implies (saveProfileEdits re-derives anyway as the backstop).
-function syncEpYear(){
-  const sel = document.getElementById('ep-section');
-  const yr = document.getElementById('ep-year');
-  if(!sel || !yr) return;
-  yr.value = yearFromSection(sel.value) || yr.value;
-}
 function fmtDate(iso){ return iso ? new Date(iso).toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'numeric'}) : '—'; }
 // Assignment deadlines carry a time too (datetime-local picker), so they get
 // their own formatter — e.g. "9/25/2026, 2:30 PM".
@@ -772,8 +764,7 @@ async function downloadContactQr(){
 function openEditProfile(){
   if(!currentProfile){ showToast('⚠️ Please log in first.'); return; }
   document.getElementById('ep-fullname').value   = currentProfile.full_name || '';
-  populateEditSectionDropdown(); // roster dropdown (async) — sets ep-section itself
-  document.getElementById('ep-year').value       = currentProfile.year_level || '';
+  renderEditSectionInfo(); // read-only section + year (professor-managed)
   document.getElementById('ep-social').value     = currentProfile.social_link || '';
   const qrBox = document.getElementById('ep-show-qr');
   if(qrBox) qrBox.checked = !!currentProfile.show_social_on_qr;
@@ -858,6 +849,17 @@ async function cancelSectionTransfer(reqId){
 function closeEditProfile(){
   document.getElementById('editProfileOverlay').classList.remove('open');
 }
+// Section + year are read-only in Edit Profile — enrollment belongs to the
+// professor's roster, so students can't hop sections or self-assign a year.
+// Show what's on file so they can still see where they belong.
+function renderEditSectionInfo(){
+  const sec = (currentProfile && currentProfile.section) || '';
+  const yr  = (currentProfile && currentProfile.year_level) || yearFromSection(sec) || '';
+  const secEl = document.getElementById('ep-section-label');
+  const yrEl  = document.getElementById('ep-year-label');
+  if(secEl) secEl.textContent = sec || 'Not enrolled';
+  if(yrEl)  yrEl.textContent  = yr || '—';
+}
 // The self-unenroll button only exists when there's a section to leave.
 function toggleUnenrollBtn(){
   const wrap = document.getElementById('ep-unenroll-wrap');
@@ -865,8 +867,8 @@ function toggleUnenrollBtn(){
 }
 // ── SELF-UNENROLL (student: clear their own section, keep everything else) ──
 // Unenroll ≠ withdraw: pending submissions stay submitted and professors still
-// see them — leaving a section never pulls work back. Re-enroll anytime by
-// picking a section again (same field, zero new UI).
+// see them — leaving a section never pulls work back. Re-enrolling is handled
+// by the professor now that Edit Profile no longer offers section selection.
 async function unenrollSelf(){
   if(!currentUser || !currentProfile) return;
   if(!currentProfile.section){ showToast('⚠️ You are not enrolled in any section.'); return; }
@@ -879,13 +881,13 @@ async function unenrollSelf(){
       throw new Error('Nothing was updated — this is usually a Supabase RLS permissions issue. Check that an UPDATE policy exists on user_profiles allowing students to update their own section.');
     }
     currentProfile.section = null;
-    document.getElementById('ep-section').value = '';
+    renderEditSectionInfo();
     toggleUnenrollBtn();
     renderPortfolioHeader();
     await loadProjectsForStudent(currentUser.id);
     refreshStudentViews();
     closeEditProfile();
-    showToast('✅ Unenrolled. Your works, grades and portfolio are untouched — only your section was cleared.');
+    showToast('✅ Unenrolled. Your works, grades and portfolio are untouched — ask your professor to re-enroll you if needed.');
   }catch(err){
     console.error('unenrollSelf error:', err);
     showToast('❌ Error: '+err.message);
@@ -935,29 +937,15 @@ function removeSkill(sk){
 async function saveProfileEdits(){
   if(!currentUser){ showToast('⚠️ Please log in first.'); return; }
   const full_name   = document.getElementById('ep-fullname').value.trim();
-  const section     = document.getElementById('ep-section').value.trim();
-  const epYearManual = document.getElementById('ep-year').value;
   const social_link = document.getElementById('ep-social').value.trim();
   const showQrBox = document.getElementById('ep-show-qr');
   const show_social_on_qr = showQrBox ? showQrBox.checked : false;
   if(!full_name){ showToast('⚠️ Please enter your full name.'); return; }
-  // ANY section pick (hop or first join) → approval request; the section
-  // itself is NOT saved now, it flips only when a professor approves. Signup
-  // choices stay instant (no account exists to approve yet). Clearing by hand
-  // is rerouted to the Unenroll button.
-  const oldSection = currentProfile.section || '';
-  let hopTarget = null, unenrollHint = false, activeSection = section;
-  if(section && section !== oldSection){
-    hopTarget = section;
-    activeSection = oldSection;
-  }else if(!section && oldSection){
-    activeSection = oldSection;
-    document.getElementById('ep-section').value = oldSection;
-    unenrollHint = true;
-  }
-  // Year follows the EFFECTIVE section (approved old one, not the pending hop
-  // target) — manual dropdown value survives only for digit-less sections.
-  const year_level = yearFromSection(activeSection) || epYearManual;
+  // Section + year are managed outside this form now (professor-led enrollment),
+  // so keep whatever is already on file — this form can never move a student
+  // into another section or change their year level.
+  const activeSection = (currentProfile && currentProfile.section) || '';
+  const year_level = (currentProfile && currentProfile.year_level) || yearFromSection(activeSection) || '';
   showToast('💾 Saving profile…');
   // Avatar: upload newly picked photo first (images ≤5MB). Use-default = null (letter default).
   // Old Cloudinary file is deleted after a successful save (revert or replace), best-effort.
@@ -1019,37 +1007,7 @@ async function saveProfileEdits(){
   document.getElementById('s-welcome-name').textContent = 'Welcome Back, '+firstName+'!';
   renderPortfolioHeader();
   closeEditProfile();
-  if(hopTarget){
-    // File the transfer request; backend missing → legacy instant behavior.
-    try{
-      const { error: rpcErr } = await sb.rpc('file_section_request', { p_to_section: hopTarget });
-      if(rpcErr) throw rpcErr;
-      _transferTableOk = true;
-      await loadMyTransferReqs();
-      showToast(oldSection
-        ? `🔄 Transfer to ${hopTarget} requested — your professor must approve. Your section stays put meanwhile.`
-        : `🔄 Request to join ${hopTarget} sent — your professor must approve before it takes effect.`);
-    }catch(rpcErr){
-      if(/function|relation|does not exist|schema cache|not allowed/i.test(rpcErr.message || '')){
-        _transferTableOk = false;
-        console.info('[transfer] backend missing — applying section change instantly (legacy behavior).');
-        const { error: e2 } = await sb.from('user_profiles').update({ section: hopTarget }).eq('user_id', currentUser.id);
-        if(!e2){
-          currentProfile.section = hopTarget;
-          renderPortfolioHeader();
-          showToast('✅ Profile updated!');
-        }else{
-          showToast('❌ ' + (e2.message || e2));
-        }
-      }else{
-        // Validation message from the function itself (already pending, same
-        // section, not enrolled…) — profile saved, only the request refused.
-        showToast('❌ ' + (rpcErr.message || rpcErr));
-      }
-    }
-    return;
-  }
-  showToast(unenrollHint ? '✅ Profile updated! (Section unchanged — use Unenroll below to leave it.)' : '✅ Profile updated!');
+  showToast('✅ Profile updated!');
 }
 
 // ══════════════════════════════════════════════════════
@@ -4407,23 +4365,6 @@ async function populateSectionDropdown(){
     sections.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('');
 }
 
-// Same roster for the Edit Profile section dropdown — free text used to let
-// typos ("BSIT2") strand students outside every section grouping. A legacy
-// custom value not on the roster is kept as a selectable option so opening
-// Edit Profile never silently wipes it; picking a roster section from there
-// follows the normal transfer-request rules on save.
-async function populateEditSectionDropdown(){
-  const sel = document.getElementById('ep-section');
-  if(!sel) return;
-  const sections = await loadSections();
-  const current = (currentProfile && currentProfile.section) || '';
-  sel.innerHTML = '<option value="">— No section —</option>' +
-    sections.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('') +
-    (current && !sections.some(s=>s.name === current)
-      ? `<option value="${esc(current)}">${esc(current)} (not on roster)</option>` : '');
-  sel.value = current;
-}
-
 function handleUploadFileSelect(e){ processUploadFile(e.target.files&&e.target.files[0]); }
 function handleUploadDrop(e){
   e.preventDefault();
@@ -4712,7 +4653,17 @@ async function renderStudentsPage(){
     return;
   }
 
-  el.innerHTML = _studentSections.map(s=>{
+  const unenrolledCount = _allStudentsCache.filter(st=>!st.section).length;
+  const unenrolledRow = unenrolledCount
+    ? `<div class="section-group" onclick="openUnenrolledStudents()">
+        <div class="section-group-info">
+          <div class="section-name">Unenrolled (No Section)</div>
+          <div class="section-year">${unenrolledCount} student${unenrolledCount===1?'':'s'} without a section &middot; open to enroll them</div>
+        </div>
+        <button class="btn-view-sm" onclick="event.stopPropagation();openUnenrolledStudents()">👁 View</button>
+      </div>`
+    : '';
+  el.innerHTML = unenrolledRow + _studentSections.map(s=>{
     const count = _allStudentsCache.filter(st=>st.section===s.name).length;
     return `<div class="section-group" onclick="openSectionStudents('${s.id}')">
       <div class="section-group-info">
@@ -4729,9 +4680,9 @@ async function renderStudentsPage(){
 }
 
 // ── PENDING REQUESTS TAB (Students page) ──
-// Students who unenroll then pick a section again (or hop sections) file a
-// request here; the professor clicks the tab, sees everyone waiting, and
-// approves/declines on the spot. Same Approve/Decline flow as the inline rows.
+// Legacy support: older builds let students request a section hop here. Edit
+// Profile no longer offers section selection, so new requests can't be filed;
+// any still-pending ones can be approved/declined on the spot.
 function studentsViewTab(tab){
   _studentsView = tab;
   applyStudentsView();
@@ -4755,7 +4706,7 @@ function renderPendingRequestsList(){
   if(!el) return;
   if(!isFullProfessor()){ el.innerHTML = ''; return; }
   if(!reqs.length){
-    el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No pending requests — students will show up here when they request to join or transfer sections.</div>`;
+    el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No pending section requests.</div>`;
     return;
   }
   el.innerHTML = reqs.map(r=>{
@@ -4862,7 +4813,7 @@ function renderSectionStudentsList(students){
   const el = document.getElementById('p-section-students-list');
   if(!el) return;
   if(!students.length){
-    el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No students enrolled in this section yet.</div>`;
+    el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">${_inUnenrolledView ? 'No unenrolled students — everyone has a section.' : 'No students enrolled in this section yet.'}</div>`;
     return;
   }
   el.innerHTML = students.map(s=>{
@@ -4881,6 +4832,14 @@ function renderSectionStudentsList(students){
     const unenrollHtml = s.section
       ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Remove this student from the section" onclick="event.stopPropagation();unenrollStudent('${s.user_id}','${esc((s.full_name||'this student').replace(/'/g,"\\'"))}')">↩️ Unenroll</button>`
       : '';
+    // Edit Profile no longer lets students pick a section, so the professor is
+    // the one who puts an unenrolled student back into a section.
+    const enrollHtml = (!s.section && isFullProfessor())
+      ? `<select class="fselect" title="Enroll this student in a section" onclick="event.stopPropagation()" onchange="enrollStudent('${s.user_id}', this.value, this)" style="width:auto;max-width:170px;margin:0;padding:8px 10px;font-size:12px;flex-shrink:0;">
+           <option value="">➕ Enroll in…</option>
+           ${_studentSections.map(sec=>`<option value="${esc(sec.name)}">${esc(sec.name)}</option>`).join('')}
+         </select>`
+      : '';
     return `<div class="student-row" onclick="viewStudentProfile('${s.user_id}')">
       <div class="student-ava">${avatarFaceHtml(s.full_name, s.avatar_url)}</div>
       <div class="student-row-info">
@@ -4889,9 +4848,43 @@ function renderSectionStudentsList(students){
         ${reqHtml}
       </div>
       <button class="btn-view-sm" onclick="event.stopPropagation();viewStudentProfile('${s.user_id}')">👁 View</button>
+      ${enrollHtml}
       ${unenrollHtml}
     </div>`;
   }).join('');
+}
+
+// Professor-side enrollment: the counterpart to unenrollStudent(), and the only
+// way back into a section now that Edit Profile is read-only.
+async function enrollStudent(userId, sectionName, sel){
+  if(!sectionName) return;
+  if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can enroll students.'); if(sel) sel.value=''; return; }
+  showToast('💾 Enrolling…');
+  try{
+    const patch = { section: sectionName };
+    const derivedYear = yearFromSection(sectionName);
+    if(derivedYear) patch.year_level = derivedYear;
+    const { data, error } = await sb.from('user_profiles').update(patch).eq('user_id', userId).select();
+    if(error) throw error;
+    if(!data || !data.length){
+      throw new Error('Nothing was updated — this is usually a Supabase RLS permissions issue. Check that an UPDATE policy exists on user_profiles allowing professors to update section.');
+    }
+    showToast('✅ Enrolled in ' + sectionName + '.');
+    _allStudentsCache = await loadAllStudentProfiles();
+    if(_inUnenrolledView){
+      _currentSectionStudents = _allStudentsCache.filter(s=>!s.section);
+    }else{
+      const section = _studentSections.find(s=>s.id===currentSectionId);
+      _currentSectionStudents = section ? _allStudentsCache.filter(s=>s.section===section.name) : [];
+    }
+    await loadPendingTransferMap();
+    renderSectionStudentsList(_currentSectionStudents);
+    refreshTransferBadge();
+  }catch(err){
+    console.error('enrollStudent error:', err);
+    showToast('❌ Error: ' + (err.message || err));
+    if(sel) sel.value = '';
+  }
 }
 
 async function openSectionStudents(sectionId){

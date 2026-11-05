@@ -287,24 +287,17 @@
     <div style="display:flex;gap:12px;">
       <div style="flex:1;">
         <label class="flabel">Section</label>
-        <select class="fselect" id="ep-section" onchange="syncEpYear()">
-          <option value="">— No section —</option>
-        </select>
+        <div class="finput" id="ep-section-label" style="background:var(--surface2);color:var(--text2);cursor:default;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">—</div>
       </div>
       <div style="flex:1;">
         <label class="flabel">Year Level</label>
-        <select class="fselect" id="ep-year">
-          <option value="">Select</option>
-          <option>1st Year</option>
-          <option>2nd Year</option>
-          <option>3rd Year</option>
-          <option>4th Year</option>
-        </select>
+        <div class="finput" id="ep-year-label" style="background:var(--surface2);color:var(--text2);cursor:default;">—</div>
       </div>
     </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:-8px;margin-bottom:14px;">Enrollment is handled by your professor — section and year level can't be changed here.</div>
     <div id="ep-unenroll-wrap" style="display:none;margin-top:10px;">
       <button type="button" class="btn-cancel btn-danger" style="width:100%;justify-content:center;" onclick="unenrollSelf()">↩️ Unenroll from section</button>
-      <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center;">Leaves your works, grades and portfolio untouched. Pending submissions stay submitted — withdrawing is a separate action. Re-enroll anytime by picking a section again.</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;text-align:center;">Leaves your works, grades and portfolio untouched. Pending submissions stay submitted — withdrawing is a separate action. Ask your professor if you need to be re-enrolled.</div>
     </div>
     <div id="ep-transfer-note" style="display:none;"></div>
 
@@ -391,7 +384,7 @@
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
 <script src="js/loader.js?v=52"></script>
-<script src="js/app.js?v=127"></script>
+<script src="js/app.js?v=128"></script>
 <script src="js/assignments.js?v=68"></script>
 <script src="js/grade-archives.js?v=53"></script>
 <script src="js/qr.js?v=53"></script>
