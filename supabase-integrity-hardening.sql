@@ -25,10 +25,15 @@ alter table portfolio_items
   add column if not exists sha256 text;
 create index if not exists portfolio_items_sha256_idx on portfolio_items (sha256);
 
--- ── 1. Same-assignment gate, now also returning sha256 ──
+-- ── 1. Same-assignment gate, now also returning sha256 + portfolio_status ──
 -- (Drop + recreate because the return shape gains a column. Re-running the
 --  older supabase-similarity-rpc.sql afterwards would REMOVE sha256 again —
 --  don't do that; this file supersedes it.)
+-- LIVE-ONLY (v5-rogue-fix): only submitted/approved/rejected works count.
+-- Draft = private personal gallery / withdrawn — excluded, so deleted,
+-- privatised and orphaned "rogue" rows can never haunt the scanner.
+-- Rows with no file left (Cloudinary file deleted, file_url cleared) are
+-- excluded too. The JOIN already kills orphans whose portfolio is gone.
 drop function if exists get_similarity_fingerprints(uuid, uuid, uuid);
 
 create or replace function get_similarity_fingerprints(
@@ -37,15 +42,17 @@ create or replace function get_similarity_fingerprints(
   p_exclude_id    uuid default null
 )
 returns table(
-  item_id       uuid,
-  phash         text,
-  embedding     text,
-  sha256        text,
-  title         text,
-  file_url      text,
-  file_type     text,
-  assignment_id uuid,
-  student_id    uuid
+  item_id          uuid,
+  phash            text,
+  embedding        text,
+  sha256           text,
+  title            text,
+  file_url         text,
+  file_type        text,
+  assignment_id    uuid,
+  student_id       uuid,
+  portfolio_status text,
+  portfolio_id     uuid
 )
 language sql
 security definer
@@ -59,11 +66,16 @@ as $$
          pi.file_url,
          pi.file_type,
          p.assignment_id,
-         p.student_id
+         p.student_id,
+         p.status,
+         p.id
     from portfolio_items pi
     join portfolios p
       on p.id = pi.portfolio_id
    where (p.assignment_id is not distinct from p_assignment_id)
+     and p.status is distinct from 'draft'
+     and pi.file_url is not null
+     and btrim(pi.file_url) <> ''
      and (p_owner_id is null or p.student_id is distinct from p_owner_id)
      and (p_exclude_id is null or pi.id <> p_exclude_id);
 $$;
@@ -109,6 +121,9 @@ as $$
      and pi.phash is not null
      and char_length(pi.phash) = char_length(p_phash)
      and phash_bits_different(pi.phash, p_phash) <= 1
+     and p.status is distinct from 'draft'
+     and pi.file_url is not null
+     and btrim(pi.file_url) <> ''
      and (p.assignment_id is distinct from p_assignment_id)
      and (p_owner_id is null or p.student_id is distinct from p_owner_id)
    limit 5;

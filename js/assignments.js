@@ -220,6 +220,7 @@ async function unsubmitAssignment(){
       if(!deletedRows || !deletedRows.length){
         throw new Error('Nothing was deleted — this is usually a Supabase permissions (RLS) issue. Check that a DELETE policy exists on portfolio_items for the owning student.');
       }
+      for(const id of ids){ try{ if(typeof embEvict === 'function') embEvict(id); }catch(e){} }
       for(const r of (items || [])){
         if(!r.cloudinary_public_id) continue;
         try{

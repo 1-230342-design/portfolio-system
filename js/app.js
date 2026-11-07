@@ -170,7 +170,83 @@ const SIMILARITY_BLOCK_THRESHOLD = 0.90;
 // cache-buster on the <script> tags in index.html). Printed to the console on
 // every page load so anyone can verify in F12 whether the browser is actually
 // running the pre-upload block or a stale cached copy without it.
-const ORIGINALITY_GATE_VERSION = 'v4-ai-calibration';
+const ORIGINALITY_GATE_VERSION = 'v5-live-only';
+
+// ── ROGUE-ARTWORK GUARD: only LIVE submissions count as similarity candidates.
+// A deleted Cloudinary file leaves a dead row behind (its stored phash /
+// embedding still scores) if the DB row survived or was deleted only on the
+// Cloudinary side. Draft portfolios — private personal gallery (status
+// 'draft', submitted_at NULL) or withdrawn work — must never be compared
+// against either. Without this, personal/withdrawn/broken rows haunt every
+// next scanner run as phantom "61% match" cards with blank thumbnails.
+function isLiveSimilarityCandidate(item){
+  if(!item || !item.id) return false;
+  if(!item.file_url || !String(item.file_url).trim()) return false;
+  const pfJoined = (item.portfolios !== undefined) ? item.portfolios : null;
+  // Direct queries join portfolios(); a null join means the parent portfolio
+  // was deleted and this item is an orphan — never a candidate. RPC rows
+  // always carry a joined object and are already live-filtered in SQL.
+  if(pfJoined && (!pfJoined.assignment_id && pfJoined.assignment_id !== null && !pfJoined.student_id && !pfJoined.status)) return false;
+  if(('portfolios' in item) && item.portfolios === null) return false;
+  const portfolioId = item.portfolio_id || (pfJoined && pfJoined.id) || null;
+  if(!portfolioId && pfJoined === null && !('portfolios' in item)) return false;
+  const status = pfJoined && pfJoined.status;
+  if(status === 'draft') return false;
+  return true;
+}
+
+// Lightweight liveness probe: can this work's file still be loaded?
+// Images via <img>, videos via metadata-only <video>. Non-image/video files
+// (PDF/ZIP/…) cannot be probed cheaply — they count as live while file_url
+// exists; the SQL cleanup removes empty file_urls.
+function isWorkFileLoadable(item){
+  return new Promise(resolve=>{
+    if(!item || !item.file_url) return resolve(false);
+    const url = item.file_url, type = item.file_type || '';
+    const isImg = (type.indexOf('image/') === 0) || /\.(jpe?g|png|gif|webp|svg)(\?|$)/i.test(url);
+    const isVid = (type.indexOf('video/') === 0) || /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|$)/i.test(url);
+    if(isImg){
+      const img = new Image();
+      let done = false;
+      const finish = ok => { if(!done){ done = true; resolve(ok); } };
+      const timer = setTimeout(()=>finish(false), 4000);
+      img.onload  = ()=>{ clearTimeout(timer); finish(true); };
+      img.onerror = ()=>{ clearTimeout(timer); finish(false); };
+      img.src = url;
+    } else if(isVid){
+      const vid = document.createElement('video');
+      vid.muted = true; vid.playsInline = true; vid.preload = 'metadata';
+      let done = false;
+      const finish = ok => { if(!done){ done = true; try{ vid.removeAttribute('src'); vid.load(); vid.remove(); }catch(e){} resolve(ok); } };
+      const timer = setTimeout(()=>finish(false), 5000);
+      vid.onloadedmetadata = ()=>{ clearTimeout(timer); finish(!!vid.videoWidth); };
+      vid.onerror = ()=>{ clearTimeout(timer); finish(false); };
+      vid.src = url;
+    } else {
+      return resolve(true);
+    }
+  });
+}
+
+// Permanently purge a dead/rogue row discovered during similarity scanning:
+// clear its similarity logs and its item row so it can never match again.
+// Best-effort — RLS may block a student from deleting another student's row;
+// in that case the caller still EXCLUDES it from this result, and a
+// professor run (or the SQL cleanup) removes it for good.
+async function purgeRogueSimilarityRow(itemId){
+  if(!itemId) return;
+  try{ if(typeof embEvict === 'function') embEvict(itemId); }catch(e){}
+  try{
+    await sb.from('similarity_logs').delete().eq('checked_item_id', itemId);
+    await sb.from('similarity_logs').delete().eq('matched_item_id', itemId);
+  }catch(e){ /* logs may already be gone — continue */ }
+  try{
+    const { data, error } = await sb.from('portfolio_items').delete().eq('id', itemId).select('id');
+    if(error) console.warn('[similarity] rogue row kept (RLS blocks purge, row excluded this run):', error.message);
+    else if(data && data.length) console.log('[similarity] purged rogue/dead row:', itemId);
+  }catch(e){ /* excluded from this result regardless */ }
+  if(Array.isArray(_profItems)) _profItems = _profItems.filter(x=>x.id!==itemId);
+}
 
 // ── PROFESSOR PERMISSIONS ──
 // Only professors from this department get full grading + approve/reject power.
@@ -1506,9 +1582,9 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
       if(!rpcErr && Array.isArray(rpcRows)){
         scoped = rpcRows.map(r => ({
           id: r.item_id, phash: r.phash, embedding: useAI ? r.embedding : null,
-          sha256: r.sha256 || null,
+          sha256: r.sha256 || null, portfolio_id: r.portfolio_id || null,
           title: r.title, file_url: r.file_url, file_type: r.file_type,
-          portfolios: { assignment_id: r.assignment_id, student_id: r.student_id }
+          portfolios: { assignment_id: r.assignment_id, student_id: r.student_id, status: r.portfolio_status || r.status || null }
         }));
         // The RPC excludes the uploader's own work by design (resubmit-after-
         // withdraw must not self-match). But that same exclusion also let a
@@ -1556,19 +1632,20 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
         return { bestScore: 0, best: null };
       }
 
-      // Only compare against submissions attached to the SAME assignment. A
-      // plain "Upload Work" (no assignment — assignmentId is null) is only
+      // Only compare against LIVE submissions attached to the SAME assignment.
+      // A plain "Upload Work" (no assignment — assignmentId is null) is only
       // compared against other plain uploads, never against a different
-      // assignment's submissions, so unrelated classwork can't false-positive
-      // against each other just for existing in the same system.
+      // assignment's submissions.
       //
-      // The SAME student's DRAFTS (withdrawn submissions, private personal
-      // works) stay excluded — unsubmitting and re-attaching the exact same
-      // file must never match your own earlier copy. But the student's other
-      // ACTIVE submissions to the same assignment are compared: attaching
-      // identical/90%+ copies to one assignment is duplicate spam, not a
-      // resubmission, and must be blocked like any other duplicate.
+      // isLiveSimilarityCandidate() drops ALL drafts — private personal gallery
+      // and withdrawn work from ANY student, not just the uploader's own —
+      // plus orphans and rows whose file is gone. That is what stops deleted/
+      // privatised "rogue" rows from haunting the scanner. The student's own
+      // ACTIVE submissions to the same assignment ARE still compared:
+      // attaching identical/90%+ copies to one assignment is duplicate spam,
+      // not a resubmission, and must be blocked like any other duplicate.
       scoped = others.filter(o => {
+        if(!isLiveSimilarityCandidate(o)) return false;
         const port = o.portfolios || {};
         if(ownerStudentId && port.student_id === ownerStudentId && port.status === 'draft') return false;
         return (port.assignment_id || null) === targetAssignmentId;
@@ -1578,6 +1655,16 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
 
     // NOTE: no early return on empty `scoped` here — the exact-file and
     // cross-assignment checks below are scope-independent and must still run.
+
+    // Live-only sweep (defence in depth): even if the RPC is still the old
+    // version that returns drafts/orphans, the JS pool must never score a
+    // draft, an orphan, or a row with no file left. Prints how many rogue
+    // rows were dropped so F12 shows the fix is working.
+    if(scoped){
+      const before = scoped.length;
+      scoped = scoped.filter(isLiveSimilarityCandidate);
+      if(before !== scoped.length) console.log('[originality] dropped ' + (before - scoped.length) + ' rogue/draft/orphan row(s) from the similarity pool.');
+    }
 
     // CRITICAL: an older submission may not have its AI fingerprint yet — that
     // backfill normally only happens quietly in the background once a PROFESSOR
@@ -1600,8 +1687,14 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
     if(sha256){
       const exact = scoped.find(o => o.sha256 && o.sha256 === sha256);
       if(exact){
-        console.log('[originality] gate: exact file match — blocking.');
-        return { bestScore: 1, best: exact };
+        // Exact bytes mean nothing if that copy is dead (Cloudinary file
+        // gone, row orphaned) — verify before blocking a legit upload.
+        if(await isWorkFileLoadable(exact)){
+          console.log('[originality] gate: exact file match — blocking.');
+          return { bestScore: 1, best: exact };
+        }
+        console.log('[originality] gate: exact match is a dead/deleted file — purging and ignoring it.');
+        await purgeRogueSimilarityRow(exact.id);
       }
     }
 
@@ -1619,8 +1712,22 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
           p_assignment_id: targetAssignmentId
         });
         if(!crossErr && Array.isArray(crossRows) && crossRows.length){
-          console.log('[originality] gate: identical work found in another assignment — blocking.');
-          return { bestScore: 1, best: { id: crossRows[0].item_id, title: crossRows[0].title || 'Similar Item' } };
+          // Cross rows carry no file_url/status — look the row up so a dead/
+          // draft twin can't block a legit upload. RPC missing → skip quietly.
+          let crossLive = true;
+          try{
+            const { data: crossItem } = await sb.from('portfolio_items')
+              .select('id, file_url, file_type, portfolios(status)').eq('id', crossRows[0].item_id).maybeSingle();
+            crossLive = !!crossItem && (!crossItem.portfolios || crossItem.portfolios.status !== 'draft') && !!crossItem.file_url;
+            if(crossItem && crossLive){ crossRows[0].file_url = crossItem.file_url; crossRows[0].file_type = crossItem.file_type; }
+          }catch(e){ /* lookup blocked — keep the block */ }
+          if(crossLive && crossRows[0].file_url && !(await isWorkFileLoadable(crossRows[0]))) crossLive = false;
+          if(crossLive){
+            console.log('[originality] gate: identical work found in another assignment — blocking.');
+            return { bestScore: 1, best: { id: crossRows[0].item_id, title: crossRows[0].title || 'Similar Item', file_url: crossRows[0].file_url || '' } };
+          }
+          console.log('[originality] gate: cross-assignment twin is dead/draft — ignoring it.');
+          await purgeRogueSimilarityRow(crossRows[0].item_id);
         }
       }catch(crossEx){ /* RPC missing — same-scope check below still applies */ }
     }
@@ -1639,11 +1746,21 @@ async function findBestSimilarityMatch(phash, tags, excludeItemId, assignmentId,
     // see the SIMILARITY_BLOCK_THRESHOLD comment above for why.
     const me = { phash, embedding: useAI ? embedding : null };
     let best = null, bestScore = 0;
-    scoped.forEach(o=>{
+    const scoredAll = scoped.map(o=>{
       const other = { phash: o.phash, embedding: useAI ? o.embedding : null };
       const r = (typeof pairSimilarity === 'function') ? pairSimilarity(me, other) : { score: (phash && o.phash) ? phashSimilarity(phash, o.phash) : 0 };
-      if(r.score > bestScore){ bestScore = r.score; best = o; }
-    });
+      return { item: o, score: r.score };
+    }).sort((a,b)=>b.score-a.score);
+    // Verify the winner's FILE still exists before it can block this upload.
+    // A stored hash survives Cloudinary deletion; the probe is what finally
+    // evicts the rogue row (and its fingerprint) for good.
+    for(const cand of scoredAll){
+      if(cand.score <= 0) break;
+      if(cand.score < SIMILARITY_BLOCK_THRESHOLD) { best = cand.item; bestScore = cand.score; break; }
+      if(await isWorkFileLoadable(cand.item)){ best = cand.item; bestScore = cand.score; break; }
+      console.log('[originality] gate: top match "' + (cand.item.title||cand.item.id) + '" file is gone — purging rogue row and checking next.');
+      await purgeRogueSimilarityRow(cand.item.id);
+    }
     return { bestScore, best };
   }catch(err){
     console.error('findBestSimilarityMatch error:', err);
@@ -1883,12 +2000,11 @@ async function runSimilarityCheck(newItemId, newPhash, newTags, newEmbedding, as
       .neq('id', newItemId);
     if(error || !others || others.length === 0) return;
 
-    // Same-assignment scoping. Same-student DRAFTS stay excluded (withdrawn
-    // copies / private personal works must never self-match a resubmission),
-    // but the student's other ACTIVE submissions to the same assignment are
-    // compared — identical copies attached to one assignment are duplicates.
+    // Live submissions only — see findBestSimilarityMatch. Drops ALL drafts,
+    // orphans, and file-less rows so the log can never point at a rogue row.
     const targetAssignmentId = assignmentId || null;
     const scoped = others.filter(o => {
+      if(!isLiveSimilarityCandidate(o)) return false;
       const port = o.portfolios || {};
       if(ownerStudentId && port.student_id === ownerStudentId && port.status === 'draft') return false;
       return (port.assignment_id || null) === targetAssignmentId;
@@ -1896,10 +2012,14 @@ async function runSimilarityCheck(newItemId, newPhash, newTags, newEmbedding, as
 
     let best = null, bestScore = 0;
     const me = { phash: newPhash, embedding: useAI ? newEmbedding : null };
-    scoped.forEach(o=>{
-      const score = pairSimilarity(me, o).score;
-      if(score > bestScore){ bestScore = score; best = o; }
-    });
+    const scoredAll = scoped.map(o=>({ item: o, score: pairSimilarity(me, o).score })).sort((a,b)=>b.score-a.score);
+    for(const cand of scoredAll){
+      if(cand.score <= 0){ best = cand.item; bestScore = cand.score; break; }
+      if(cand.score < SIMILARITY_FLAG_THRESHOLD){ best = cand.item; bestScore = cand.score; break; }
+      if(await isWorkFileLoadable(cand.item)){ best = cand.item; bestScore = cand.score; break; }
+      console.log('[similarity] logged match "' + (cand.item.title||cand.item.id) + '" file is gone — purging rogue row.');
+      await purgeRogueSimilarityRow(cand.item.id);
+    }
 
     // Always record the closest match, even at 0%, so the Review Panel can show
     // "X% similar to <student>" for every submission — not just the ones that
@@ -2173,14 +2293,14 @@ async function computeAndCacheSimilarity(itemId){
       .neq('id', itemId);
     if(error || !others || others.length === 0) return null; // truly nothing to compare against
 
-    // Same-assignment scoping. Same-student DRAFTS stay excluded (withdrawn
-    // copies / private personal works must never self-match a resubmission),
-    // but the student's other ACTIVE submissions to the same assignment are
-    // compared — identical copies attached to one assignment are duplicates
-    // the professor must see flagged, not "No similar submissions detected."
+    // Live submissions only (all drafts excluded — see isLiveSimilarityCandidate).
+    // A professor must never be shown a personal/withdrawn/orphaned/broken
+    // row as a "61% Match" card. The student's own ACTIVE copies stay
+    // eligible so duplicate spam is still visible.
     const myAssignmentId = (self.portfolios && self.portfolios.assignment_id) || null;
     const myStudentId    = (self.portfolios && self.portfolios.student_id) || null;
     const scopedOthers = others.filter(o => {
+      if(!isLiveSimilarityCandidate(o)) return false;
       const port = o.portfolios || {};
       if(myStudentId && port.student_id === myStudentId && port.status === 'draft') return false;
       return (port.assignment_id || null) === myAssignmentId;
@@ -2195,14 +2315,23 @@ async function computeAndCacheSimilarity(itemId){
       try{ await embEnsureForItems([self, ...scopedOthers]); }catch(e){ console.warn('[similarity] review backfill skipped:', e); }
     }
 
-    let best = null, bestScore = 0, bestDetail = null;
     const scored = [];
-    scopedOthers.forEach(o=>{
+    const ranked = scopedOthers.map(o=>{
       const r = pairSimilarity(self, o);
       scored.push({ title: o.title, final: Math.round(r.score*100)+'%', method: r.method, rawAI: r.cos != null ? +r.cos.toFixed(3) : null, imageHash: Math.round(r.dh*100)+'%' });
-      if(r.score > bestScore){ bestScore = r.score; best = o; bestDetail = r; }
-    });
-    if(!best || bestScore < SIMILARITY_MIN_REPORT) return null; // nothing worth a "match" card
+      return { item: o, detail: r, score: r.score };
+    }).sort((a,b)=>b.score-a.score);
+    // File-liveness gate: the screenshot's blank-thumb "61% Match" is a
+    // stored hash whose Cloudinary file is already deleted. Probe each
+    // reportable winner top-down; purge dead rows so they never resurface.
+    let best = null, bestScore = 0, bestDetail = null;
+    for(const cand of ranked){
+      if(cand.score < SIMILARITY_MIN_REPORT) break;
+      if(await isWorkFileLoadable(cand.item)){ best = cand.item; bestScore = cand.score; bestDetail = cand.detail; break; }
+      console.log('[similarity] review match "' + (cand.item.title||cand.item.id) + '" file is gone — purging rogue row and checking next.');
+      await purgeRogueSimilarityRow(cand.item.id);
+    }
+    if(!best) return null; // nothing reportable (or every match was rogue)
     scored.sort((a,b)=> (b.rawAI ?? -1) - (a.rawAI ?? -1));
     console.log('[similarity] this work vs the others (closest first):', scored.slice(0, 8));
 
@@ -4267,6 +4396,7 @@ async function unsubmitWork(itemId){
     if(!deletedRows || !deletedRows.length){
       throw new Error('Nothing was deleted — this is usually a Supabase permissions (RLS) issue. Check that a DELETE policy exists on portfolio_items for the owning student.');
     }
+    try{ if(typeof embEvict === 'function') embEvict(itemId); }catch(e){}
     // Best-effort Cloudinary cleanup (secret lives in the Edge Function).
     // Never fails the unsubmit — the DB record is already gone either way.
     const publicId = localItem.cloudinaryPublicId;
@@ -4317,6 +4447,7 @@ async function deleteWork(itemId){
     if(!deletedRows || deletedRows.length === 0){
       throw new Error('Nothing was deleted — this is usually a Supabase permissions (RLS) issue, not a bug in the app. Check that a DELETE policy exists on portfolio_items for the owning student.');
     }
+    try{ if(typeof embEvict === 'function') embEvict(itemId); }catch(e){}
 
     // Delete the actual file from Cloudinary via a Supabase Edge Function
     // (deletion requires an API secret that must never live in browser JS,
@@ -5930,6 +6061,7 @@ async function deleteSubmissionAsProfessor(itemId){
     if(!deletedRows || deletedRows.length === 0){
       throw new Error('Nothing was deleted — this is usually a Supabase permissions (RLS) issue. Check that a DELETE policy exists on portfolio_items for professors.');
     }
+    try{ if(typeof embEvict === 'function') embEvict(itemId); }catch(e){}
 
     // Clean up the actual file on Cloudinary via the same Edge Function students use.
     const publicId = p && p.cloudinaryPublicId;

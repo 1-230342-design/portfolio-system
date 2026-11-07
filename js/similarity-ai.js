@@ -462,6 +462,11 @@ async function embFromVideoUrl(fileUrl){
 const _embMemCache = {};
 let _embPersistOk = true;
 
+// Evict a deleted work's in-memory fingerprint so a removed row can never
+// resurface from a stale cache entry in this tab (app.js calls this on every
+// delete/unsubmit/purge).
+function embEvict(itemId){ if(itemId && _embMemCache) delete _embMemCache[itemId]; }
+
 function embIsCurrent(str){
   return !!(str && _embTag && str.indexOf(embFormatTag() + ':') === 0);
 }
@@ -473,6 +478,8 @@ async function embEnsureForItems(rows){
   const need = [];
   rows.forEach(r=>{
     if(!r || !r.file_url) return;
+    if(r.portfolios && r.portfolios.status === 'draft') return; // drafts never enter the pool
+    if(('portfolios' in r) && r.portfolios === null) return; // orphan — parent portfolio gone
     const f = { dataUrl: r.file_url, mimeType: r.file_type };
     const isVid = fileIsVideo(f);
     // Videos carry a v-tagged fingerprint, images a c-tagged one — each side
@@ -523,12 +530,15 @@ function embWarmUp(){
     try{
       if(!(await embeddingColumnAvailable())) return;
       if(!(await ensureEmbeddingModel())) return;
+      // Live submissions only: drafts/personal work, orphans, and file-less
+      // rows must never consume backfill cycles (or contribute embeddings).
       const { data, error } = await sb
         .from('portfolio_items')
-        .select('id, file_url, file_type, embedding')
+        .select('id, file_url, file_type, embedding, portfolios(status)')
         .order('uploaded_at', { ascending: false });
       if(error || !data) return;
-      await embEnsureForItems(data);
+      const live = data.filter(r => r && r.file_url && !(r.portfolios && r.portfolios.status === 'draft'));
+      await embEnsureForItems(live);
     }catch(err){
       console.warn('[AI similarity] background analysis stopped:', err);
     }finally{
