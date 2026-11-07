@@ -78,3 +78,13 @@ end
 $$;
 
 grant execute on function get_public_profile_works(uuid) to anon, authenticated;
+
+-- Make PostgREST pick up the new column/return shape immediately instead of
+-- waiting for its schema cache to refresh on its own.
+notify pgrst, 'reload schema';
+
+-- ── VERIFY (optional) ──
+-- 1) The opt-in column now exists:
+--      select user_id, show_grades_public from user_profiles where role = 'student';
+-- 2) The RPC returns final_grade (null unless that student opted in):
+--      select get_public_profile_works('<paste-a-student-user-id-here>');
