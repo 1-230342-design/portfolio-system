@@ -691,6 +691,7 @@ video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{backgro
 .badge-approved{background:var(--green);color:#fff;}
 .badge-pending{background:var(--orange);color:#fff;}
 .badge-rejected{background:var(--red);color:#fff;}
+.badge-graded{background:var(--gold);color:#173626;}
 
 /* NOTIFICATIONS ON DASHBOARD */
 .notif-card{
@@ -1027,6 +1028,15 @@ video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{backgro
   box-shadow:0 6px 14px rgba(47,143,82,.26);
 }
 .btn-review:hover{transform:translateY(-1px);box-shadow:0 10px 18px rgba(47,143,82,.34);}
+.btn-edit-grade{
+  display:flex;align-items:center;gap:6px;
+  background:var(--white);color:var(--accent);
+  border:1.5px solid var(--accent);border-radius:999px;padding:9px 18px;
+  font-size:13px;font-weight:600;cursor:pointer;
+  font-family:'Plus Jakarta Sans',sans-serif;white-space:nowrap;
+  transition:background .2s;flex-shrink:0;
+}
+.btn-edit-grade:hover{background:var(--accent-tint);}
 
 /* Students list */
 .students-search{

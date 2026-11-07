@@ -2191,7 +2191,7 @@ async function loadAllItemsForProfessor(){
   // Get all portfolios with subject info (subjects embed works fine — direct FK)
   const { data: portfolios, error: pe } = await sb
     .from('portfolios')
-    .select('id, student_id, grading_period, status, submitted_at, approved_at, subject_id, assignment_id, rating, creativity_score, technique_score, composition_score, final_grade, grade_remarks, subjects(name,code)')
+    .select('id, student_id, grading_period, status, submitted_at, approved_at, subject_id, assignment_id, rating, creativity_score, technique_score, composition_score, final_grade, grade_remarks, graded_at, subjects(name,code)')
     .order('submitted_at', { ascending: false });
   if(pe){ console.error(pe); return []; }
 
@@ -2262,6 +2262,7 @@ async function loadAllItemsForProfessor(){
       compositionScore:  port.composition_score,
       finalGrade:        port.final_grade,
       gradeRemarks:      port.grade_remarks,
+      gradedAt:          port.graded_at || null,
       comment: feedbackMap[port.id] || ''
     };
   });
@@ -6034,6 +6035,17 @@ function submissionItemHtml(p){
   // Clickable thumbnail → straight to the Review Panel (same as 👁 Review).
   const clickableThumb = `<div onclick="openReviewById('${p.id}')" title="Click to open Review Panel" style="cursor:pointer;">${thumb}</div>`;
   const badge = p.status==='approved'?'badge-approved':p.status==='rejected'?'badge-rejected':'badge-pending';
+  // Already graded: final_grade is set — show it so the professor can tell at
+  // a glance the grade is filed (and mirrored in Grade Archives) without
+  // opening the item. Edit Grade reopens the same Review Panel focused on
+  // the grade inputs; saving there rewrites the Archives row too.
+  const isGraded = p.finalGrade != null && p.finalGrade !== '';
+  const gradedPill = isGraded
+    ? ` <span class="upload-status-badge badge-graded" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">✅ already graded · ${p.finalGrade}/100</span>`
+    : '';
+  const editGradeBtn = (isGraded && isFullProfessor())
+    ? `<button class="btn-edit-grade" onclick="openReviewForGrading('${p.id}')" title="Reopen this grade for editing">✏️ Edit Grade</button>`
+    : '';
   // Rejected items can pile up as clutter — give the professor a quick way to clear
   // them out. Icon-only so it sits next to Review without pushing the row wider.
   const deleteBtn = p.status==='rejected'
@@ -6041,10 +6053,11 @@ function submissionItemHtml(p){
     : '';
   return `<div class="submission-item">${clickableThumb}
     <div class="sub-info">
-      <div class="sub-title">${esc(p.title)} <span class="upload-status-badge ${badge}" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">${p.status}</span></div>
+      <div class="sub-title">${esc(p.title)} <span class="upload-status-badge ${badge}" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">${p.status}</span>${gradedPill}</div>
       <div class="sub-meta">by ${esc(p.studentName)} · ${esc(p.section)} · ${p.gradingPeriod ? esc(p.gradingPeriod)+' · ' : ''}${fmtDate(p.submittedAt)}</div>
     </div>
     <button class="btn-review" onclick="openReviewById('${p.id}')">👁 Review</button>
+    ${editGradeBtn}
     ${deleteBtn}
   </div>`;
 }
@@ -6120,6 +6133,7 @@ async function openReviewById(itemId){
   document.getElementById('grade-remarks').value = p.gradeRemarks || '';
   document.getElementById('grade-final-calc').textContent = p.finalGrade ?? '0';
   document.getElementById('grade-saved-msg').style.display = 'none';
+  refreshAlreadyGradedUI(p);
 
   // Open the panel straight away — the similarity result fills in a moment later,
   // so the professor never waits on it.
@@ -6128,6 +6142,41 @@ async function openReviewById(itemId){
   applyProfessorPermissions();
   pPage('p-review');
   renderReviewSimilarity(itemId);
+}
+
+// ── ALREADY GRADED + EDIT GRADE ──
+// If this portfolio already carries a final grade, show "Already graded"
+// with the stored value, and the save button becomes "Update Grade" so the
+// professor knows one save rewrites the grade everywhere (dashboard +
+// Grade Archives, which reads the same portfolios row).
+function refreshAlreadyGradedUI(p){
+  const banner = document.getElementById('rev-already-graded');
+  const detail = document.getElementById('rev-graded-detail');
+  const saveBtn = document.getElementById('grade-save-btn');
+  const graded = p && p.finalGrade != null && p.finalGrade !== '';
+  if(banner) banner.style.display = graded ? 'block' : 'none';
+  if(graded){
+    if(detail){
+      const when = p.gradedAt ? ' · Graded '+fmtDate(p.gradedAt) : '';
+      detail.textContent = 'Current: Creativity '+(p.creativityScore ?? '—')+'/40 · Technique '+(p.techniqueScore ?? '—')+'/35 · Composition '+(p.compositionScore ?? '—')+'/25 · Final '+p.finalGrade+'/100'+when;
+    }
+    if(saveBtn) saveBtn.textContent = '✏️ Update Grade (rewrites Grade Archives)';
+  } else if(saveBtn){
+    saveBtn.textContent = '💾 Save Grade to Student Record';
+  }
+}
+
+// Edit Grade shortcut from the list rows: same review panel, but scrolled
+// down to the grade inputs and focused so editing is one click away.
+async function openReviewForGrading(itemId){
+  if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can edit grades.'); return; }
+  await openReviewById(itemId);
+  setTimeout(()=>{
+    const gp = document.getElementById('grade-panel');
+    if(gp) gp.scrollIntoView({behavior:'smooth', block:'center'});
+    const c1 = document.getElementById('grade-c1');
+    if(c1) c1.focus();
+  }, 80);
 }
 
 // ── AI-GENERATION BADGE (advisory only) ──
@@ -6385,11 +6434,32 @@ async function saveGrade(){
     }).eq('id', currentReview.portfolioId);
     if(error) throw error;
     const p = _profItems.find(x=>x.portfolioId===currentReview.portfolioId);
-    if(p){ p.finalGrade=finalGrade; p.creativityScore=c1; p.techniqueScore=c2; p.compositionScore=c3; p.gradeRemarks=remarks; }
+    if(p){ p.finalGrade=finalGrade; p.creativityScore=c1; p.techniqueScore=c2; p.compositionScore=c3; p.gradeRemarks=remarks; p.gradedAt=new Date().toISOString(); }
     document.getElementById('grade-final-calc').textContent = finalGrade;
+    refreshAlreadyGradedUI(p || { finalGrade, creativityScore: c1, techniqueScore: c2, compositionScore: c3, gradeRemarks: remarks, gradedAt: new Date().toISOString() });
     document.getElementById('grade-saved-msg').style.display = 'block';
+    // Grade Archives reads this same portfolios row live (fetchSectionGradeData),
+    // so the save above already rewrites the archive. Refresh it now if it's
+    // open so the professor sees the new number without reopening the section.
+    try{
+      const overlay = document.getElementById('sectionPreviewOverlay');
+      if(overlay && overlay.classList.contains('open')){
+        if(typeof currentPreviewView !== 'undefined' && currentPreviewView === 'summary'){
+          if(typeof loadSectionSummary === 'function') await loadSectionSummary();
+        } else if(typeof loadSectionPreview === 'function'){
+          await loadSectionPreview();
+        }
+      }
+    }catch(e){ /* archive refresh is best-effort */ }
+    // Keep the Recent Submissions / Artworks lists showing the fresh
+    // "already graded · N/100" pill without a full reload.
+    renderSubmissionsList();
+    try{
+      const recentEl = document.getElementById('p-dash-recent');
+      if(recentEl) recentEl.innerHTML = _profItems.filter(pp=>pp.status!=='draft').slice(0,4).map(submissionItemHtml).join('') || `<div class="empty-state"><p>No submissions yet.</p></div>`;
+    }catch(e){}
     setTimeout(()=>{ document.getElementById('grade-saved-msg').style.display='none'; }, 3500);
-    showToast('✅ Grade saved: '+finalGrade+'/100');
+    showToast('✅ Grade saved: '+finalGrade+'/100 — Grade Archives updated');
   }catch(err){
     console.error(err);
     showToast('❌ Error saving grade: '+err.message);
