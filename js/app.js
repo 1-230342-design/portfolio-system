@@ -768,6 +768,10 @@ function openEditProfile(){
   document.getElementById('ep-social').value     = currentProfile.social_link || '';
   const qrBox = document.getElementById('ep-show-qr');
   if(qrBox) qrBox.checked = !!currentProfile.show_social_on_qr;
+  // Public-grade opt-in: off unless the student turned it on. Missing column
+  // (SQL not run yet) reads as false, never as undefined-checked.
+  const gradesBox = document.getElementById('ep-show-grades');
+  if(gradesBox) gradesBox.checked = !!currentProfile.show_grades_public;
   toggleUnenrollBtn();
   editSkills = Array.isArray(currentProfile.skills) ? [...currentProfile.skills] : [];
   renderSkillChips();
@@ -940,6 +944,8 @@ async function saveProfileEdits(){
   const social_link = document.getElementById('ep-social').value.trim();
   const showQrBox = document.getElementById('ep-show-qr');
   const show_social_on_qr = showQrBox ? showQrBox.checked : false;
+  const gradesBox = document.getElementById('ep-show-grades');
+  const show_grades_public = gradesBox ? gradesBox.checked : false;
   if(!full_name){ showToast('⚠️ Please enter your full name.'); return; }
   // Section + year are managed outside this form now (professor-led enrollment),
   // so keep whatever is already on file — this form can never move a student
@@ -964,10 +970,11 @@ async function saveProfileEdits(){
   // The QR opt-in + avatar columns need their SQL run once. If either isn't
   // there yet, save everything else instead of failing the whole profile edit.
   const fullRow = {
-    full_name, section: activeSection, year_level, social_link, skills: editSkills, show_social_on_qr, avatar_url, avatar_public_id
+    full_name, section: activeSection, year_level, social_link, skills: editSkills,
+    show_social_on_qr, show_grades_public, avatar_url, avatar_public_id
   };
   let { error } = await sb.from('user_profiles').update(fullRow).eq('user_id', currentUser.id);
-  let avatarSaved = true;
+  let avatarSaved = true, gradesSaved = true;
   if(error && /avatar_(url|public_id)/i.test(error.message || '')){
     console.info('[profile] avatar columns missing — run supabase-avatar.sql. Saving the rest of the profile.');
     delete fullRow.avatar_url;
@@ -977,11 +984,14 @@ async function saveProfileEdits(){
   }
   if(error && /show_social_on_qr/i.test(error.message || '')){
     console.info('[profile] QR opt-in column missing — run supabase-qr-social.sql. Saving the rest of the profile.');
-    const qrFallback = {
-      full_name, section: activeSection, year_level, social_link, skills: editSkills
-    };
-    if(avatarSaved){ qrFallback.avatar_url = avatar_url; qrFallback.avatar_public_id = avatar_public_id; }
-    ({ error } = await sb.from('user_profiles').update(qrFallback).eq('user_id', currentUser.id));
+    delete fullRow.show_social_on_qr;
+    ({ error } = await sb.from('user_profiles').update(fullRow).eq('user_id', currentUser.id));
+  }
+  if(error && /show_grades_public/i.test(error.message || '')){
+    console.info('[profile] public-grades column missing — run supabase-public-profile-rpc.sql. Saving the rest of the profile.');
+    delete fullRow.show_grades_public;
+    gradesSaved = false;
+    ({ error } = await sb.from('user_profiles').update(fullRow).eq('user_id', currentUser.id));
   }
   if(error){ showToast('❌ '+error.message); return; }
   currentProfile.full_name   = full_name;
@@ -989,6 +999,7 @@ async function saveProfileEdits(){
   currentProfile.year_level  = year_level;
   currentProfile.social_link = social_link;
   currentProfile.show_social_on_qr = show_social_on_qr;
+  currentProfile.show_grades_public = gradesSaved ? show_grades_public : false;
   if(avatarSaved){
     currentProfile.avatar_url = avatar_url;
     currentProfile.avatar_public_id = avatar_public_id;
@@ -1007,7 +1018,9 @@ async function saveProfileEdits(){
   document.getElementById('s-welcome-name').textContent = 'Welcome Back, '+firstName+'!';
   renderPortfolioHeader();
   closeEditProfile();
-  showToast('✅ Profile updated!');
+  showToast(!gradesSaved && show_grades_public
+    ? '⚠️ Saved, but public grades need supabase-public-profile-rpc.sql run in Supabase first.'
+    : '✅ Profile updated!');
 }
 
 // ══════════════════════════════════════════════════════
@@ -2637,7 +2650,9 @@ async function openPublicProfile(userId){
   }
 
   // Only PUBLIC + APPROVED works are visible here — nothing pending/rejected/private,
-  // and no grades or professor comments, since those stay private to the student.
+  // and professor comments always stay private. The final grade is attached ONLY
+  // when the student opted in (show_grades_public); the public RPC enforces it
+  // server-side, the legacy path below mirrors that check.
   const worksEl = document.getElementById('pp-works');
   worksEl.innerHTML = `${loadingHtml('Loading works…', 'grid-column:1/-1')}`;
   go('s-public-profile');
@@ -2657,7 +2672,7 @@ async function openPublicProfile(userId){
         approvedCount = pub.approved_count || 0;
         items = pub.works.map(r=>({ id: r.item_id, portfolio_id: r.portfolio_id, title: r.title, description: r.description, file_url: r.file_url, file_type: r.file_type }));
         portMap = {};
-        pub.works.forEach(r=>{ portMap[r.portfolio_id] = { subjects: { name: r.subject_name, code: r.subject_code } }; });
+        pub.works.forEach(r=>{ portMap[r.portfolio_id] = { subjects: { name: r.subject_name, code: r.subject_code }, final_grade: r.final_grade }; });
       }
     }catch(rpcEx){ console.warn('[public] RPC unavailable — using direct queries:', rpcEx); }
     if(items === null){
@@ -2667,7 +2682,7 @@ async function openPublicProfile(userId){
       // can showcase personal pieces publicly.
       const { data: portfolios, error: pe } = await sb
         .from('portfolios')
-        .select('id, status, submitted_at, subjects(name,code)')
+        .select('id, status, submitted_at, final_grade, subjects(name,code)')
         .eq('student_id', userId)
         .in('status', ['approved','draft']);
       if(pe) throw pe;
@@ -2684,6 +2699,17 @@ async function openPublicProfile(userId){
           .eq('is_public', true);
         if(ie) throw ie;
         items = rows;
+        // Grades are opt-in per student. A missing column (SQL not run yet)
+        // reads as off, so nothing leaks by accident on the legacy path.
+        let showGrades = false;
+        try{
+          const { data: gp, error: gpErr } = await sb
+            .from('user_profiles').select('show_grades_public').eq('user_id', userId).maybeSingle();
+          if(!gpErr && gp) showGrades = !!gp.show_grades_public;
+        }catch(gpEx){ /* column not deployed yet — keep grades private */ }
+        if(!showGrades){
+          Object.keys(portMap).forEach(id=>{ if(portMap[id]) portMap[id].final_grade = null; });
+        }
       }
     }
     // Personal-public top-up: the RPC above still returns approved-only until
@@ -2718,8 +2744,10 @@ async function openPublicProfile(userId){
     }
 
     _publicProfileWorks = (items||[]).map(it=>{
-      const subj = (portMap[it.portfolio_id]||{}).subjects || {};
+      const port = portMap[it.portfolio_id] || {};
+      const subj = port.subjects || {};
       return { id: it.id, title: it.title, desc: it.description, category: subj.name||subj.code||'General',
+        grade: port.final_grade != null ? Number(port.final_grade) : null,
         file:{ dataUrl: it.file_url, mimeType: it.file_type } };
     });
 
@@ -2728,7 +2756,10 @@ async function openPublicProfile(userId){
         <div class="pf-actions"><button class="pf-btn" onclick="event.stopPropagation();viewPublicWork(${i})">👁 View</button></div>
         <div class="pf-hover">
           <div class="pf-title">${esc(p.title)}</div>
-          <div class="pf-cat">${esc(p.category)}</div>
+          <div class="pf-tags">
+            <span class="pf-cat">${esc(p.category)}</span>
+            ${p.grade != null ? `<span class="pf-grade">🏅 ${esc(String(p.grade))}/100</span>` : ''}
+          </div>
           <div class="pf-desc">${esc(p.desc||'No description')}</div>
         </div></div>`;
     }).join('') : `<div class="empty-state"><p>This student hasn't made any works public yet.</p></div>`;
@@ -2744,6 +2775,16 @@ function viewPublicWork(idx){
   if(!p) return;
   currentPublicPreviewItemId = p.id;
   document.getElementById('ppv-title').textContent = p.title;
+  const gradeEl = document.getElementById('ppv-grade');
+  if(gradeEl){
+    if(p.grade != null){
+      gradeEl.style.display = 'block';
+      gradeEl.textContent = `🏅 Grade: ${p.grade}/100`;
+    }else{
+      gradeEl.style.display = 'none';
+      gradeEl.textContent = '';
+    }
+  }
   const img = document.getElementById('ppv-img');
   const vid = document.getElementById('ppv-video');
   const ph  = document.getElementById('ppv-placeholder');

@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="images/favicon-artfolio.png"/>
 <link rel="apple-touch-icon" href="images/favicon-artfolio.png"/>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="css/style.css?v=42"/>
+<link rel="stylesheet" href="css/style.css?v=43"/>
 <!-- Pre-apply saved theme BEFORE first paint (no light-flash for dark users).
      Full toggle logic lives in toggleTheme()/syncThemeIcon() in js/app.js. -->
 <script>try{var t=localStorage.getItem('artfolio-theme');if(!t)t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -27,7 +27,7 @@
      inspector, edit profile, QR code) — used by
      both the student and professor dashboards
 ══════════════════════════════════════════ -->
-<!-- Read-only preview for a public work (no grades/comments — those stay private to the student) -->
+<!-- Read-only preview for a public work (comments stay private; the grade appears only when the student opted in) -->
 <div class="modal-overlay" id="publicWorkPreviewOverlay">
   <div class="modal-box" style="max-width:520px;">
     <div class="modal-head">
@@ -40,6 +40,7 @@
     <img id="ppv-img" src="" alt="" style="width:100%;max-height:400px;object-fit:cover;border-radius:10px;margin-bottom:14px;background:var(--surface2);"/>
     <video id="ppv-video" src="" controls playsinline preload="metadata" style="display:none;width:100%;max-height:400px;border-radius:10px;margin-bottom:14px;background:#000;"></video>
     <div id="ppv-placeholder" style="display:none;height:200px;align-items:center;justify-content:center;font-size:52px;background:var(--surface2);border-radius:10px;margin-bottom:14px;">🖼️</div>
+    <div id="ppv-grade" style="display:none;font-size:13px;font-weight:700;color:var(--ink);"></div>
   </div>
 </div>
 
@@ -307,6 +308,10 @@
       <input type="checkbox" id="ep-show-qr" style="margin-top:3px;width:16px;height:16px;accent-color:var(--dark);"/>
       <span><strong style="color:var(--ink);">📱 Show my social link on my works' QR pages</strong><br><span style="font-size:12px;color:var(--text3);">Off = QR visitors see the work description (private). On = they see your social link as a contact card instead, so clients can reach you.</span></span>
     </label>
+    <label style="display:flex;gap:10px;align-items:flex-start;margin:12px 0 4px;font-size:13px;color:var(--text2);cursor:pointer;">
+      <input type="checkbox" id="ep-show-grades" style="margin-top:3px;width:16px;height:16px;accent-color:var(--dark);"/>
+      <span><strong style="color:var(--ink);">🏅 Show my grades on my public portfolio</strong><br><span style="font-size:12px;color:var(--text3);">Off = visitors see your works but not your scores. On = graded, approved works also show the professor's score (e.g. 92/100). Ungraded works never show one.</span></span>
+    </label>
 
     <label class="flabel">Skills</label>
     <div class="skill-chip-row" id="ep-skill-chips"></div>
@@ -384,7 +389,7 @@
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
 <script src="js/loader.js?v=52"></script>
-<script src="js/app.js?v=128"></script>
+<script src="js/app.js?v=129"></script>
 <script src="js/assignments.js?v=68"></script>
 <script src="js/grade-archives.js?v=53"></script>
 <script src="js/qr.js?v=53"></script>
