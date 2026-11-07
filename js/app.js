@@ -17,6 +17,33 @@ const CLOUDINARY_CLOUD  = 'drrel1ee7';
 const CLOUDINARY_PRESET = 'portfolio_upload';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ── BUILD STAMP + STALE-TAB GUARD ──
+// A tab that was already open when a new build shipped keeps running the OLD
+// JavaScript forever: this is a single-page app, so clicking around never
+// reloads the page. That is exactly how a fixed similarity formula can keep
+// showing an old "97% Match" long after the fix is live. version.json (repo
+// root) is fetched no-store on every load; when it names a newer build than
+// this script, the tab reloads itself once. sessionStorage stops a reload loop
+// if a lagging edge cache keeps handing back the old build.
+const APP_BUILD = 'v131';
+(function guardAgainstStaleBuild(){
+  try{
+    fetch('version.json?t=' + Date.now(), { cache:'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(v => {
+        if(!v || !v.build || v.build === APP_BUILD) return;
+        const seenKey = 'artfolio_reloaded_for';
+        if(sessionStorage.getItem(seenKey) === v.build) return; // already tried once — don't loop
+        sessionStorage.setItem(seenKey, v.build);
+        const u = new URL(location.href);
+        u.searchParams.set('b', v.build);
+        location.replace(u.toString());
+      })
+      .catch(()=>{});
+  }catch(e){}
+})();
+console.info('[artfolio] build ' + APP_BUILD);
+
 // ── EmailJS (review-decision notifications) ──
 const EMAILJS_PUBLIC_KEY  = 'VrNccoTJpqBpWuw08';
 const EMAILJS_SERVICE_ID  = 'service_ht8hu26';
@@ -6439,4 +6466,10 @@ async function initApp(){
   loadShowcaseMosaic();  // hero "Recently shared works" mosaic on the landing page
   loadLandingExplore();  // "Explore creative works" grid on the landing page
 }
-document.addEventListener('artfolio:ready', ()=>{ initSkillPickerOutsideCloser(); initInspectViewer(); initApp(); });
+document.addEventListener('artfolio:ready', ()=>{
+  // Visible build tag on the landing footer — the quickest way to tell whether
+  // a browser is running this build or a stale cached one after a fix ships.
+  const buildEl = document.getElementById('lp-build');
+  if(buildEl) buildEl.textContent = ' · ' + APP_BUILD;
+  initSkillPickerOutsideCloser(); initInspectViewer(); initApp();
+});
