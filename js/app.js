@@ -3964,7 +3964,9 @@ function renderDashboard(uid){
     ? recent.map(p=>{
         const thumb = cardThumbHtml(p, 'upload-thumb-frame', 'upload-thumb-placeholder', '');
         const badge = p.status==='approved'?'approved':p.status==='rejected'?'rejected':'pending';
-        return `<div class="upload-card">${thumb}<span class="upload-status-badge badge-${badge}">${p.status}</span></div>`;
+        // Clicking the thumbnail opens the full work preview (same preview the
+        // Portfolio/Projects grids already open) — no dead thumbnail steps.
+        return `<div class="upload-card" onclick="viewStudentProject('${p.id}')" title="Click to preview this work" style="cursor:pointer;">${thumb}<span class="upload-status-badge badge-${badge}">${p.status}</span></div>`;
       }).join('')
     : `<div class="empty-state"><p>No uploads yet — share your first project!</p></div>`;
 }
