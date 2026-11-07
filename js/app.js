@@ -120,6 +120,12 @@ let allSubjectsCache    = [];   // cache of subjects, used for dropdown + catego
 // which is why an unrelated photo was previously showing up as a "56% match."
 const SIMILARITY_LOG_THRESHOLD  = 0.85; // log a match only if 85%+ visually similar
 const SIMILARITY_FLAG_THRESHOLD = 0.93; // strong plagiarism warning at 93%+
+// Below this, the Review Panel says "No similar submissions detected."
+// instead of showing the single highest score as a "match" card. It used to
+// display the closest pair no matter how low it was, so unrelated images could
+// read as a near-duplicate. 40% keeps genuinely notable resemblance visible
+// (including borderline AI+hash blends) and drops the noise.
+const SIMILARITY_MIN_REPORT     = 0.40;
 // A high visual match means this is basically the same image already in the
 // system — instead of just flagging it for the professor like
 // SIMILARITY_FLAG_THRESHOLD does, this level blocks the submission outright
@@ -137,7 +143,7 @@ const SIMILARITY_BLOCK_THRESHOLD = 0.90;
 // cache-buster on the <script> tags in index.html). Printed to the console on
 // every page load so anyone can verify in F12 whether the browser is actually
 // running the pre-upload block or a stale cached copy without it.
-const ORIGINALITY_GATE_VERSION = 'v3-preupload-rpc';
+const ORIGINALITY_GATE_VERSION = 'v4-ai-calibration';
 
 // ── PROFESSOR PERMISSIONS ──
 // Only professors from this department get full grading + approve/reject power.
@@ -2169,7 +2175,7 @@ async function computeAndCacheSimilarity(itemId){
       scored.push({ title: o.title, final: Math.round(r.score*100)+'%', method: r.method, rawAI: r.cos != null ? +r.cos.toFixed(3) : null, imageHash: Math.round(r.dh*100)+'%' });
       if(r.score > bestScore){ bestScore = r.score; best = o; bestDetail = r; }
     });
-    if(!best) return null;
+    if(!best || bestScore < SIMILARITY_MIN_REPORT) return null; // nothing worth a "match" card
     scored.sort((a,b)=> (b.rawAI ?? -1) - (a.rawAI ?? -1));
     console.log('[similarity] this work vs the others (closest first):', scored.slice(0, 8));
 

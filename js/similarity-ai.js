@@ -39,15 +39,20 @@ const EMB_TFJS_URL      = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/
 const EMB_MOBILENET_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js';
 
 // ── CALIBRATION (tune these if the percentages feel off) ──
-// The model's raw "cosine similarity" is not a percentage. Measured on real
-// data: the same character on a different background scored ~0.61 with a
-// single whole-image view. These two numbers stretch the raw range into a
-// 0–100% score:  cosine <= FLOOR → 0%,  cosine >= CEIL → 99%.
-// The Review Panel shows the raw score next to the percentage, and the browser
-// console (F12) lists the closest matches with their raw scores (rawAI and
-// imageHash separately) — check those numbers before re-tuning these.
-const EMB_FLOOR         = 0.38;
-const EMB_CEIL          = 0.62;
+// The model's raw cosine similarity is NOT a percentage, and for unrelated
+// submissions it is NOT close to zero. Measured on this app's own stored
+// fingerprints: 21 pairwise comparisons between unrelated works scored
+// 0.33–0.66, with the highest pair (two different student logos) at 0.66.
+// The old 0.38–0.62 window therefore turned a normal unrelated score
+// (0.612) into a "97% match" — the exact false alarm this now prevents.
+// Only scores clearly above the unrelated band count: cosine <= FLOOR → 0%,
+// cosine >= CEIL → 99%. Same-subject-different-background matches usually
+// land in the middle; near-identical copies sit near CEIL.
+// The Review Panel shows the raw score next to the percentage, and the
+// browser console (F12) lists the closest matches with their raw scores
+// (rawAI and imageHash separately) — check those numbers before re-tuning.
+const EMB_FLOOR         = 0.70;
+const EMB_CEIL          = 0.95;
 const EMB_MAX_SCORE     = 0.99;  // never show 100% from "similar content" alone
 const EMB_CROPS         = [1, 0.7, 0.5]; // views per image: whole picture, centre 70%, centre 50%
 const EMB_MAX_SIDE      = 448;   // views are shrunk to this many pixels before analysis (speed)
