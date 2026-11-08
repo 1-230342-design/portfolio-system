@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v136';
+const APP_BUILD = 'v137';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -4190,7 +4190,7 @@ function renderPortfolioPage(uid){
           <div class="pf-desc">${esc(p.desc||'No description')}</div>
         </div></div>`;
     };
-    personalEl.innerHTML = personal.length ? personal.map(personalCardHtml).join('') : `<div class="empty-state" style="text-align:center;"><button onclick="sPage('upload')" title="Upload Work" aria-label="Upload Work" style="width:64px;height:64px;border-radius:50%;background:var(--dark);border:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4l4 4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></button><p>No personal works yet. Use Upload Work (without the review checkbox) to build your private gallery.</p></div>`;
+    personalEl.innerHTML = personal.length ? personal.map(personalCardHtml).join('') : `<div class="empty-state" style="text-align:center;"><button onclick="sPage('upload')" title="Upload Work" aria-label="Upload Work" style="width:64px;height:64px;border-radius:50%;background:var(--dark);border:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-bottom:12px;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4l4 4"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></button><p>No personal works yet. Use Upload Work to build your private gallery.</p></div>`;
   }
 }
 
@@ -4797,19 +4797,13 @@ async function submitWork(){
   if(!title)     { showToast('⚠️ Please enter a project title'); return; }
   // subjectId is optional for multimedia-only systems — we proceed with null if no subjects are configured
   if(!pendingRawFile){ showToast('⚠️ Please select a file to upload'); return; }
-  // Hybrid Upload Work: unchecked (default) = personal gallery only — saved to
-  // the student's portfolio, never sent to any professor, never graded.
-  // Checked = the old path — enters the professor review queue and can be graded.
-  const sendForReview = !!(document.getElementById('up-send-review') && document.getElementById('up-send-review').checked);
-  // Grading period is optional for personal uploads; only review-bound work is
-  // grouped into (and graded within) a grading period, so it's required then.
-  const gradingPeriod = document.getElementById('up-grading-period') ? document.getElementById('up-grading-period').value : '';
-  if(sendForReview && !gradingPeriod){
-    showToast('⚠️ Please select a grading period before sending for review');
-    const sel = document.getElementById('up-grading-period');
-    if(sel) sel.focus();
-    return;
-  }
+  // Upload Work is personal-gallery ONLY. Students can no longer send
+  // personal work to a professor or pick their own grading period —
+  // that let them game rankings/archives and duplicated Classwork.
+  // All graded work goes through Classwork assignments, where the
+  // professor sets the period, title, and due date.
+  const sendForReview = false;
+  const gradingPeriod = '';
   try{
     // Personal gallery (unchecked) = private draft, never reviewed — skip ALL
     // checks (similarity + AI) and go straight to upload. Checks run only when
@@ -4904,7 +4898,8 @@ async function submitWork(){
     pendingRawFile=null; pendingUploadFile=null;
     document.getElementById('up-title').value='';
     document.getElementById('up-desc').value='';
-    document.getElementById('up-send-review').checked=false;
+    const reviewBoxReset = document.getElementById('up-send-review');
+    if(reviewBoxReset) reviewBoxReset.checked=false;
     toggleUploadReviewOptions(false);
     document.getElementById('up-drop-text').textContent='Drop files here or click to upload';
     if(sendForReview){
