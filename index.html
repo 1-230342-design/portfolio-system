@@ -262,6 +262,27 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="reopenAssignmentOverlay">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-head">
+      <div class="modal-title">🔓 Reopen Assignment</div>
+      <button class="modal-close" onclick="closeReopenModal()">✕</button>
+    </div>
+    <div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px;" id="ra-title">Assignment</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;" id="ra-current-due">Currently closed</div>
+    <label class="flabel">Open until (new due date &amp; time) *</label>
+    <input class="finput" type="datetime-local" id="ra-due"/>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 4px;">
+      <button type="button" class="btn-outline" style="padding:7px 12px;margin:0;font-size:12px;" onclick="setReopenDueDays(1)">+1 day</button>
+      <button type="button" class="btn-outline" style="padding:7px 12px;margin:0;font-size:12px;" onclick="setReopenDueDays(3)">+3 days</button>
+      <button type="button" class="btn-outline" style="padding:7px 12px;margin:0;font-size:12px;" onclick="setReopenDueDays(7)">+7 days</button>
+      <button type="button" class="btn-outline" style="padding:7px 12px;margin:0;font-size:12px;" onclick="setReopenDueDays(14)">+14 days</button>
+    </div>
+    <p style="font-size:12px;color:var(--text3);margin:12px 0 16px;">Existing submissions and grades stay untouched. Students who haven't submitted yet (or were rejected/withdrawn) can attach work again until this date.</p>
+    <button class="btn-full" onclick="confirmReopenAssignment()">🔓 Reopen Assignment</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="editProfileOverlay">
   <div class="modal-box">
     <div class="modal-head">
@@ -389,8 +410,8 @@
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
 <script src="js/loader.js?v=52"></script>
-<script src="js/app.js?v=143"></script>
-<script src="js/assignments.js?v=70"></script>
+<script src="js/app.js?v=144"></script>
+<script src="js/assignments.js?v=71"></script>
 <script src="js/grade-archives.js?v=53"></script>
 <script src="js/qr.js?v=53"></script>
 <script src="js/similarity-ai.js?v=54"></script>

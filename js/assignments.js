@@ -555,20 +555,50 @@ async function createAssignment(){
 // so a future due date reopens both instantly. Existing submissions,
 // grades, and similarity logs are untouched; students who already have
 // an approved/graded work still can't resubmit (that lock stays).
-async function reopenAssignment(id){
+// The professor picks the exact new due date/time in the modal.
+let reopenAssignmentId = null;
+
+function toLocalInputValue(d){
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function reopenAssignment(id){
   const a = _assignmentsCache.find(x => x.id === id);
   if(!a){ showToast('⚠️ Assignment not found'); return; }
   if(!currentUser || a.professor_id !== currentUser.id){ showToast('⚠️ Only the professor who posted this can reopen it.'); return; }
-  const newDue = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  if(!confirm(`Reopen "${a.title}" for late students?\n\nNew due date: ${fmtDateTime(newDue.toISOString())} (7 days from now)\n\nExisting submissions and grades stay untouched. Students who haven't submitted yet (or were rejected/withdrawn) can attach work again.`)) return;
+  reopenAssignmentId = id;
+  document.getElementById('ra-title').textContent = a.title;
+  document.getElementById('ra-current-due').textContent = 'Currently closed — past due ' + (a.due_date ? fmtDateTime(a.due_date) : '');
+  document.getElementById('ra-due').value = toLocalInputValue(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  document.getElementById('reopenAssignmentOverlay').classList.add('open');
+}
+
+function closeReopenModal(){
+  document.getElementById('reopenAssignmentOverlay').classList.remove('open');
+  reopenAssignmentId = null;
+}
+
+function setReopenDueDays(days){
+  document.getElementById('ra-due').value = toLocalInputValue(new Date(Date.now() + days * 24 * 60 * 60 * 1000));
+}
+
+async function confirmReopenAssignment(){
+  if(!reopenAssignmentId){ showToast('⚠️ No assignment selected'); return; }
+  const raw = document.getElementById('ra-due').value;
+  if(!raw){ showToast('⚠️ Pick a new due date and time'); return; }
+  const newDue = new Date(raw);
+  if(isNaN(newDue.getTime())){ showToast('⚠️ Invalid date'); return; }
+  if(newDue <= new Date()){ showToast('⚠️ New due date must be in the future'); return; }
   showToast('🔓 Reopening…');
   try{
-    const { error } = await sb.from('assignments').update({ due_date: newDue.toISOString() }).eq('id', id);
+    const { error } = await sb.from('assignments').update({ due_date: newDue.toISOString() }).eq('id', reopenAssignmentId);
     if(error) throw error;
+    closeReopenModal();
     showToast('✅ Reopened! Late students can submit until ' + fmtDateTime(newDue.toISOString()));
     renderProfAssignmentsPage();
   }catch(err){
-    console.error('reopenAssignment error:', err);
+    console.error('confirmReopenAssignment error:', err);
     showToast('❌ Could not reopen: ' + err.message);
   }
 }
