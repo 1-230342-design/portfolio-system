@@ -30,6 +30,47 @@ async function loadPublicWorkFromQR(itemId){
   el.innerHTML = loadingHtml('Loading…');
 
   try{
+    // PRIMARY — single-work RPC (SECURITY DEFINER, see
+    // supabase-public-work.sql): anon can read public portfolio_items
+    // but NOT personal-draft portfolios rows (owner-only RLS), so the
+    // old direct-query check wrongly 404'd personal public works
+    // (e.g. Purrfect Brew LOGO). The RPC checks status server-side.
+    try{
+      const { data: pub, error: pubErr } = await sb.rpc('get_public_work', { p_item_id: itemId });
+      if(!pubErr && pub && pub.item_id){
+        const fileObj = { dataUrl: pub.file_url, mimeType: pub.file_type };
+        const isImg = fileIsImage(fileObj);
+        const isVid = fileIsVideo(fileObj);
+        const artistName = pub.student_name || 'Student';
+        const showSocial = !!(pub.show_social_on_qr && pub.social_link);
+        const rawLink = showSocial ? String(pub.social_link).trim() : '';
+        const socialHref = rawLink && (/^https?:\/\//i.test(rawLink) ? rawLink : 'https://' + rawLink);
+        const underTitle = showSocial
+          ? `<div style="background:var(--surface);border-radius:14px;padding:20px;margin-top:6px;text-align:center;">
+              <div style="font-size:11px;letter-spacing:1.5px;font-weight:700;color:var(--text3);margin-bottom:6px;">📱 CONTACT THE ARTIST</div>
+              <div style="font-size:16px;font-weight:700;color:var(--ink);margin-bottom:12px;">${esc(artistName)}</div>
+              <a href="${esc(socialHref)}" target="_blank" rel="noopener" class="btn-submit-work" style="text-decoration:none;display:inline-flex;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-all;line-height:1.5;">${esc(rawLink)}</a>
+            </div>`
+          : `<p style="font-size:14px;color:var(--text2);line-height:1.7;">${esc(pub.description || 'No description provided.')}</p>
+             <div style="font-size:12px;color:var(--text3);margin-top:14px;">by ${esc(artistName)}</div>`;
+        el.innerHTML = `
+          ${isImg
+            ? `<img src="${esc(pub.file_url)}" alt="${esc(pub.title)}" style="width:100%;max-height:480px;object-fit:contain;border-radius:14px;background:var(--surface2);margin-bottom:20px;"/>`
+            : isVid
+              ? `<video src="${esc(pub.file_url)}" controls style="width:100%;max-height:480px;border-radius:14px;background:#000;margin-bottom:20px;"></video>`
+              : `<div class="upload-thumb-placeholder" style="height:240px;border-radius:14px;margin-bottom:20px;">🖼️</div>`}
+          <h2 style="font-family:'Fraunces',serif;font-size:26px;color:var(--ink);margin-bottom:14px;">${esc(pub.title)}</h2>
+          ${underTitle}
+        `;
+        return;
+      }
+      if(!pubErr && !pub) { renderPublicWorkNotFound(); return; }
+    }catch(rpcEx){ console.warn('[qr] get_public_work RPC unavailable — using direct queries:', rpcEx); }
+
+    // FALLBACK — direct reads. Approved portfolios are anon-readable;
+    // personal drafts are owner-only, so a null portfolio with a public
+    // item is treated as personal-public (togglePublic only allows
+    // approved/personal to become public in the first place).
     const { data: item, error: ie } = await sb
       .from('portfolio_items')
       .select('id, portfolio_id, title, description, file_url, file_type, is_public')
@@ -46,29 +87,35 @@ async function loadPublicWorkFromQR(itemId){
       .maybeSingle();
     if(pe) throw pe;
     const isPersonalPublic = portfolio && portfolio.status === 'draft' && !portfolio.submitted_at;
-    if(!portfolio || !(portfolio.status === 'approved' || isPersonalPublic)){ renderPublicWorkNotFound(); return; }
+    const portfolioBlocked = !portfolio; // RLS-blocked personal draft — item is_public already implies public-eligible
+    if(portfolio && !(portfolio.status === 'approved' || isPersonalPublic)){ renderPublicWorkNotFound(); return; }
 
     // Base profile first (columns that always exist), then the QR opt-in
     // columns separately — if supabase-qr-social.sql was never run, that
     // second query fails and we simply fall back to the description instead
     // of losing the whole profile (and the artist's name with it).
-    const { data: profile } = await sb
-      .from('user_profiles')
-      .select('full_name, section, year_level')
-      .eq('user_id', portfolio.student_id)
-      .maybeSingle();
-    try{
-      const { data: qrOpt, error: qrErr } = await sb
+    // Personal-draft portfolios are RLS-blocked for anon (portfolio null) —
+    // then the artist name is unknown, but title/description still show.
+    let profile = null;
+    if(portfolio && portfolio.student_id){
+      ({ data: profile } = await sb
         .from('user_profiles')
-        .select('social_link, show_social_on_qr')
+        .select('full_name, section, year_level')
         .eq('user_id', portfolio.student_id)
-        .maybeSingle();
-      if(!qrErr && qrOpt && profile){
-        profile.social_link = qrOpt.social_link;
-        profile.show_social_on_qr = qrOpt.show_social_on_qr;
+        .maybeSingle());
+      try{
+        const { data: qrOpt, error: qrErr } = await sb
+          .from('user_profiles')
+          .select('social_link, show_social_on_qr')
+          .eq('user_id', portfolio.student_id)
+          .maybeSingle();
+        if(!qrErr && qrOpt && profile){
+          profile.social_link = qrOpt.social_link;
+          profile.show_social_on_qr = qrOpt.show_social_on_qr;
+        }
+      }catch(optErr){
+        console.info('[qr] social opt-in unavailable — showing description. Run supabase-qr-social.sql to enable contact cards.');
       }
-    }catch(optErr){
-      console.info('[qr] social opt-in unavailable — showing description. Run supabase-qr-social.sql to enable contact cards.');
     }
 
     // Reuse the same file-type helpers app.js uses everywhere else, so this
