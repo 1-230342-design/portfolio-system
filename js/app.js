@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v141';
+const APP_BUILD = 'v142';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -1173,6 +1173,8 @@ async function loadProjectsForStudent(userId){
     if(ie) throw ie;
 
     // Step 2b: get latest feedback comment per portfolio (professor's remarks on approve/reject)
+    // Keep created_at too — it's the notification timestamp for reviewer-only
+    // stars/comments, which don't change the work's status/decision time.
     let feedbackMap = {};
     try{
       const { data: feedbackRows } = await sb
@@ -1180,7 +1182,7 @@ async function loadProjectsForStudent(userId){
         .select('portfolio_id, comment, created_at')
         .in('portfolio_id', portIds)
         .order('created_at', { ascending: false });
-      (feedbackRows||[]).forEach(f=>{ if(!feedbackMap[f.portfolio_id]) feedbackMap[f.portfolio_id]=f.comment; });
+      (feedbackRows||[]).forEach(f=>{ if(!feedbackMap[f.portfolio_id]) feedbackMap[f.portfolio_id]={ comment: f.comment, at: f.created_at }; });
     }catch(fbErr){ console.error('feedback load error:', fbErr); }
 
     // Step 3: map items, joining portfolio info
@@ -1216,7 +1218,8 @@ async function loadProjectsForStudent(userId){
         finalGrade:        port.final_grade,
         gradeRemarks:      port.grade_remarks,
         gradedAt:          port.graded_at,
-        feedbackComment:   feedbackMap[port.id] || '',
+        feedbackComment:   (feedbackMap[port.id] && feedbackMap[port.id].comment) || '',
+        feedbackAt:        (feedbackMap[port.id] && feedbackMap[port.id].at) || null,
         decisionAt:        port.status==='approved' ? (port.approved_at||port.updated_at) : (port.updated_at||port.submitted_at),
         comment: ''
       };
@@ -3998,9 +4001,14 @@ async function renderNotifications(uid){
   // work under the same portfolio (e.g. two uploads in the same grading period), only
   // the FIRST approved/rejected work generated a notification card and the rest were
   // silently dropped. Every individual work now gets its own card.
+  // Reviewer-only stars/comments don't change status or decision time,
+  // so without feedbackAt they'd never bump the inbox (no new card,
+  // no unread dot). Notification time = newest of decision/feedback.
+  const notifTime = p => (p.feedbackAt && new Date(p.feedbackAt) > new Date(p.decisionAt||p.submittedAt))
+    ? p.feedbackAt : (p.decisionAt||p.submittedAt);
   const notifs = list.filter(p=>{
     return p.status==='approved' || p.status==='rejected' || p.status==='submitted';
-  }).sort((a,b)=> new Date(b.decisionAt||b.submittedAt) - new Date(a.decisionAt||a.submittedAt));
+  }).sort((a,b)=> new Date(notifTime(b)) - new Date(notifTime(a)));
 
   // Section-transfer decisions ride the same inbox (approved/declined/pending
   // cards, newest-first, sharing the unread badge + last-seen timestamp).
@@ -4033,13 +4041,13 @@ async function renderNotifications(uid){
         }
       }catch(aErr){ console.warn('[assign] notifications merge skipped:', aErr); }
       // Merge by time, transfers first on ties (decisions feel newer).
-      const merged = [...notifs.map(n => ({ _w: n, when: n.decisionAt || n.submittedAt })), ...tCards, ...aCards]
+      const merged = [...notifs.map(n => ({ _w: n, when: notifTime(n) })), ...tCards, ...aCards]
         .sort((a, b) => new Date(b.when) - new Date(a.when));
       renderNotifLists(uid, merged);
       return;
     }
   }catch(e){ console.warn('[transfer] notifications merge skipped:', e); }
-  renderNotifLists(uid, notifs.map(n => ({ _w: n, when: n.decisionAt || n.submittedAt })));
+  renderNotifLists(uid, notifs.map(n => ({ _w: n, when: notifTime(n) })));
 }
 
 function renderNotifLists(uid, merged){
@@ -4064,7 +4072,7 @@ function renderNotifLists(uid, merged){
       <div class="ni-time">${fmtDate(when)}</div>
     </div>`;
   };
-  const notifCardHtml = p => {
+  const notifCardHtml = (p, when) => {
     const isApproved = p.status==='approved';
     const isRejected = p.status==='rejected';
     const icon  = isApproved ? '✅' : isRejected ? '❌' : '📤';
@@ -4074,12 +4082,14 @@ function renderNotifLists(uid, merged){
       : isRejected ? `"${esc(p.title)}" was rejected by your professor.`
       : `"${esc(p.title)}" was uploaded and is awaiting review.`;
     if(isApproved && p.finalGrade!=null) body += ` Grade: ${p.finalGrade}/100.`;
+    if(p.rating) body += ` Rating: ${'★'.repeat(p.rating)}${'☆'.repeat(Math.max(0, 5 - p.rating))} (${p.rating}/5).`;
     if(p.feedbackComment) body += ` Comment: "${esc(p.feedbackComment)}"`;
+    const t = when || p.decisionAt || p.submittedAt;
     return `<div class="notif-item ${cls}" style="position:relative;">
-      ${unreadDot(p.decisionAt||p.submittedAt)}
+      ${unreadDot(t)}
       <div class="ni-header"><span class="ni-icon">${icon}</span><span class="ni-title">${title}</span></div>
       <div class="ni-body">${body}</div>
-      <div class="ni-time">${fmtDate(p.decisionAt||p.submittedAt)}</div>
+      <div class="ni-time">${fmtDate(t)}</div>
     </div>`;
   };
 
@@ -4097,7 +4107,7 @@ function renderNotifLists(uid, merged){
   const notifListEl = document.getElementById('s-notif-list');
   if(notifListEl){
     notifListEl.innerHTML = merged.length
-      ? merged.map(m => m._transfer ? transferCardHtml(m.req) : (m._assign ? assignCardHtml(m) : notifCardHtml(m._w))).join('')
+      ? merged.map(m => m._transfer ? transferCardHtml(m.req) : (m._assign ? assignCardHtml(m) : notifCardHtml(m._w, m.when))).join('')
       : `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No notifications yet.</div>`;
   }
 
@@ -6584,10 +6594,13 @@ async function saveFeedbackOnly(){
   const comment = document.getElementById('rev-comment').value.trim();
   if(!stars && !comment){ showToast('⚠️ Add a rating or a comment first.'); return; }
   try{
-    if(stars){
-      const { error } = await sb.from('portfolios').update({ rating: stars, updated_at: new Date().toISOString() }).eq('id', portfolioId);
-      if(error) throw error;
-    }
+    // Always bump updated_at (even comment-only) so the student's inbox
+    // treats this as new activity; feedback.created_at is the real
+    // notification timestamp after reload (see loadProjectsForStudent).
+    const upd = { updated_at: new Date().toISOString() };
+    if(stars) upd.rating = stars;
+    const { error: updErr } = await sb.from('portfolios').update(upd).eq('id', portfolioId);
+    if(updErr) throw updErr;
     if(comment){
       const { error } = await sb.from('feedback').insert([{
         portfolio_id: portfolioId,
@@ -6597,7 +6610,7 @@ async function saveFeedbackOnly(){
       if(error) throw error;
     }
     const p = _profItems.find(x=>x.portfolioId===portfolioId);
-    if(p){ if(stars) p.rating=stars; if(comment) p.comment=comment; }
+    if(p){ if(stars) p.rating=stars; if(comment){ p.comment=comment; p.feedbackAt=new Date().toISOString(); p.feedbackComment=comment; } }
     showToast('✅ Rating & comment submitted.');
   }catch(err){
     console.error('saveFeedbackOnly error:', err);
