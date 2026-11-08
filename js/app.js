@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v148';
+const APP_BUILD = 'v149';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -3183,16 +3183,14 @@ function viewPublicWork(idx){
     if(insBtn) insBtn.style.display='none';
     ph.innerHTML = '🖼️';
   }
-  // Per-work QR — encodes the description TEXT itself (not a URL), so
-  // scanning shows the description directly on the phone with no
-  // redirect, no login, and no internet needed for the page. Bigger
-  // generation (400px) + display (170px) for reliable phone scans
-  // of a laptop screen / print.
+  // Per-work QR — encodes the public ?work= URL, so scanning opens
+  // the work preview page (artwork + description) directly. Big
+  // generation (500px) + display (180px) for reliable phone scans.
   const ppvQrBox = document.getElementById('ppv-qr-box');
   const ppvQrImg = document.getElementById('ppv-qr-img');
   if(ppvQrBox && ppvQrImg && typeof buildGoQrImageUrl === 'function'){
-    window._ppvQrText = workQrText(p);
-    ppvQrImg.src = buildGoQrImageUrl(window._ppvQrText, 400);
+    window._ppvQrText = appBaseUrl() + '/?work=' + p.id;
+    ppvQrImg.src = buildGoQrImageUrl(window._ppvQrText, 500);
     ppvQrBox.style.display = 'block';
   }
   document.getElementById('publicWorkPreviewOverlay').classList.add('open');
@@ -4432,17 +4430,17 @@ function viewStudentProject(itemId){
     }
   }
 
-  // Per-work QR — encodes the description TEXT itself (title +
-  // description), so scanning shows the description directly on the
-  // phone. No URL, no redirect to landing, no public-status check
-  // needed at scan time. Shown for approved/personal works.
+  // Per-work QR — encodes the public ?work= URL, so scanning opens
+  // the work preview page (artwork + description). Only shown when
+  // the work is actually public (approved/personal + is_public),
+  // otherwise scanners would land on "not available".
   const qrBox = document.getElementById('spv-qr-box');
   const qrImg = document.getElementById('spv-qr-img');
-  const canShareQr = (p.status === 'approved' || (p.status === 'draft' && p.neverSent));
+  const canShareQr = !!p.isPublic && (p.status === 'approved' || (p.status === 'draft' && p.neverSent));
   if(qrBox && qrImg){
     if(canShareQr && typeof buildGoQrImageUrl === 'function'){
-      window._spvQrText = workQrText(p);
-      qrImg.src = buildGoQrImageUrl(window._spvQrText, 400);
+      window._spvQrText = appBaseUrl() + '/?work=' + p.id;
+      qrImg.src = buildGoQrImageUrl(window._spvQrText, 500);
       qrBox.style.display = 'block';
     } else {
       qrBox.style.display = 'none';
