@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v142';
+const APP_BUILD = 'v143';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -4085,11 +4085,17 @@ function renderNotifLists(uid, merged){
     if(p.rating) body += ` Rating: ${'★'.repeat(p.rating)}${'☆'.repeat(Math.max(0, 5 - p.rating))} (${p.rating}/5).`;
     if(p.feedbackComment) body += ` Comment: "${esc(p.feedbackComment)}"`;
     const t = when || p.decisionAt || p.submittedAt;
-    return `<div class="notif-item ${cls}" style="position:relative;">
-      ${unreadDot(t)}
-      <div class="ni-header"><span class="ni-icon">${icon}</span><span class="ni-title">${title}</span></div>
-      <div class="ni-body">${body}</div>
-      <div class="ni-time">${fmtDate(t)}</div>
+    const thumbHtml = (typeof cardThumbHtml === 'function' && p.file)
+      ? `<div onclick="event.stopPropagation();viewStudentProject('${p.id}')" title="Click to preview your work — grades, rating & comment" style="cursor:pointer;flex-shrink:0;">${cardThumbHtml(p, 'sub-thumb-frame', 'upload-thumb-placeholder', '')}</div>`
+      : '';
+    return `<div class="notif-item ${cls}" style="position:relative;display:flex;gap:14px;align-items:flex-start;">
+      ${thumbHtml}
+      <div style="flex:1;min-width:0;">
+        ${unreadDot(t)}
+        <div class="ni-header"><span class="ni-icon">${icon}</span><span class="ni-title">${title}</span></div>
+        <div class="ni-body">${body}</div>
+        <div class="ni-time">${fmtDate(t)}</div>
+      </div>
     </div>`;
   };
 
