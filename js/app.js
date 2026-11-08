@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v146';
+const APP_BUILD = 'v147';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -3128,6 +3128,8 @@ async function openPublicProfile(userId){
     });
 
     worksEl.innerHTML = _publicProfileWorks.length ? _publicProfileWorks.map((p,i)=>{
+      // No description on the card — the QR is the point: visitors scan
+      // to reveal it on the work page (see ppv QR + ?work= page).
       return `<div class="pwork-full" onclick="viewPublicWork(${i})">${pfMediaHtml(p)}
         <div class="pf-actions"><button class="pf-btn" onclick="event.stopPropagation();viewPublicWork(${i})">👁 View</button></div>
         <div class="pf-hover">
@@ -3136,7 +3138,6 @@ async function openPublicProfile(userId){
             <span class="pf-cat">${esc(p.category)}</span>
             ${p.grade != null ? `<span class="pf-grade">🏅 ${esc(String(p.grade))}/100</span>` : ''}
           </div>
-          <div class="pf-desc">${esc(p.desc||'No description')}</div>
         </div></div>`;
     }).join('') : `<div class="empty-state"><p>This student hasn't made any works public yet.</p></div>`;
   }catch(err){
