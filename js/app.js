@@ -6032,14 +6032,19 @@ function profFilterTab(el, status){
 
 function submissionItemHtml(p){
   const thumb = cardThumbHtml(p, 'sub-thumb-frame', 'sub-thumb-placeholder', '');
-  // Clickable thumbnail → straight to the Review Panel (same as 👁 Review).
-  const clickableThumb = `<div onclick="openReviewById('${p.id}')" title="Click to open Review Panel" style="cursor:pointer;">${thumb}</div>`;
   const badge = p.status==='approved'?'badge-approved':p.status==='rejected'?'badge-rejected':'badge-pending';
   // Already graded: final_grade is set — show it so the professor can tell at
   // a glance the grade is filed (and mirrored in Grade Archives) without
   // opening the item. Edit Grade reopens the same Review Panel focused on
   // the grade inputs; saving there rewrites the Archives row too.
+  // Already graded works don't need Review anymore — no Review button, and
+  // the thumbnail becomes the Edit Grade shortcut instead of Review Panel.
   const isGraded = p.finalGrade != null && p.finalGrade !== '';
+  const clickableThumb = isGraded
+    ? (isFullProfessor()
+        ? `<div onclick="openReviewForGrading('${p.id}')" title="Click to edit Grade" style="cursor:pointer;">${thumb}</div>`
+        : thumb)
+    : `<div onclick="openReviewById('${p.id}')" title="Click to open Review Panel" style="cursor:pointer;">${thumb}</div>`;
   const gradedPill = isGraded
     ? ` <span class="upload-status-badge badge-graded" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">✅ already graded · ${p.finalGrade}/100</span>`
     : '';
@@ -6051,12 +6056,14 @@ function submissionItemHtml(p){
   const deleteBtn = p.status==='rejected'
     ? `<button class="btn-cancel" style="padding:9px 12px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Delete this rejected submission" onclick="event.stopPropagation();deleteSubmissionAsProfessor('${p.id}')">🗑️</button>`
     : '';
+  // Already graded — no Review button; Edit Grade (full professors) remains.
+  const reviewBtn = isGraded ? '' : `<button class="btn-review" onclick="openReviewById('${p.id}')">👁 Review</button>`;
   return `<div class="submission-item">${clickableThumb}
     <div class="sub-info">
       <div class="sub-title">${esc(p.title)} <span class="upload-status-badge ${badge}" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">${p.status}</span>${gradedPill}</div>
       <div class="sub-meta">by ${esc(p.studentName)} · ${esc(p.section)} · ${p.gradingPeriod ? esc(p.gradingPeriod)+' · ' : ''}${fmtDate(p.submittedAt)}</div>
     </div>
-    <button class="btn-review" onclick="openReviewById('${p.id}')">👁 Review</button>
+    ${reviewBtn}
     ${editGradeBtn}
     ${deleteBtn}
   </div>`;
