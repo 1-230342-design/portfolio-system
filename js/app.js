@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v150';
+const APP_BUILD = 'v151';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -1154,20 +1154,13 @@ async function loadProjectsForStudent(userId){
   // student needing to log out and back in.
   try{
     // Step 1: get all portfolios belonging to this student
-    // (rating_by needs supabase-rating-by.sql — fall back without it so
-    // the dashboard never breaks before that one-line SQL is run.)
-    let portfolios, pe;
-    ({ data: portfolios, error: pe } = await sb
+    // (Rating attribution comes from the latest feedback row's
+    // professor — no extra column needed, so no 400 noise before
+    // any SQL is run. supabase-rating-by.sql is optional.)
+    const { data: portfolios, error: pe } = await sb
       .from('portfolios')
-      .select('id, grading_period, status, submitted_at, approved_at, updated_at, title, description, subject_id, assignment_id, rating, rating_by, creativity_score, technique_score, composition_score, final_grade, grade_remarks, graded_at, subjects(id,name,code)')
-      .eq('student_id', userId));
-    if(pe && /rating_by/i.test(pe.message || '')){
-      console.info('[rating] rating_by column missing — run supabase-rating-by.sql. Loading without attribution.');
-      ({ data: portfolios, error: pe } = await sb
-        .from('portfolios')
-        .select('id, grading_period, status, submitted_at, approved_at, updated_at, title, description, subject_id, assignment_id, rating, creativity_score, technique_score, composition_score, final_grade, grade_remarks, graded_at, subjects(id,name,code)')
-        .eq('student_id', userId));
-    }
+      .select('id, grading_period, status, submitted_at, approved_at, updated_at, title, description, subject_id, assignment_id, rating, creativity_score, technique_score, composition_score, final_grade, grade_remarks, graded_at, subjects(id,name,code)')
+      .eq('student_id', userId);
     if(pe) throw pe;
 
     if(!portfolios || portfolios.length === 0){ studentProjects[userId]=[]; return []; }
@@ -1200,7 +1193,7 @@ async function loadProjectsForStudent(userId){
       });
       // Professor names for every commenter + star rater (every professor,
       // Multimedia Arts or reviewer-only alike).
-      const profIds = [...new Set([...(feedbackRows||[]).map(f=>f.professor_id).filter(Boolean), ...(portfolios||[]).map(p=>p.rating_by).filter(Boolean)])];
+      const profIds = [...new Set((feedbackRows||[]).map(f=>f.professor_id).filter(Boolean))];
       if(profIds.length){
         const { data: profRows } = await sb.from('user_profiles').select('user_id, full_name').in('user_id', profIds);
         const profName = {}; (profRows||[]).forEach(pr=>{ profName[pr.user_id] = pr.full_name || 'Professor'; });
@@ -1236,8 +1229,7 @@ async function loadProjectsForStudent(userId){
         isPublic:      item.is_public || false,
         cloudinaryPublicId: item.cloudinary_public_id || null,
         rating:        port.rating || 0,
-        ratingByName:  (port.rating_by && window._feedbackProfNames && window._feedbackProfNames[port.rating_by])
-          || ((feedbackMap[port.id] && feedbackMap[port.id].professorId && window._feedbackProfNames && window._feedbackProfNames[feedbackMap[port.id].professorId]) || ''),
+        ratingByName:  ((feedbackMap[port.id] && feedbackMap[port.id].professorId && window._feedbackProfNames && window._feedbackProfNames[feedbackMap[port.id].professorId]) || ''),
         creativityScore:   port.creativity_score,
         techniqueScore:    port.technique_score,
         compositionScore:  port.composition_score,
@@ -2207,13 +2199,8 @@ async function updatePortfolioStatus(portfolioId, status, comment, professorId, 
   const upd = { status, updated_at: new Date().toISOString() };
   if(status === 'approved') upd.approved_at = new Date().toISOString();
   if(status === 'approved') upd.approved_by = professorId;
-  if(rating){ upd.rating = rating; upd.rating_by = professorId; }
-  let { error } = await sb.from('portfolios').update(upd).eq('id', portfolioId);
-  if(error && upd.rating_by && /rating_by/i.test(error.message || '')){
-    console.info('[rating] rating_by column missing — run supabase-rating-by.sql. Saving rating without attribution.');
-    delete upd.rating_by;
-    ({ error } = await sb.from('portfolios').update(upd).eq('id', portfolioId));
-  }
+  if(rating) upd.rating = rating;
+  const { error } = await sb.from('portfolios').update(upd).eq('id', portfolioId);
   if(error) throw error;
 
   // Insert feedback if comment provided
@@ -6728,13 +6715,8 @@ async function saveFeedbackOnly(){
     // treats this as new activity; feedback.created_at is the real
     // notification timestamp after reload (see loadProjectsForStudent).
     const upd = { updated_at: new Date().toISOString() };
-    if(stars){ upd.rating = stars; upd.rating_by = currentUser.id; }
-    let { error: updErr } = await sb.from('portfolios').update(upd).eq('id', portfolioId);
-    if(updErr && upd.rating_by && /rating_by/i.test(updErr.message || '')){
-      console.info('[rating] rating_by column missing — run supabase-rating-by.sql. Saving rating without attribution.');
-      delete upd.rating_by;
-      ({ error: updErr } = await sb.from('portfolios').update(upd).eq('id', portfolioId));
-    }
+    if(stars) upd.rating = stars;
+    const { error: updErr } = await sb.from('portfolios').update(upd).eq('id', portfolioId);
     if(updErr) throw updErr;
     if(comment){
       const { error } = await sb.from('feedback').insert([{
