@@ -15,6 +15,10 @@
   #s-public-search .landing-nav .btn-login-nav{background:#fff;color:#173f28;box-shadow:none;}
   #s-public-search .landing-nav .btn-login-nav:hover{background:#f4ecd2;box-shadow:none;}
   #s-public-search .landing-nav .search-bar-nav:hover{border-color:#b8912a;}
+  /* Rankings button in the header middle — ghost pill so the white LOGIN stays the primary action */
+  #s-public-search .btn-ranking-nav{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:'Plus Jakarta Sans',sans-serif;}
+  #s-public-search .btn-ranking-nav:hover{background:rgba(184,145,42,.25);border-color:#b8912a;}
+  @media(max-width:640px){ #s-public-search .btn-ranking-nav{padding:6px 12px;font-size:12px;} }
   /* pull the results block closer to the header (less empty air on top) */
   #s-public-search .section-page{padding-top:28px;}
   @media(max-width:768px){ #s-public-search .section-page{padding-top:20px;} }
@@ -33,6 +37,7 @@
       <span>Artfolio</span>
     </div>
     <div class="landing-nav-right">
+      <button class="btn-ranking-nav" onclick="showPublicRankings()">🏆 Rankings</button>
       <div class="search-bar-nav" style="cursor:text;">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input id="public-search-input-2" placeholder="Search Name or Student" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" style="border:none;outline:none;background:transparent;font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--text);width:100%;" onkeydown="if(event.key==='Enter')runLandingSearch('public-search-input-2')"/>
@@ -54,6 +59,15 @@
     <div id="public-search-in-section" style="display:none">
       <div class="section-title" style="margin-bottom:14px;" id="pss-section-title">—</div>
       <div class="students-list" id="public-search-section-students"></div>
+    </div>
+
+    <!-- STEP 3: Public Rankings (no login) — top students by approved public works count.
+         Public-safe: names + counts only, student numbers masked, no grades/emails. -->
+    <div id="public-rankings" style="display:none">
+      <div class="section-title" style="margin-bottom:6px;">🏆 Top Overall Students</div>
+      <p style="font-size:13px;color:var(--text3);margin-bottom:20px;">Ranked by number of approved public works. Tap a student to view their portfolio.</p>
+      <div class="rankings-podium" id="public-rankings-podium"></div>
+      <div class="students-list" id="public-rankings-list" style="margin-top:16px;"></div>
     </div>
   </div>
 </div>

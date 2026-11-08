@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v132';
+const APP_BUILD = 'v133';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -413,13 +413,17 @@ if(!window._artfolioPopAttached){
         if(st.screen === 's-student' && document.getElementById('sp-'+st.sub)) sPage(st.sub);
         else if(st.screen === 's-professor' && document.getElementById(st.sub)) pPage(st.sub);
         else if(st.screen === 's-public-search'){
-          // Step 2 (students in a section) vs Step 1 (sections list)
-          if(String(st.sub).indexOf('sec:') === 0 && _publicSearchData && _publicSearchData.length){
+          // Rankings vs Step 2 (section) vs Step 1 (sections list)
+          if(String(st.sub) === 'rankings'){
+            showPublicRankings(true);
+            _pubRankingsPushed = true;
+          }else if(String(st.sub).indexOf('sec:') === 0 && _publicSearchData && _publicSearchData.length){
             openPublicSection(String(st.sub).slice(4), true);
             _pubSecPushed = true;
           }else{
             showPublicSections();
             _pubSecPushed = false;
+            _pubRankingsPushed = false;
           }
         }
         _lastPushedKey = st.screen + '|' + st.sub;
@@ -2593,8 +2597,13 @@ function renderBrowseSections(students, sectionNames){
   const inSectionView = document.getElementById('public-search-in-section');
   if(sectionsView)  sectionsView.style.display  = 'block';
   if(inSectionView) inSectionView.style.display = 'none';
+  const rk = document.getElementById('public-rankings');
+  if(rk) rk.style.display = 'none';
+  const titleEl = document.querySelector('#s-public-search h2');
+  if(titleEl) titleEl.textContent = 'Search Results';
   currentPublicSectionName = null;
   _pubSecPushed = false; // fresh results = step 1; any pushed in-section entry is stale
+  _pubRankingsPushed = false;
 
   const resultsEl = document.getElementById('public-search-results');
   const counts = {};
@@ -2648,8 +2657,13 @@ function renderStudentResults(data){
   const inSectionView = document.getElementById('public-search-in-section');
   if(sectionsView)  sectionsView.style.display  = 'block';
   if(inSectionView) inSectionView.style.display = 'none';
+  const rk = document.getElementById('public-rankings');
+  if(rk) rk.style.display = 'none';
+  const titleEl = document.querySelector('#s-public-search h2');
+  if(titleEl) titleEl.textContent = 'Search Results';
   currentPublicSectionName = null;
   _pubSecPushed = false; // fresh results = step 1; any pushed in-section entry is stale
+  _pubRankingsPushed = false;
 
   const resultsEl = document.getElementById('public-search-results');
   if(!_publicSearchData.length){
@@ -2686,12 +2700,24 @@ function renderStudentResults(data){
 // STEP 2: students within one section, from the results already loaded
 // in Step 1 — no extra Supabase round-trip needed.
 let _pubSecPushed = false; // true while a pushed in-section history entry is on top
+let _pubRankingsPushed = false; // true while a pushed rankings entry is on top
 function showPublicSections(){
   document.getElementById('public-search-in-section').style.display = 'none';
   document.getElementById('public-search-sections').style.display = 'block';
+  const rk = document.getElementById('public-rankings');
+  if(rk) rk.style.display = 'none';
+  const titleEl = document.querySelector('#s-public-search h2');
+  if(titleEl) titleEl.textContent = 'Search Results';
   currentPublicSectionName = null;
 }
 function backFromPublicSearch(){
+  const rk = document.getElementById('public-rankings');
+  if(rk && rk.style.display !== 'none'){
+    if(_pubRankingsPushed && history.length > 1){ history.back(); return; }
+    _pubRankingsPushed = false;
+    showPublicSections();
+    return;
+  }
   const inSection = document.getElementById('public-search-in-section');
   if(inSection && inSection.style.display !== 'none'){
     // Drill-in pushed a history entry — let Chrome pop it so Back/forward stay
@@ -2701,6 +2727,131 @@ function backFromPublicSearch(){
     return;
   }
   backToLanding();
+}
+
+// ── PUBLIC RANKINGS (no login) — top students by approved public works count.
+// Public-safe by design: counts + names only (student numbers masked, no
+// grades/emails). Grades stay private unless a student opts in on their
+// own portfolio — this board never shows them. Reuses the professor
+// podium/list markup so it looks identical to Overall Rankings.
+async function showPublicRankings(skipPush){
+  const rk = document.getElementById('public-rankings');
+  if(!rk) return;
+  document.getElementById('public-search-in-section').style.display = 'none';
+  document.getElementById('public-search-sections').style.display = 'none';
+  rk.style.display = 'block';
+  const titleEl = document.querySelector('#s-public-search h2');
+  if(titleEl) titleEl.textContent = 'Top Overall Students';
+  const summary = document.getElementById('public-search-summary');
+  if(summary) summary.textContent = 'Ranked by approved public works';
+  currentPublicSectionName = null;
+  if(!skipPush && !_navSuppressPush){
+    _pubRankingsPushed = true;
+    try{ history.pushState({ screen: 's-public-search', sub: 'rankings' }, ''); }catch(e){}
+    _lastPushedKey = 's-public-search|rankings';
+  }
+  const podiumEl = document.getElementById('public-rankings-podium');
+  const listEl = document.getElementById('public-rankings-list');
+  if(podiumEl) podiumEl.innerHTML = loadingHtml('Loading rankings…');
+  if(listEl) listEl.innerHTML = '';
+  const ranked = await loadPublicRankingsData();
+  if(!ranked.length){
+    if(podiumEl) podiumEl.innerHTML = '';
+    if(listEl) listEl.innerHTML = `<div class="empty-state"><p>No approved public works yet. Rankings appear once students publish approved works.</p></div>`;
+    return;
+  }
+  const top3 = ranked.slice(0, 3);
+  const rest = ranked.slice(3);
+  const podiumOrder = [top3[1], top3[0], top3[2]];
+  if(podiumEl) podiumEl.innerHTML = podiumOrder.map((s, idx)=>{
+    if(!s) return '';
+    const place = idx===0 ? 2 : idx===1 ? 1 : 3;
+    const isFirst = place === 1;
+    const ribbonCls = place===1 ? 'rb-gold' : place===2 ? 'rb-silver' : 'rb-bronze';
+    const ribbonMedal = place===1 ? '🥇' : place===2 ? '🥈' : '🥉';
+    const ribbonHtml = `<div class="podium-ribbon-wrap"><div class="podium-ribbon ${ribbonCls}"><span class="rb-medal">${ribbonMedal}</span><span class="rb-place">${place===1?'1st':place===2?'2nd':'3rd'}</span></div></div>`;
+    return `<div class="podium-card ${isFirst?'first':''}" style="width:${isFirst?200:180}px;${isFirst?'border:2px solid var(--ink);':''}">
+      ${ribbonHtml}
+      <div class="podium-avatar">${avatarFaceHtml(s.name, s.photo)}</div>
+      <div class="podium-name">${esc(s.name)}</div>
+      <div class="podium-meta">${esc(s.maskedId||'No ID')} · ${esc(s.sectionYear)}</div>
+      <div class="podium-reviews">${s.count} Public Work${s.count===1?'':'s'}</div>
+      <button class="btn-view-podium" onclick="openPublicProfile('${s.userId}')">👁 View Portfolio</button>
+    </div>`;
+  }).join('');
+  if(listEl) listEl.innerHTML = rest.length ? rest.map((s, i)=>`
+    <div class="rank-item" style="cursor:pointer;" onclick="openPublicProfile('${s.userId}')">
+      <div class="rank-num">${i+4}</div>
+      <div class="rank-ava">${avatarFaceHtml(s.name, s.photo)}</div>
+      <div class="rank-info"><div class="rank-name">${esc(s.name)}</div><div class="rank-meta">${esc(s.maskedId||'No ID')} · ${esc(s.sectionYear)}</div></div>
+      <div style="text-align:right"><div class="rank-score">${s.count} works</div><div class="rank-reviews">public</div></div>
+      <button class="btn-view-sm" style="margin-left:12px" onclick="event.stopPropagation();openPublicProfile('${s.userId}')">👁 View</button>
+    </div>`).join('') : '';
+}
+
+async function loadPublicRankingsData(){
+  try{
+    // PRIMARY — public-safe RPC (already used by the Explore grid): counts
+    // approved + personal-public works per student, no private columns.
+    let rows = null;
+    try{
+      const { data, error } = await sb.rpc('get_recent_public_works', { p_limit: 500 });
+      if(!error && Array.isArray(data) && data.length) rows = data;
+    }catch(e){ /* fall through to direct queries */ }
+    if(!rows || !rows.length){
+      // FALLBACK — direct reads (anon-safe for is_public rows per RLS).
+      const { data: items, error } = await sb.from('portfolio_items')
+        .select('id, portfolio_id, uploaded_at')
+        .eq('is_public', true).order('uploaded_at', { ascending: false }).limit(500);
+      if(error || !items || !items.length) return [];
+      const portIds = [...new Set(items.map(i=>i.portfolio_id).filter(Boolean))];
+      const { data: ports } = await sb.from('portfolios').select('id, student_id, status, submitted_at').in('id', portIds);
+      const portMap = {}; (ports||[]).forEach(p=>{ portMap[p.id] = p; });
+      rows = items.map(i=>{
+        const p = portMap[i.portfolio_id];
+        if(!p) return null;
+        if(p.status !== 'approved' && !(p.status === 'draft' && !p.submitted_at)) return null;
+        return { student_id: p.student_id, uploaded_at: i.uploaded_at, student_name: '' };
+      }).filter(Boolean);
+      if(!rows.length) return [];
+    }
+    const byStudent = {};
+    rows.forEach(r=>{
+      const sid = r.student_id;
+      if(!sid) return;
+      if(!byStudent[sid]) byStudent[sid] = { userId: sid, count: 0, latest: r.uploaded_at || '', name: r.student_name || 'Student' };
+      byStudent[sid].count += 1;
+      if((r.uploaded_at||'') > (byStudent[sid].latest||'')) byStudent[sid].latest = r.uploaded_at;
+      if(r.student_name) byStudent[sid].name = r.student_name;
+    });
+    const ids = Object.keys(byStudent);
+    if(!ids.length) return [];
+    // Names/sections/avatars for the board (anon can read user_profiles for
+    // public search, same query browseAllStudents uses).
+    let profileMap = {};
+    try{
+      const { data: profiles } = await sb.from('user_profiles')
+        .select('user_id, full_name, student_id, section, year_level, avatar_url')
+        .in('user_id', ids);
+      (profiles||[]).forEach(pr=>{ profileMap[pr.user_id] = pr; });
+    }catch(e){ /* names from RPC still work without this */ }
+    return ids.map(sid=>{
+      const s = byStudent[sid];
+      const pr = profileMap[sid] || {};
+      return {
+        userId: sid,
+        name: pr.full_name || s.name || 'Student',
+        photo: pr.avatar_url || null,
+        maskedId: maskStudentId(pr.student_id) || '',
+        sectionYear: [pr.section, pr.year_level].filter(Boolean).join(' · ') || 'Multimedia Arts',
+        count: s.count,
+        latest: s.latest
+      };
+    }).sort((a,b)=> b.count - a.count || String(b.latest).localeCompare(String(a.latest||'')));
+  }catch(err){
+    console.error('loadPublicRankingsData error:', err);
+    return [];
+  }
 }
 // "← Back to search" on a public profile: back ONE level — to the student list
 // (step 2) it was opened from — by popping the profile history entry; popstate
