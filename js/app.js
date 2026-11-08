@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v147';
+const APP_BUILD = 'v148';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -3183,12 +3183,16 @@ function viewPublicWork(idx){
     if(insBtn) insBtn.style.display='none';
     ph.innerHTML = '🖼️';
   }
-  // Per-work QR (this preview only opens for public works, so the
-  // link always resolves). Scans open the ?work= page with description.
+  // Per-work QR — encodes the description TEXT itself (not a URL), so
+  // scanning shows the description directly on the phone with no
+  // redirect, no login, and no internet needed for the page. Bigger
+  // generation (400px) + display (170px) for reliable phone scans
+  // of a laptop screen / print.
   const ppvQrBox = document.getElementById('ppv-qr-box');
   const ppvQrImg = document.getElementById('ppv-qr-img');
   if(ppvQrBox && ppvQrImg && typeof buildGoQrImageUrl === 'function'){
-    ppvQrImg.src = buildGoQrImageUrl(appBaseUrl() + '/?work=' + p.id, 280);
+    window._ppvQrText = workQrText(p);
+    ppvQrImg.src = buildGoQrImageUrl(window._ppvQrText, 400);
     ppvQrBox.style.display = 'block';
   }
   document.getElementById('publicWorkPreviewOverlay').classList.add('open');
@@ -3200,12 +3204,22 @@ function closePublicWorkPreview(){
   currentPublicPreviewItemId = null;
 }
 
+// QR payload = the work's description as plain text, so a scan shows
+// the description directly (no webpage, no redirect, works offline).
+// Truncated at 800 chars so the QR stays sparse enough to scan reliably.
+function workQrText(p){
+  const title = ((p && p.title) || 'Untitled').trim();
+  const desc = ((p && (p.desc || p.description)) || 'No description provided.').trim();
+  const text = title + '\n\n' + desc;
+  return text.length > 800 ? text.slice(0, 797) + '...' : text;
+}
+
 // Download the public-preview QR (600px, print-friendly).
 async function downloadPublicWorkQr(){
   if(!currentPublicPreviewItemId){ showToast('⚠️ No QR to download'); return; }
   try{
-    const url = (typeof buildGoQrImageUrl === 'function')
-      ? buildGoQrImageUrl(appBaseUrl() + '/?work=' + currentPublicPreviewItemId, 600)
+    const url = (typeof buildGoQrImageUrl === 'function' && window._ppvQrText)
+      ? buildGoQrImageUrl(window._ppvQrText, 600)
       : document.getElementById('ppv-qr-img').src;
     const res = await fetch(url);
     const blob = await res.blob();
@@ -4418,17 +4432,17 @@ function viewStudentProject(itemId){
     }
   }
 
-  // Per-work QR — encodes the public ?work= link so a scan opens the
-  // public page showing this work's description. Only shown when the
-  // work is actually public (approved/personal + is_public), otherwise
-  // scanners would land on "not available".
+  // Per-work QR — encodes the description TEXT itself (title +
+  // description), so scanning shows the description directly on the
+  // phone. No URL, no redirect to landing, no public-status check
+  // needed at scan time. Shown for approved/personal works.
   const qrBox = document.getElementById('spv-qr-box');
   const qrImg = document.getElementById('spv-qr-img');
-  const canShareQr = !!p.isPublic && (p.status === 'approved' || (p.status === 'draft' && p.neverSent));
+  const canShareQr = (p.status === 'approved' || (p.status === 'draft' && p.neverSent));
   if(qrBox && qrImg){
     if(canShareQr && typeof buildGoQrImageUrl === 'function'){
-      const publicUrl = appBaseUrl() + '/?work=' + p.id;
-      qrImg.src = buildGoQrImageUrl(publicUrl, 280);
+      window._spvQrText = workQrText(p);
+      qrImg.src = buildGoQrImageUrl(window._spvQrText, 400);
       qrBox.style.display = 'block';
     } else {
       qrBox.style.display = 'none';
@@ -4445,13 +4459,12 @@ function closeStudentProjectPreview(){
   currentPreviewItemId = null;
 }
 
-// Download the per-work QR (280px is print-friendly for exhibits).
+// Download the per-work QR (600px is print-friendly for exhibits).
 async function downloadWorkQr(){
   const img = document.getElementById('spv-qr-img');
   if(!img || !img.src || !currentPreviewItemId){ showToast('⚠️ No QR to download'); return; }
   try{
-    const publicUrl = appBaseUrl() + '/?work=' + currentPreviewItemId;
-    const url = (typeof buildGoQrImageUrl === 'function') ? buildGoQrImageUrl(publicUrl, 600) : img.src;
+    const url = (typeof buildGoQrImageUrl === 'function' && window._spvQrText) ? buildGoQrImageUrl(window._spvQrText, 600) : img.src;
     const res = await fetch(url);
     const blob = await res.blob();
     const a = document.createElement('a');
