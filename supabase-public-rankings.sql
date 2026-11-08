@@ -31,24 +31,46 @@ language sql
 security definer
 set search_path = public
 as $$
+  -- Semester average = mean of per-period averages (same formula as
+  -- Grade Archives Summary + professor Overall Rankings): first
+  -- average each grading period, then average the periods that
+  -- have grades. Flat avg(final_grade) would weight periods with
+  -- more assignments heavier and disagree with the Summary table.
+  with period_avgs as (
+    select
+      p.student_id,
+      p.grading_period,
+      avg(p.final_grade) as period_avg
+    from portfolios p
+    join user_profiles pr on pr.user_id = p.student_id
+    where p.final_grade is not null
+      and coalesce(pr.show_grades_public, false) = true
+      and pr.role = 'student'
+    group by p.student_id, p.grading_period
+  ),
+  semester as (
+    select
+      student_id,
+      round(avg(period_avg)::numeric, 1) as avg_grade,
+      (select count(*) from portfolios p2
+        where p2.student_id = period_avgs.student_id and p2.final_grade is not null) as graded_count
+    from period_avgs
+    group by student_id
+  )
   select coalesce(json_agg(row_to_json(w) order by w.avg_grade desc, w.graded_count desc), '[]'::json)
     from (
       select
-        p.student_id as user_id,
+        s.student_id as user_id,
         pr.full_name as full_name,
         pr.student_id as student_number,
         pr.section as section,
         pr.year_level as year_level,
         pr.avatar_url as avatar_url,
-        round(avg(p.final_grade)::numeric, 1) as avg_grade,
-        count(p.final_grade) as graded_count
-      from portfolios p
-      join user_profiles pr on pr.user_id = p.student_id
-     where p.final_grade is not null
-       and coalesce(pr.show_grades_public, false) = true
-       and pr.role = 'student'
-     group by p.student_id, pr.full_name, pr.student_id, pr.section, pr.year_level, pr.avatar_url
-     order by avg(p.final_grade) desc, count(p.final_grade) desc
+        s.avg_grade as avg_grade,
+        s.graded_count as graded_count
+      from semester s
+      join user_profiles pr on pr.user_id = s.student_id
+     order by s.avg_grade desc, s.graded_count desc
      limit 50
     ) w;
 $$;

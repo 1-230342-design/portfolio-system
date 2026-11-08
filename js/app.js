@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v134';
+const APP_BUILD = 'v135';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -5415,8 +5415,12 @@ let profFilterStatus = 'all'; // currently active filter tab on Student Submissi
 // ══════════════════════════════════════════════════════
 let _rankingsCache = [];
 
-// Pull every rated portfolio (professor gave 1-5 stars on approve/reject) and
-// average the ratings per student to build a real leaderboard.
+// Pull every graded portfolio and build the leaderboard from the SAME
+// semester average the Grade Archives Summary shows: first average each
+// grading period (Prelim/Midterm/Pre-Finals/Finals), then average the
+// periods that have grades. Averaging all submissions flat would weight
+// periods with more assignments heavier and make Summary vs Rankings
+// disagree for the same student.
 async function loadOverallRankings(){
   // NOTE: this used to rank by the star "rating" set in the Review Decision panel.
   // But that star click is a separate, easy-to-skip step from the actual grading
@@ -5433,7 +5437,7 @@ async function loadOverallRankings(){
   // saveGrade() was writing final_grade correctly all along. Fetch separately instead.
   const { data, error } = await sb
     .from('portfolios')
-    .select('student_id, final_grade')
+    .select('student_id, grading_period, final_grade')
     .not('final_grade', 'is', null);
   if(error){ console.error('loadOverallRankings error:', error); return []; }
 
@@ -5448,26 +5452,33 @@ async function loadOverallRankings(){
     (profiles||[]).forEach(pr=>{ profileMap[pr.user_id] = pr; });
   }
 
+  // Period-mean semester average (matches Grade Archives Summary):
+  // per-period avg → mean of the periods that have grades.
   const byStudent = {};
   (data||[]).forEach(row=>{
     const sid = row.student_id;
-    if(!byStudent[sid]){
-      byStudent[sid] = { userId: sid, profile: profileMap[sid] || {}, sum: 0, count: 0 };
-    }
-    byStudent[sid].sum   += row.final_grade;
+    if(!byStudent[sid]) byStudent[sid] = { userId: sid, profile: profileMap[sid] || {}, periods: {}, count: 0 };
+    const period = row.grading_period || 'unperioded';
+    (byStudent[sid].periods[period] = byStudent[sid].periods[period] || []).push(Number(row.final_grade));
     byStudent[sid].count += 1;
   });
 
-  const list = Object.values(byStudent).map(s=>({
-    userId:     s.userId,
-    name:       s.profile.full_name || 'Student',
-    photo:      s.profile.avatar_url || null,
-    studentId:  s.profile.student_id || '',
-    section:    s.profile.section || '',
-    sectionYear: [s.profile.section, s.profile.year_level].filter(Boolean).join(' · ') || 'Year & Section',
-    avgGrade:   s.sum / s.count,
-    graded:     s.count
-  }));
+  const list = Object.values(byStudent).map(s=>{
+    const periodAvgs = Object.values(s.periods)
+      .map(arr => arr.reduce((a,b)=>a+b,0) / arr.length)
+      .filter(v => !Number.isNaN(v));
+    const avg = periodAvgs.length ? periodAvgs.reduce((a,b)=>a+b,0) / periodAvgs.length : 0;
+    return {
+      userId:     s.userId,
+      name:       s.profile.full_name || 'Student',
+      photo:      s.profile.avatar_url || null,
+      studentId:  s.profile.student_id || '',
+      section:    s.profile.section || '',
+      sectionYear: [s.profile.section, s.profile.year_level].filter(Boolean).join(' · ') || 'Year & Section',
+      avgGrade:   +avg.toFixed(1),
+      graded:     s.count
+    };
+  });
 
   list.sort((a,b)=> b.avgGrade - a.avgGrade || b.graded - a.graded);
   return list;
