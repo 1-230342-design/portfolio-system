@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v133';
+const APP_BUILD = 'v134';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -2743,7 +2743,7 @@ async function showPublicRankings(skipPush){
   const titleEl = document.querySelector('#s-public-search h2');
   if(titleEl) titleEl.textContent = 'Top Overall Students';
   const summary = document.getElementById('public-search-summary');
-  if(summary) summary.textContent = 'Ranked by approved public works';
+  if(summary) summary.textContent = 'Ranked by average grade (students who opted in to show grades publicly)';
   currentPublicSectionName = null;
   if(!skipPush && !_navSuppressPush){
     _pubRankingsPushed = true;
@@ -2757,9 +2757,14 @@ async function showPublicRankings(skipPush){
   const ranked = await loadPublicRankingsData();
   if(!ranked.length){
     if(podiumEl) podiumEl.innerHTML = '';
-    if(listEl) listEl.innerHTML = `<div class="empty-state"><p>No approved public works yet. Rankings appear once students publish approved works.</p></div>`;
+    if(listEl) listEl.innerHTML = `<div class="empty-state"><p>No ranked students yet. The board fills once professors save grades for students who opted in to show grades publicly.</p></div>`;
     return;
   }
+  const byGrade = !!ranked[0] && ranked[0].byGrade;
+  const subtitle = rk.querySelector('p');
+  if(subtitle) subtitle.textContent = byGrade
+    ? 'Ranked by average grade — same board as the professor view. Tap a student to view their portfolio.'
+    : 'Ranked by number of approved public works (grade board needs the get_public_rankings SQL — see supabase-public-rankings.sql). Tap a student to view their portfolio.';
   const top3 = ranked.slice(0, 3);
   const rest = ranked.slice(3);
   const podiumOrder = [top3[1], top3[0], top3[2]];
@@ -2770,12 +2775,15 @@ async function showPublicRankings(skipPush){
     const ribbonCls = place===1 ? 'rb-gold' : place===2 ? 'rb-silver' : 'rb-bronze';
     const ribbonMedal = place===1 ? '🥇' : place===2 ? '🥈' : '🥉';
     const ribbonHtml = `<div class="podium-ribbon-wrap"><div class="podium-ribbon ${ribbonCls}"><span class="rb-medal">${ribbonMedal}</span><span class="rb-place">${place===1?'1st':place===2?'2nd':'3rd'}</span></div></div>`;
+    const scoreHtml = byGrade
+      ? `<div class="podium-stars"><span class="podium-score">${Number(s.avgGrade).toFixed(1)}/100</span></div><div class="podium-reviews">${s.graded} Graded Work${s.graded===1?'':'s'}</div>`
+      : `<div class="podium-reviews">${s.count} Public Work${s.count===1?'':'s'}</div>`;
     return `<div class="podium-card ${isFirst?'first':''}" style="width:${isFirst?200:180}px;${isFirst?'border:2px solid var(--ink);':''}">
       ${ribbonHtml}
       <div class="podium-avatar">${avatarFaceHtml(s.name, s.photo)}</div>
       <div class="podium-name">${esc(s.name)}</div>
       <div class="podium-meta">${esc(s.maskedId||'No ID')} · ${esc(s.sectionYear)}</div>
-      <div class="podium-reviews">${s.count} Public Work${s.count===1?'':'s'}</div>
+      ${scoreHtml}
       <button class="btn-view-podium" onclick="openPublicProfile('${s.userId}')">👁 View Portfolio</button>
     </div>`;
   }).join('');
@@ -2784,22 +2792,41 @@ async function showPublicRankings(skipPush){
       <div class="rank-num">${i+4}</div>
       <div class="rank-ava">${avatarFaceHtml(s.name, s.photo)}</div>
       <div class="rank-info"><div class="rank-name">${esc(s.name)}</div><div class="rank-meta">${esc(s.maskedId||'No ID')} · ${esc(s.sectionYear)}</div></div>
-      <div style="text-align:right"><div class="rank-score">${s.count} works</div><div class="rank-reviews">public</div></div>
+      <div style="text-align:right">${byGrade ? `<div class="rank-score">${Number(s.avgGrade).toFixed(1)}/100</div><div class="rank-reviews">${s.graded} Graded Work${s.graded===1?'':'s'}</div>` : `<div class="rank-score">${s.count} works</div><div class="rank-reviews">public</div>`}</div>
       <button class="btn-view-sm" style="margin-left:12px" onclick="event.stopPropagation();openPublicProfile('${s.userId}')">👁 View</button>
     </div>`).join('') : '';
 }
 
 async function loadPublicRankingsData(){
   try{
-    // PRIMARY — public-safe RPC (already used by the Explore grid): counts
-    // approved + personal-public works per student, no private columns.
+    // PRIMARY — grade-based (matches the professor board): average
+    // final_grade per student, opt-in only. Requires
+    // get_public_rankings() (supabase-public-rankings.sql) — if it
+    // hasn't been run yet, fall through to the works-count board
+    // below so the page is never empty.
+    try{
+      const { data, error } = await sb.rpc('get_public_rankings');
+      if(!error && Array.isArray(data) && data.length){
+        return data.map(r=>({
+          userId: r.user_id,
+          name: r.full_name || 'Student',
+          photo: r.avatar_url || null,
+          maskedId: maskStudentId(r.student_number) || '',
+          sectionYear: [r.section, r.year_level].filter(Boolean).join(' · ') || 'Multimedia Arts',
+          avgGrade: Number(r.avg_grade),
+          graded: Number(r.graded_count) || 0,
+          byGrade: true
+        })).sort((a,b)=> b.avgGrade - a.avgGrade || b.graded - a.graded);
+      }
+    }catch(e){ /* RPC not installed yet — fall through */ }
+    // FALLBACK — counts approved + personal-public works per student via
+    // the public-safe RPC (already used by the Explore grid).
     let rows = null;
     try{
       const { data, error } = await sb.rpc('get_recent_public_works', { p_limit: 500 });
       if(!error && Array.isArray(data) && data.length) rows = data;
     }catch(e){ /* fall through to direct queries */ }
     if(!rows || !rows.length){
-      // FALLBACK — direct reads (anon-safe for is_public rows per RLS).
       const { data: items, error } = await sb.from('portfolio_items')
         .select('id, portfolio_id, uploaded_at')
         .eq('is_public', true).order('uploaded_at', { ascending: false }).limit(500);
@@ -2826,8 +2853,6 @@ async function loadPublicRankingsData(){
     });
     const ids = Object.keys(byStudent);
     if(!ids.length) return [];
-    // Names/sections/avatars for the board (anon can read user_profiles for
-    // public search, same query browseAllStudents uses).
     let profileMap = {};
     try{
       const { data: profiles } = await sb.from('user_profiles')
@@ -2845,7 +2870,8 @@ async function loadPublicRankingsData(){
         maskedId: maskStudentId(pr.student_id) || '',
         sectionYear: [pr.section, pr.year_level].filter(Boolean).join(' · ') || 'Multimedia Arts',
         count: s.count,
-        latest: s.latest
+        latest: s.latest,
+        byGrade: false
       };
     }).sort((a,b)=> b.count - a.count || String(b.latest).localeCompare(String(a.latest||'')));
   }catch(err){
