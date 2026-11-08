@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v151';
+const APP_BUILD = 'v152';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -362,7 +362,7 @@ function cardThumbHtml(p, frameCls, phCls, phStyle){
   if(p && p.file && (fileIsImage(p.file) || fileIsVideo(p.file))){
     const isVid = fileIsVideo(p.file);
     const bg  = isVid
-      ? `<video class="thumb-ambient-bg" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline style="${bgStyle}"></video>`
+      ? `<video class="thumb-ambient-bg" src="${esc(p.file.dataUrl)}" preload="none" muted playsinline style="${bgStyle}"></video>`
       : `<img class="thumb-ambient-bg" src="${esc(p.file.dataUrl)}" alt="" aria-hidden="true" style="${bgStyle}"/>`;
     const main = isVid
       ? `<video class="thumb-ambient-main" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline disablepictureinpicture style="${mainStyle}pointer-events:none;" oncontextmenu="return false;"></video>`
@@ -2766,7 +2766,7 @@ async function showPublicRankings(skipPush){
   const titleEl = document.querySelector('#s-public-search h2');
   if(titleEl) titleEl.textContent = 'Top Overall Students';
   const summary = document.getElementById('public-search-summary');
-  if(summary) summary.textContent = 'Ranked by average grade (students who opted in to show grades publicly)';
+  if(summary) summary.textContent = '';
   currentPublicSectionName = null;
   if(!skipPush && !_navSuppressPush){
     _pubRankingsPushed = true;
