@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v143';
+const APP_BUILD = 'v144';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -1154,10 +1154,20 @@ async function loadProjectsForStudent(userId){
   // student needing to log out and back in.
   try{
     // Step 1: get all portfolios belonging to this student
-    const { data: portfolios, error: pe } = await sb
+    // (rating_by needs supabase-rating-by.sql — fall back without it so
+    // the dashboard never breaks before that one-line SQL is run.)
+    let portfolios, pe;
+    ({ data: portfolios, error: pe } = await sb
       .from('portfolios')
-      .select('id, grading_period, status, submitted_at, approved_at, updated_at, title, description, subject_id, assignment_id, rating, creativity_score, technique_score, composition_score, final_grade, grade_remarks, graded_at, subjects(id,name,code)')
-      .eq('student_id', userId);
+      .select('id, grading_period, status, submitted_at, approved_at, updated_at, title, description, subject_id, assignment_id, rating, rating_by, creativity_score, technique_score, composition_score, final_grade, grade_remarks, graded_at, subjects(id,name,code)')
+      .eq('student_id', userId));
+    if(pe && /rating_by/i.test(pe.message || '')){
+      console.info('[rating] rating_by column missing — run supabase-rating-by.sql. Loading without attribution.');
+      ({ data: portfolios, error: pe } = await sb
+        .from('portfolios')
+        .select('id, grading_period, status, submitted_at, approved_at, updated_at, title, description, subject_id, assignment_id, rating, creativity_score, technique_score, composition_score, final_grade, grade_remarks, graded_at, subjects(id,name,code)')
+        .eq('student_id', userId));
+    }
     if(pe) throw pe;
 
     if(!portfolios || portfolios.length === 0){ studentProjects[userId]=[]; return []; }
@@ -1172,17 +1182,31 @@ async function loadProjectsForStudent(userId){
       .order('uploaded_at', { ascending: false });
     if(ie) throw ie;
 
-    // Step 2b: get latest feedback comment per portfolio (professor's remarks on approve/reject)
-    // Keep created_at too — it's the notification timestamp for reviewer-only
-    // stars/comments, which don't change the work's status/decision time.
-    let feedbackMap = {};
+    // Step 2b: ALL feedback comments per portfolio (every professor's
+    // remark, with names) — newest first. Latest kept separately as
+    // feedbackComment for notifications/back-compat. created_at is also
+    // the notification timestamp for reviewer-only stars/comments,
+    // which don't change the work's status/decision time.
+    let feedbackMap = {}, feedbackListMap = {};
     try{
       const { data: feedbackRows } = await sb
         .from('feedback')
-        .select('portfolio_id, comment, created_at')
+        .select('portfolio_id, professor_id, comment, created_at')
         .in('portfolio_id', portIds)
         .order('created_at', { ascending: false });
-      (feedbackRows||[]).forEach(f=>{ if(!feedbackMap[f.portfolio_id]) feedbackMap[f.portfolio_id]={ comment: f.comment, at: f.created_at }; });
+      (feedbackRows||[]).forEach(f=>{
+        (feedbackListMap[f.portfolio_id] = feedbackListMap[f.portfolio_id] || []).push(f);
+        if(!feedbackMap[f.portfolio_id]) feedbackMap[f.portfolio_id]={ comment: f.comment, at: f.created_at, professorId: f.professor_id };
+      });
+      // Professor names for every commenter + star rater (every professor,
+      // Multimedia Arts or reviewer-only alike).
+      const profIds = [...new Set([...(feedbackRows||[]).map(f=>f.professor_id).filter(Boolean), ...(portfolios||[]).map(p=>p.rating_by).filter(Boolean)])];
+      if(profIds.length){
+        const { data: profRows } = await sb.from('user_profiles').select('user_id, full_name').in('user_id', profIds);
+        const profName = {}; (profRows||[]).forEach(pr=>{ profName[pr.user_id] = pr.full_name || 'Professor'; });
+        window._feedbackProfNames = profName;
+        Object.values(feedbackListMap).forEach(list=>list.forEach(f=>{ f.professorName = profName[f.professor_id] || 'Professor'; }));
+      }
     }catch(fbErr){ console.error('feedback load error:', fbErr); }
 
     // Step 3: map items, joining portfolio info
@@ -1212,6 +1236,8 @@ async function loadProjectsForStudent(userId){
         isPublic:      item.is_public || false,
         cloudinaryPublicId: item.cloudinary_public_id || null,
         rating:        port.rating || 0,
+        ratingByName:  (port.rating_by && window._feedbackProfNames && window._feedbackProfNames[port.rating_by])
+          || ((feedbackMap[port.id] && feedbackMap[port.id].professorId && window._feedbackProfNames && window._feedbackProfNames[feedbackMap[port.id].professorId]) || ''),
         creativityScore:   port.creativity_score,
         techniqueScore:    port.technique_score,
         compositionScore:  port.composition_score,
@@ -1219,6 +1245,8 @@ async function loadProjectsForStudent(userId){
         gradeRemarks:      port.grade_remarks,
         gradedAt:          port.graded_at,
         feedbackComment:   (feedbackMap[port.id] && feedbackMap[port.id].comment) || '',
+        feedbackByName:    (feedbackMap[port.id] && feedbackMap[port.id].professorId && window._feedbackProfNames && window._feedbackProfNames[feedbackMap[port.id].professorId]) || '',
+        feedbackList:      (feedbackListMap[port.id] || []).map(f=>({ professorName: f.professorName || 'Professor', comment: f.comment, at: f.created_at })),
         feedbackAt:        (feedbackMap[port.id] && feedbackMap[port.id].at) || null,
         decisionAt:        port.status==='approved' ? (port.approved_at||port.updated_at) : (port.updated_at||port.submitted_at),
         comment: ''
@@ -2179,8 +2207,13 @@ async function updatePortfolioStatus(portfolioId, status, comment, professorId, 
   const upd = { status, updated_at: new Date().toISOString() };
   if(status === 'approved') upd.approved_at = new Date().toISOString();
   if(status === 'approved') upd.approved_by = professorId;
-  if(rating) upd.rating = rating;
-  const { error } = await sb.from('portfolios').update(upd).eq('id', portfolioId);
+  if(rating){ upd.rating = rating; upd.rating_by = professorId; }
+  let { error } = await sb.from('portfolios').update(upd).eq('id', portfolioId);
+  if(error && upd.rating_by && /rating_by/i.test(error.message || '')){
+    console.info('[rating] rating_by column missing — run supabase-rating-by.sql. Saving rating without attribution.');
+    delete upd.rating_by;
+    ({ error } = await sb.from('portfolios').update(upd).eq('id', portfolioId));
+  }
   if(error) throw error;
 
   // Insert feedback if comment provided
@@ -4082,8 +4115,8 @@ function renderNotifLists(uid, merged){
       : isRejected ? `"${esc(p.title)}" was rejected by your professor.`
       : `"${esc(p.title)}" was uploaded and is awaiting review.`;
     if(isApproved && p.finalGrade!=null) body += ` Grade: ${p.finalGrade}/100.`;
-    if(p.rating) body += ` Rating: ${'★'.repeat(p.rating)}${'☆'.repeat(Math.max(0, 5 - p.rating))} (${p.rating}/5).`;
-    if(p.feedbackComment) body += ` Comment: "${esc(p.feedbackComment)}"`;
+    if(p.rating) body += ` Rating: ${'★'.repeat(p.rating)}${'☆'.repeat(Math.max(0, 5 - p.rating))} (${p.rating}/5)${p.ratingByName ? ' by ' + esc(p.ratingByName) : ''}.`;
+    if(p.feedbackComment) body += ` Comment${p.feedbackByName ? ' by ' + esc(p.feedbackByName) : ''}: "${esc(p.feedbackComment)}"`;
     const t = when || p.decisionAt || p.submittedAt;
     const thumbHtml = (typeof cardThumbHtml === 'function' && p.file)
       ? `<div onclick="event.stopPropagation();viewStudentProject('${p.id}')" title="Click to preview your work — grades, rating & comment" style="cursor:pointer;flex-shrink:0;">${cardThumbHtml(p, 'sub-thumb-frame', 'upload-thumb-placeholder', '')}</div>`
@@ -4282,10 +4315,11 @@ function viewStudentProject(itemId){
     if(insBtn) insBtn.style.display='none';
   }
 
-  // Star rating the professor left when approving/rejecting
+  // Star rating the professor left when approving/rejecting — every
+  // professor (Multimedia Arts or reviewer-only) is named, newest rater wins.
   const starsBox = document.getElementById('spv-stars-box');
   if(p.rating > 0){
-    document.getElementById('spv-stars').textContent = '★'.repeat(p.rating) + '☆'.repeat(5-p.rating);
+    document.getElementById('spv-stars').textContent = '★'.repeat(p.rating) + '☆'.repeat(5-p.rating) + ` (${p.rating}/5)` + (p.ratingByName ? ` — by ${p.ratingByName}` : '');
     starsBox.style.display = 'block';
   } else {
     starsBox.style.display = 'none';
@@ -4306,10 +4340,17 @@ function viewStudentProject(itemId){
     gradeBox.style.display = 'none';
   }
 
-  // Professor's comment left on approval/rejection
+  // Every professor's comment (Multimedia Arts + reviewer-only alike),
+  // newest first, each with its author's name and date.
   const commentBox = document.getElementById('spv-comment-box');
-  if(p.feedbackComment){
-    document.getElementById('spv-comment').textContent = '"'+p.feedbackComment+'"';
+  const commentEl = document.getElementById('spv-comment');
+  if(p.feedbackList && p.feedbackList.length){
+    commentEl.innerHTML = p.feedbackList.map(f =>
+      `<div style="margin-bottom:8px;"><strong style="color:var(--ink);">${esc(f.professorName || 'Professor')}</strong>${f.at ? `<span style="color:var(--text3);font-size:11px;"> · ${fmtDate(f.at)}</span>` : ''}<br>"${esc(f.comment || '')}"</div>`
+    ).join('');
+    commentBox.style.display = 'block';
+  } else if(p.feedbackComment){
+    commentEl.textContent = (p.feedbackByName ? p.feedbackByName + ': ' : '') + '"'+p.feedbackComment+'"';
     commentBox.style.display = 'block';
   } else {
     commentBox.style.display = 'none';
@@ -4532,7 +4573,10 @@ function renderProjectsPage(uid){
     const feedbackHtml = (p.status==='approved' && (p.finalGrade!=null || p.feedbackComment))
       ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
           ${p.finalGrade!=null ? `<div style="font-size:13px;font-weight:700;color:var(--ink);">Grade: ${p.finalGrade}/100</div>` : ''}
-          ${p.feedbackComment ? `<div style="font-size:12px;color:var(--text2);font-style:italic;margin-top:4px;">"${esc(p.feedbackComment)}"</div>` : ''}
+          ${p.rating ? `<div style="font-size:12px;color:var(--text2);margin-top:2px;">Rating: ${'★'.repeat(p.rating)}${'☆'.repeat(Math.max(0,5-p.rating))} (${p.rating}/5)${p.ratingByName ? ' — by ' + esc(p.ratingByName) : ''}</div>` : ''}
+          ${p.feedbackList && p.feedbackList.length
+            ? p.feedbackList.map(f=>`<div style="font-size:12px;color:var(--text2);font-style:italic;margin-top:4px;"><strong style="font-style:normal;color:var(--ink);">${esc(f.professorName || 'Professor')}:</strong> "${esc(f.comment || '')}"</div>`).join('')
+            : (p.feedbackComment ? `<div style="font-size:12px;color:var(--text2);font-style:italic;margin-top:4px;">${p.feedbackByName ? '<strong style="font-style:normal;color:var(--ink);">' + esc(p.feedbackByName) + ':</strong> ' : ''}"${esc(p.feedbackComment)}"</div>` : '')}
         </div>`
       : '';
     const publicToggleHtml = p.status==='approved'
@@ -4543,7 +4587,7 @@ function renderProjectsPage(uid){
     const downloadBtnHtml = `<button class="btn-download" onclick="event.stopPropagation();downloadWork('${p.id}')"><span class="dl-ico">⬇</span> Download</button>`;
     const rejectedHtml = (p.status==='rejected' && p.feedbackComment)
       ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-          <div style="font-size:12px;color:var(--red);font-weight:600;">Professor's Comment:</div>
+          <div style="font-size:12px;color:var(--red);font-weight:600;">Professor's Comment${p.feedbackByName ? ' — ' + esc(p.feedbackByName) : ''}:</div>
           <div style="font-size:12px;color:var(--text2);font-style:italic;margin-top:2px;">"${esc(p.feedbackComment)}"</div>
         </div>`
       : '';
@@ -6604,8 +6648,13 @@ async function saveFeedbackOnly(){
     // treats this as new activity; feedback.created_at is the real
     // notification timestamp after reload (see loadProjectsForStudent).
     const upd = { updated_at: new Date().toISOString() };
-    if(stars) upd.rating = stars;
-    const { error: updErr } = await sb.from('portfolios').update(upd).eq('id', portfolioId);
+    if(stars){ upd.rating = stars; upd.rating_by = currentUser.id; }
+    let { error: updErr } = await sb.from('portfolios').update(upd).eq('id', portfolioId);
+    if(updErr && upd.rating_by && /rating_by/i.test(updErr.message || '')){
+      console.info('[rating] rating_by column missing — run supabase-rating-by.sql. Saving rating without attribution.');
+      delete upd.rating_by;
+      ({ error: updErr } = await sb.from('portfolios').update(upd).eq('id', portfolioId));
+    }
     if(updErr) throw updErr;
     if(comment){
       const { error } = await sb.from('feedback').insert([{
