@@ -512,6 +512,7 @@ async function toggleAssignmentSubmissions(assignmentId){
 
 // ── Create-assignment modal (professor) ──
 function openCreateAssignmentModal(){
+  if(typeof isFullProfessor === 'function' && !isFullProfessor()){ showToast('🔒 Only Multimedia Arts professors can create assignments.'); return; }
   document.getElementById('ca-title').value = '';
   document.getElementById('ca-instructions').value = '';
   document.getElementById('ca-due').value = '';
@@ -524,6 +525,7 @@ function closeCreateAssignmentModal(){
 
 async function createAssignment(){
   if(!currentUser){ showToast('⚠️ Please sign in first'); return; }
+  if(typeof isFullProfessor === 'function' && !isFullProfessor()){ showToast('🔒 Only Multimedia Arts professors can create assignments.'); return; }
   const title         = document.getElementById('ca-title').value.trim();
   const instructions  = document.getElementById('ca-instructions').value.trim();
   const gradingPeriod = document.getElementById('ca-period').value || null;
@@ -564,6 +566,7 @@ function toLocalInputValue(d){
 }
 
 function reopenAssignment(id){
+  if(typeof isFullProfessor === 'function' && !isFullProfessor()){ showToast('🔒 Only Multimedia Arts professors can reopen assignments.'); return; }
   const a = _assignmentsCache.find(x => x.id === id);
   if(!a){ showToast('⚠️ Assignment not found'); return; }
   if(!currentUser || a.professor_id !== currentUser.id){ showToast('⚠️ Only the professor who posted this can reopen it.'); return; }
@@ -604,6 +607,7 @@ async function confirmReopenAssignment(){
 }
 
 async function deleteAssignment(id){
+  if(typeof isFullProfessor === 'function' && !isFullProfessor()){ showToast('🔒 Only Multimedia Arts professors can delete assignments.'); return; }
   if(!confirm('Delete this assignment? This ALSO permanently deletes every student submission attached to it — they will disappear from the students\' Classwork, My Projects, and grades. This cannot be undone.')) return;
   try{
     showToast('🗑️ Deleting assignment and its submissions…');

@@ -22,29 +22,29 @@
         </div>
       </div>
       <nav class="sidebar-nav">
-        <a class="snav-item active" onclick="pPage('p-dashboard')">
+        <a class="snav-item active" id="nav-p-dashboard" onclick="pPage('p-dashboard')">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           Dashboard
         </a>
-        <a class="snav-item" onclick="pPage('p-submissions')">
+        <a class="snav-item" id="nav-p-submissions" onclick="pPage('p-submissions')">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           Artworks for Review
           <span class="nav-badge" id="psub-badge"></span>
         </a>
-        <a class="snav-item" onclick="pPage('p-assignments')">
+        <a class="snav-item" id="nav-p-assignments" onclick="pPage('p-assignments')">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>
           Assignments
         </a>
-        <a class="snav-item" onclick="pPage('p-students')">
+        <a class="snav-item" id="nav-p-students" onclick="pPage('p-students')">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Students
           <span class="nav-badge" id="pstud-badge"></span>
         </a>
-        <a class="snav-item" onclick="pPage('p-rankings')">
+        <a class="snav-item" id="nav-p-rankings" onclick="pPage('p-rankings')">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 20 18 10"/><polyline points="12 20 12 4"/><polyline points="6 20 6 14"/></svg>
           Overall Rankings
         </a>
-        <a class="snav-item" onclick="pPage('p-archives')">
+        <a class="snav-item" id="nav-p-archives" onclick="pPage('p-archives')">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><line x1="10" y1="13" x2="14" y2="13"/></svg>
           Grade Archives
         </a>
@@ -161,7 +161,7 @@
 
       <!-- REVIEW PANEL -->
       <div id="p-review" style="display:none">
-        <div style="margin-bottom:20px;cursor:pointer;color:var(--text3);font-size:13px" onclick="pPage('p-submissions')">← Back to Artworks for Review</div>
+        <div id="rev-back-link" style="margin-bottom:20px;cursor:pointer;color:var(--text3);font-size:13px" onclick="pPage('p-submissions')">← Back to Artworks for Review</div>
         <div class="review-panel">
           <div class="review-panel-title">Review Panel</div>
 

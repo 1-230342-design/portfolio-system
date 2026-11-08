@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v139';
+const APP_BUILD = 'v140';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -4934,6 +4934,15 @@ function switchToProjectsTab(tabId){
 //  PROFESSOR PAGES
 // ══════════════════════════════════════════════════════
 function pPage(page){
+  // Reviewer-only professors: Assignments / Grade Archives / Artworks
+  // queue are hidden in the sidebar AND blocked here (direct clicks,
+  // Back buttons, deep links). Stars/comments remain via Dashboard
+  // Recent Submissions + Students → works → Review Panel.
+  if(typeof isFullProfessor === 'function' && !isFullProfessor()
+     && (page === 'p-assignments' || page === 'p-archives' || page === 'p-submissions')){
+    showToast('🔒 Reviewer Only access: Dashboard, Students, and Overall Rankings only.');
+    page = 'p-dashboard';
+  }
   document.querySelectorAll('#s-professor .main-content > div').forEach(d=>d.style.display='none');
   document.getElementById(page).style.display='block';
   document.querySelectorAll('#s-professor .snav-item').forEach(a=>{
@@ -6156,6 +6165,23 @@ function applyProfessorPermissions(){
   if(note)        note.style.display        = full ? 'none' : 'flex';
   if(roleEl && currentProfile && (currentProfile.role==='professor'||currentProfile.role==='admin')){
     roleEl.textContent = full ? 'Professor' : 'Professor · Reviewer Only';
+  }
+  // Reviewer-only (non-Multimedia Arts) professors: Dashboard + Students +
+  // Overall Rankings only. No Assignments (can't create/delete/reopen),
+  // no Grade Archives (can't view/download/freeze grades), and no
+  // Artworks queue nav — stars/comments are still reachable from
+  // Dashboard Recent Submissions and Students → works → Review Panel.
+  const navShow = (id, show)=>{ const el = document.getElementById(id); if(el) el.style.display = show ? '' : 'none'; };
+  navShow('nav-p-dashboard', true);
+  navShow('nav-p-students', true);
+  navShow('nav-p-rankings', true);
+  navShow('nav-p-submissions', full);
+  navShow('nav-p-assignments', full);
+  navShow('nav-p-archives', full);
+  const revBack = document.getElementById('rev-back-link');
+  if(revBack){
+    revBack.setAttribute('onclick', full ? "pPage('p-submissions')" : "pPage('p-dashboard')");
+    revBack.textContent = full ? '← Back to Artworks for Review' : '← Back to Dashboard';
   }
 }
 
