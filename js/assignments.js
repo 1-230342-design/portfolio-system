@@ -473,6 +473,7 @@ async function renderProfAssignmentsPage(){
   el.innerHTML = assignments.map(a => {
     const c = counts[a.id] || { total: 0, submitted: 0 };
     const mine = a.professor_id === (currentUser && currentUser.id);
+    const pastDue = a.due_date && new Date(a.due_date) <= new Date();
     return `<div class="assignment-card">
       <div class="assignment-card-top">
         <div>
@@ -480,6 +481,7 @@ async function renderProfAssignmentsPage(){
           <div class="assignment-meta">${a.grading_period ? esc(a.grading_period) : ''}${a.due_date ? (a.grading_period ? ' &middot; ' : '')+'Due '+fmtDateTime(a.due_date) : ''}</div>
         </div>
         <div style="display:flex;gap:8px;flex-shrink:0;">
+          ${mine && pastDue ? `<button class="btn-outline" style="padding:8px 12px;margin:0;" title="Reopen this assignment for late students (new due date 7 days from now)" onclick="reopenAssignment('${a.id}')">🔓 Open Again</button>` : ''}
           <button class="btn-view-sm" onclick="toggleAssignmentSubmissions('${a.id}')">👁 ${c.total} Submission${c.total===1?'':'s'}</button>
           ${mine ? `<button class="btn-cancel" style="padding:8px 12px;" onclick="deleteAssignment('${a.id}')">🗑️</button>` : ''}
         </div>
@@ -544,6 +546,30 @@ async function createAssignment(){
   }catch(err){
     console.error('createAssignment error:', err);
     showToast('❌ Error: '+err.message);
+  }
+}
+
+// ── REOPEN (professor): extend a past-due assignment so late students
+// can still pass their work. Extending due_date is enough — the student
+// UI lock and the DB restrictive policy both compare due_date to now(),
+// so a future due date reopens both instantly. Existing submissions,
+// grades, and similarity logs are untouched; students who already have
+// an approved/graded work still can't resubmit (that lock stays).
+async function reopenAssignment(id){
+  const a = _assignmentsCache.find(x => x.id === id);
+  if(!a){ showToast('⚠️ Assignment not found'); return; }
+  if(!currentUser || a.professor_id !== currentUser.id){ showToast('⚠️ Only the professor who posted this can reopen it.'); return; }
+  const newDue = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  if(!confirm(`Reopen "${a.title}" for late students?\n\nNew due date: ${fmtDateTime(newDue.toISOString())} (7 days from now)\n\nExisting submissions and grades stay untouched. Students who haven't submitted yet (or were rejected/withdrawn) can attach work again.`)) return;
+  showToast('🔓 Reopening…');
+  try{
+    const { error } = await sb.from('assignments').update({ due_date: newDue.toISOString() }).eq('id', id);
+    if(error) throw error;
+    showToast('✅ Reopened! Late students can submit until ' + fmtDateTime(newDue.toISOString()));
+    renderProfAssignmentsPage();
+  }catch(err){
+    console.error('reopenAssignment error:', err);
+    showToast('❌ Could not reopen: ' + err.message);
   }
 }
 
