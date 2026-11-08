@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v140';
+const APP_BUILD = 'v141';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -6246,13 +6246,14 @@ function submissionItemHtml(p){
   // a glance the grade is filed (and mirrored in Grade Archives) without
   // opening the item. Edit Grade reopens the same Review Panel focused on
   // the grade inputs; saving there rewrites the Archives row too.
-  // Already graded works don't need Review anymore — no Review button, and
-  // the thumbnail becomes the Edit Grade shortcut instead of Review Panel.
+  // Already graded: full professors don't need Review anymore (Edit
+  // Grade replaces it). Reviewer-only professors still need Review to
+  // preview the work and leave stars + comment — grading stays hidden
+  // for them in the panel, so keeping Review is safe.
   const isGraded = p.finalGrade != null && p.finalGrade !== '';
-  const clickableThumb = isGraded
-    ? (isFullProfessor()
-        ? `<div onclick="openReviewForGrading('${p.id}')" title="Click to edit Grade" style="cursor:pointer;">${thumb}</div>`
-        : thumb)
+  const fullProf = isFullProfessor();
+  const clickableThumb = (isGraded && fullProf)
+    ? `<div onclick="openReviewForGrading('${p.id}')" title="Click to edit Grade" style="cursor:pointer;">${thumb}</div>`
     : `<div onclick="openReviewById('${p.id}')" title="Click to open Review Panel" style="cursor:pointer;">${thumb}</div>`;
   const gradedPill = isGraded
     ? ` <span class="upload-status-badge badge-graded" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">✅ already graded · ${p.finalGrade}/100</span>`
@@ -6265,8 +6266,10 @@ function submissionItemHtml(p){
   const deleteBtn = p.status==='rejected'
     ? `<button class="btn-cancel" style="padding:9px 12px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Delete this rejected submission" onclick="event.stopPropagation();deleteSubmissionAsProfessor('${p.id}')">🗑️</button>`
     : '';
-  // Already graded — no Review button; Edit Grade (full professors) remains.
-  const reviewBtn = isGraded ? '' : `<button class="btn-review" onclick="openReviewById('${p.id}')">👁 Review</button>`;
+  // Already graded + full professor: no Review (Edit Grade remains).
+  // Reviewer-only keeps Review even when graded — it's their only way
+  // to preview the work and leave stars + comment (no grading inside).
+  const reviewBtn = (isGraded && fullProf) ? '' : `<button class="btn-review" onclick="openReviewById('${p.id}')">👁 Review</button>`;
   return `<div class="submission-item">${clickableThumb}
     <div class="sub-info">
       <div class="sub-title">${esc(p.title)} <span class="upload-status-badge ${badge}" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">${p.status}</span>${gradedPill}</div>
