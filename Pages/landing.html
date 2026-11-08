@@ -72,6 +72,24 @@
   #s-landing .lp-logo{ font-size:clamp(17px,1.35vw,22px); font-weight:600; color:#fff; }
   #s-landing .lp-logo-sub{ font-size:clamp(10px,.82vw,12px); color:rgba(255,255,255,.6); margin-top:1px; }
   @media(max-width:640px){ #s-landing .lp-brandmark{ gap:10px; } #s-landing .lp-logo-sub{ display:none; } }
+  /* 15.6" laptops (981–1600px wide, typical 1366×768 / 1536×864): the vw clamp
+     makes the logo pill ~109px tall, so the header eats the hero and the seal
+     looks tiny next to the Artfolio logo. Cap both logos + tighten the header
+     so it fits ~82px, nav stays on one line, and the hero starts higher.
+     !important overrides the inline width/height on the header <img>s. */
+  @media(min-width:981px) and (max-width:1600px){
+    #s-landing .lp-nav{ padding-top:10px; padding-bottom:10px; }
+    #s-landing .lp-logo-pair{ gap:8px; padding:4px 8px; }
+    #s-landing .lp-logo-chip{ width:54px !important; height:54px !important; }
+    #s-landing .lp-logo-chip img{ width:46px !important; height:46px !important; }
+    #s-landing .lp-logo-chip--seal{ width:40px !important; height:40px !important; }
+    #s-landing .lp-logo-chip--seal img{ width:36px !important; height:36px !important; }
+    #s-landing .lp-logo-divider{ height:44px !important; margin-left:10px; }
+    #s-landing .lp-logo{ font-size:17px; white-space:nowrap; }
+    #s-landing .lp-logo-sub{ font-size:10px; white-space:nowrap; }
+    #s-landing .lp-nav-links{ gap:20px; font-size:13px; }
+    #s-landing .lp-nav-links a{ white-space:nowrap; }
+  }
   #s-landing .lp-nav-links{ display:flex; gap:30px; font-size:13.5px; }
   #s-landing .lp-nav-links a{ position:relative; padding-bottom:5px; color:rgba(255,255,255,.72); cursor:pointer; transition:color .25s ease; }
   #s-landing .lp-nav-links a::after{ content:''; position:absolute; left:0; right:0; bottom:0; height:2px; border-radius:2px; background:var(--lp-gold); transform:scaleX(0); transform-origin:left; transition:transform .3s ease; }
