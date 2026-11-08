@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v144';
+const APP_BUILD = 'v145';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -4388,6 +4388,24 @@ function viewStudentProject(itemId){
     }
   }
 
+  // Per-work QR — encodes the public ?work= link so a scan opens the
+  // public page showing this work's description. Only shown when the
+  // work is actually public (approved/personal + is_public), otherwise
+  // scanners would land on "not available".
+  const qrBox = document.getElementById('spv-qr-box');
+  const qrImg = document.getElementById('spv-qr-img');
+  const canShareQr = !!p.isPublic && (p.status === 'approved' || (p.status === 'draft' && p.neverSent));
+  if(qrBox && qrImg){
+    if(canShareQr && typeof buildGoQrImageUrl === 'function'){
+      const publicUrl = appBaseUrl() + '/?work=' + p.id;
+      qrImg.src = buildGoQrImageUrl(publicUrl, 280);
+      qrBox.style.display = 'block';
+    } else {
+      qrBox.style.display = 'none';
+      qrImg.removeAttribute('src');
+    }
+  }
+
   document.getElementById('studentProjectPreviewOverlay').classList.add('open');
 }
 function closeStudentProjectPreview(){
@@ -4395,6 +4413,27 @@ function closeStudentProjectPreview(){
   const vid = document.getElementById('spv-video');
   if(vid){ vid.pause(); }
   currentPreviewItemId = null;
+}
+
+// Download the per-work QR (280px is print-friendly for exhibits).
+async function downloadWorkQr(){
+  const img = document.getElementById('spv-qr-img');
+  if(!img || !img.src || !currentPreviewItemId){ showToast('⚠️ No QR to download'); return; }
+  try{
+    const publicUrl = appBaseUrl() + '/?work=' + currentPreviewItemId;
+    const url = (typeof buildGoQrImageUrl === 'function') ? buildGoQrImageUrl(publicUrl, 600) : img.src;
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'artfolio-work-qr.png';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('✅ QR downloaded!');
+  }catch(err){
+    console.error('downloadWorkQr error:', err);
+    showToast('❌ Could not download QR.');
+  }
 }
 
 // ── INSPECT — fullscreen zoom viewer for a previewed work ──
