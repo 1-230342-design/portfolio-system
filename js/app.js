@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v145';
+const APP_BUILD = 'v146';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -3182,6 +3182,14 @@ function viewPublicWork(idx){
     if(insBtn) insBtn.style.display='none';
     ph.innerHTML = '🖼️';
   }
+  // Per-work QR (this preview only opens for public works, so the
+  // link always resolves). Scans open the ?work= page with description.
+  const ppvQrBox = document.getElementById('ppv-qr-box');
+  const ppvQrImg = document.getElementById('ppv-qr-img');
+  if(ppvQrBox && ppvQrImg && typeof buildGoQrImageUrl === 'function'){
+    ppvQrImg.src = buildGoQrImageUrl(appBaseUrl() + '/?work=' + p.id, 280);
+    ppvQrBox.style.display = 'block';
+  }
   document.getElementById('publicWorkPreviewOverlay').classList.add('open');
 }
 function closePublicWorkPreview(){
@@ -3189,6 +3197,27 @@ function closePublicWorkPreview(){
   const vid = document.getElementById('ppv-video');
   if(vid){ vid.pause(); }
   currentPublicPreviewItemId = null;
+}
+
+// Download the public-preview QR (600px, print-friendly).
+async function downloadPublicWorkQr(){
+  if(!currentPublicPreviewItemId){ showToast('⚠️ No QR to download'); return; }
+  try{
+    const url = (typeof buildGoQrImageUrl === 'function')
+      ? buildGoQrImageUrl(appBaseUrl() + '/?work=' + currentPublicPreviewItemId, 600)
+      : document.getElementById('ppv-qr-img').src;
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'artfolio-work-qr.png';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('✅ QR downloaded!');
+  }catch(err){
+    console.error('downloadPublicWorkQr error:', err);
+    showToast('❌ Could not download QR.');
+  }
 }
 
 // ── LOGIN ALERT — email the account owner whenever someone tries to sign
