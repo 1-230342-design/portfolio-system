@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v135';
+const APP_BUILD = 'v136';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -2764,7 +2764,7 @@ async function showPublicRankings(skipPush){
   const subtitle = rk.querySelector('p');
   if(subtitle) subtitle.textContent = byGrade
     ? 'Ranked by average grade — same board as the professor view. Tap a student to view their portfolio.'
-    : 'Ranked by number of approved public works (grade board needs the get_public_rankings SQL — see supabase-public-rankings.sql). Tap a student to view their portfolio.';
+    : 'Ranked by approved public works. Tap a student to view their portfolio.';
   const top3 = ranked.slice(0, 3);
   const rest = ranked.slice(3);
   const podiumOrder = [top3[1], top3[0], top3[2]];
