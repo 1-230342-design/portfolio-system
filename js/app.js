@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v153';
+const APP_BUILD = 'v154';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -885,7 +885,6 @@ function openEditProfile(){
   // (SQL not run yet) reads as false, never as undefined-checked.
   const gradesBox = document.getElementById('ep-show-grades');
   if(gradesBox) gradesBox.checked = !!currentProfile.show_grades_public;
-  toggleUnenrollBtn();
   editSkills = Array.isArray(currentProfile.skills) ? [...currentProfile.skills] : [];
   renderSkillChips();
   renderSkillPicker();
@@ -967,8 +966,8 @@ function closeEditProfile(){
   document.getElementById('editProfileOverlay').classList.remove('open');
 }
 // Section + year are read-only in Edit Profile — enrollment belongs to the
-// professor's roster, so students can't hop sections or self-assign a year.
-// Show what's on file so they can still see where they belong.
+// professor's roster, so students can't hop sections, unenroll themselves, or
+// self-assign a year. Show what's on file so they can still see where they belong.
 function renderEditSectionInfo(){
   const sec = (currentProfile && currentProfile.section) || '';
   const yr  = (currentProfile && currentProfile.year_level) || yearFromSection(sec) || '';
@@ -977,39 +976,10 @@ function renderEditSectionInfo(){
   if(secEl) secEl.textContent = sec || 'Not enrolled';
   if(yrEl)  yrEl.textContent  = yr || '—';
 }
-// The self-unenroll button only exists when there's a section to leave.
-function toggleUnenrollBtn(){
-  const wrap = document.getElementById('ep-unenroll-wrap');
-  if(wrap) wrap.style.display = (currentProfile && currentProfile.section) ? 'block' : 'none';
-}
-// ── SELF-UNENROLL (student: clear their own section, keep everything else) ──
-// Unenroll ≠ withdraw: pending submissions stay submitted and professors still
-// see them — leaving a section never pulls work back. Re-enrolling is handled
-// by the professor now that Edit Profile no longer offers section selection.
-async function unenrollSelf(){
-  if(!currentUser || !currentProfile) return;
-  if(!currentProfile.section){ showToast('⚠️ You are not enrolled in any section.'); return; }
-  if(!confirm('Are you sure you want to unenroll?')) return;
-  showToast('💾 Unenrolling…');
-  try{
-    const { data, error } = await sb.from('user_profiles').update({ section: null }).eq('user_id', currentUser.id).select();
-    if(error) throw error;
-    if(!data || !data.length){
-      throw new Error('Nothing was updated — this is usually a Supabase RLS permissions issue. Check that an UPDATE policy exists on user_profiles allowing students to update their own section.');
-    }
-    currentProfile.section = null;
-    renderEditSectionInfo();
-    toggleUnenrollBtn();
-    renderPortfolioHeader();
-    await loadProjectsForStudent(currentUser.id);
-    refreshStudentViews();
-    closeEditProfile();
-    showToast('✅ Unenrolled. Your works, grades and portfolio are untouched — ask your professor to re-enroll you if needed.');
-  }catch(err){
-    console.error('unenrollSelf error:', err);
-    showToast('❌ Error: '+err.message);
-  }
-}
+// Enrollment is professor-only both ways now: students can no longer leave a
+// section themselves, and only a full Multimedia Arts professor can place,
+// move, or remove a student from a section (see enrollStudent/unenrollStudent
+// in the Students page section below).
 function renderSkillChips(){
   const el = document.getElementById('ep-skill-chips');
   el.innerHTML = editSkills.length
@@ -1061,8 +1031,7 @@ async function saveProfileEdits(){
   const show_grades_public = gradesBox ? gradesBox.checked : false;
   if(!full_name){ showToast('⚠️ Please enter your full name.'); return; }
   // Section + year are managed outside this form now (professor-led enrollment),
-  // so keep whatever is already on file — this form can never move a student
-  // into another section or change their year level.
+  // so keep whatever is already on file — this form never writes them.
   const activeSection = (currentProfile && currentProfile.section) || '';
   const year_level = (currentProfile && currentProfile.year_level) || yearFromSection(activeSection) || '';
   showToast('💾 Saving profile…');
@@ -1082,8 +1051,10 @@ async function saveProfileEdits(){
   }
   // The QR opt-in + avatar columns need their SQL run once. If either isn't
   // there yet, save everything else instead of failing the whole profile edit.
+  // NOTE: section/year_level are deliberately omitted — enrollment is
+  // professor-only, so this update can never move a student or clear them.
   const fullRow = {
-    full_name, section: activeSection, year_level, social_link, skills: editSkills,
+    full_name, social_link, skills: editSkills,
     show_social_on_qr, show_grades_public, avatar_url, avatar_public_id
   };
   let { error } = await sb.from('user_profiles').update(fullRow).eq('user_id', currentUser.id);
@@ -5343,18 +5314,19 @@ function renderSectionStudentsList(students){
            <button class="btn-cancel" style="padding:6px 10px;margin-left:4px;" onclick="event.stopPropagation();decideSectionRequest('${req.id}', false)">✕ Decline</button>
          </div>`
       : '';
-    // Unenroll only makes sense for someone actually in a section — never on
-    // an already-unenrolled row.
-    const unenrollHtml = s.section
-      ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Remove this student from the section" onclick="event.stopPropagation();unenrollStudent('${s.user_id}','${esc((s.full_name||'this student').replace(/'/g,"\\'"))}')">↩️ Unenroll</button>`
-      : '';
-    // Edit Profile no longer lets students pick a section, so the professor is
-    // the one who puts an unenrolled student back into a section.
-    const enrollHtml = (!s.section && isFullProfessor())
-      ? `<select class="fselect" title="Enroll this student in a section" onclick="event.stopPropagation()" onchange="enrollStudent('${s.user_id}', this.value, this)" style="width:auto;max-width:170px;margin:0;padding:8px 10px;font-size:12px;flex-shrink:0;">
-           <option value="">➕ Enroll in…</option>
-           ${_studentSections.map(sec=>`<option value="${esc(sec.name)}">${esc(sec.name)}</option>`).join('')}
+    // Enrollment is professor-only now: full Multimedia Arts professors get a
+    // section picker on EVERY student row — place an unenrolled student, or
+    // move someone to a different section. Reviewer-only accounts never see it.
+    const canManage = isFullProfessor();
+    const enrollHtml = canManage
+      ? `<select class="fselect" title="${s.section ? 'Move this student to another section' : 'Enroll this student in a section'}" onclick="event.stopPropagation()" onchange="enrollStudent('${s.user_id}', this.value, this)" style="width:auto;max-width:170px;margin:0;padding:8px 10px;font-size:12px;flex-shrink:0;">
+           <option value="" ${s.section ? 'disabled' : 'selected disabled'}>${s.section ? '— Move to section —' : '➕ Enroll in…'}</option>
+           ${_studentSections.map(sec=>`<option value="${esc(sec.name)}" ${s.section === sec.name ? 'selected' : ''}>${esc(sec.name)}</option>`).join('')}
          </select>`
+      : '';
+    // Removing a student from their section is professor-only too.
+    const unenrollHtml = (canManage && s.section)
+      ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Remove this student from the section" onclick="event.stopPropagation();unenrollStudent('${s.user_id}','${esc((s.full_name||'this student').replace(/'/g,"\\'"))}')">↩️ Unenroll</button>`
       : '';
     return `<div class="student-row" onclick="viewStudentProfile('${s.user_id}')">
       <div class="student-ava">${avatarFaceHtml(s.full_name, s.avatar_url)}</div>
@@ -5370,12 +5342,15 @@ function renderSectionStudentsList(students){
   }).join('');
 }
 
-// Professor-side enrollment: the counterpart to unenrollStudent(), and the only
-// way back into a section now that Edit Profile is read-only.
+// Professor-side enrollment — the only way into, across, or out of a section
+// now that students can no longer unenroll themselves. Works for any student
+// row: an unenrolled student gets placed, an enrolled one gets moved.
 async function enrollStudent(userId, sectionName, sel){
   if(!sectionName) return;
   if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can enroll students.'); if(sel) sel.value=''; return; }
-  showToast('💾 Enrolling…');
+  const student = _allStudentsCache.find(s=>s.user_id===userId);
+  if(student && student.section === sectionName){ return; } // already there — nothing to save
+  showToast(student && student.section ? '💾 Moving to ' + sectionName + '…' : '💾 Enrolling…');
   try{
     const patch = { section: sectionName };
     const derivedYear = yearFromSection(sectionName);
@@ -5444,7 +5419,10 @@ function filterSectionStudents(q){
 }
 
 // ── UNENROLL (professor: remove a student from a section without deleting their account) ──
+// Students cannot do this themselves — Edit Profile has no unenroll control,
+// and supabase-lock-section.sql (optional) enforces it in the database too.
 async function unenrollStudent(userId, name){
+  if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can change enrollment.'); return; }
   if(!confirm(`Unenroll ${name} from this section? They'll stay signed up and keep all their work — only their Section is cleared. Already-saved grades keep the section they were graded under and won't change.`)) return;
   showToast('💾 Unenrolling…');
   try{
