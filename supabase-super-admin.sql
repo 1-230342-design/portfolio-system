@@ -372,6 +372,24 @@ create trigger audit_profile_delete
   for each row
   execute function public.log_profile_delete();
 
+-- ── 5b. RLS: full-access professors manage enrollment ───────
+-- The Students page enrolls / moves / unenrolls by updating
+-- user_profiles.section. Without this policy the UPDATE is simply
+-- filtered out by RLS and the app reports "Nothing was updated".
+-- Restricted to student rows so professors cannot edit each other.
+drop policy if exists "full access reads profiles" on public.user_profiles;
+create policy "full access reads profiles"
+  on public.user_profiles
+  for select to authenticated
+  using (public._is_full_professor());
+
+drop policy if exists "full access updates student enrollment" on public.user_profiles;
+create policy "full access updates student enrollment"
+  on public.user_profiles
+  for update to authenticated
+  using (public._is_full_professor() and role = 'student')
+  with check (public._is_full_professor() and role = 'student');
+
 -- ── 6. RLS: full-access professors grade consistently ───────
 -- These are additive permissive policies. They make can_grade and
 -- Art Appreciation accounts work even if an older policy only
