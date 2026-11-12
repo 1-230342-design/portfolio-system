@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v157';
+const APP_BUILD = 'v158';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -5069,6 +5069,8 @@ function pPage(page){
     showToast('🔒 Super admin access required.');
     page = 'p-dashboard';
   }
+  // Opening the Super Admin page folds the teaching menu away again.
+  if(page === 'p-admin') _profNavOpen = false;
   if(typeof isFullProfessor === 'function' && !isFullProfessor()
      && (page === 'p-assignments' || page === 'p-archives' || page === 'p-submissions')){
     showToast('🔒 Reviewer Only access: Dashboard, Students, and Overall Rankings only.');
@@ -6291,6 +6293,24 @@ async function openIntegrityWork(itemId){
 
 // Show/hide the grading panel + approve/reject buttons in the review panel,
 // and update the sidebar role label, based on the logged-in professor's department.
+// Super-admin sidebar state: false = sidebar shows only
+// "Professor View" + "Super Admin"; true = the teaching menu is expanded.
+let _profNavOpen = false;
+function pToggleProfNav(){
+  if(!isSuperAdmin()) return;
+  const group = document.getElementById('p-prof-nav-group');
+  if(!group) return;
+  const opening = group.hasAttribute('hidden');
+  _profNavOpen = opening;
+  if(opening){
+    pPage('p-dashboard');           // expand + land on the dashboard
+  } else {
+    const onProfPage = !!document.querySelector('#p-prof-nav-group .snav-item.active');
+    if(onProfPage) pPage('p-admin'); // collapsing while teaching → go to admin home
+    else applyProfessorPermissions();
+  }
+}
+
 // Call this after login/session-restore/signup and again whenever the review
 // panel is opened, since it's cheap and keeps things correct if the profile
 // object was refreshed in between.
@@ -6323,6 +6343,28 @@ function applyProfessorPermissions(){
   navShow('nav-p-assignments', full);
   navShow('nav-p-archives', full);
   navShow('nav-p-admin', superAdmin);
+
+  // Two-mode sidebar. Super admins start with just two entries; clicking
+  // "Professor View" reveals the teaching menu. Normal professors always
+  // see the whole teaching menu (flat, no toggle).
+  const profToggle = document.getElementById('nav-p-prof-toggle');
+  const profGroup  = document.getElementById('p-prof-nav-group');
+  if(profToggle) profToggle.style.display = superAdmin ? '' : 'none';
+  if(profGroup){
+    if(superAdmin){
+      profGroup.classList.remove('flat');
+      if(_profNavOpen) profGroup.removeAttribute('hidden');
+      else profGroup.setAttribute('hidden','');
+    } else {
+      profGroup.classList.add('flat');
+      profGroup.removeAttribute('hidden');
+    }
+  }
+  if(profToggle){
+    const onProfPage = !!document.querySelector('#p-prof-nav-group .snav-item.active');
+    profToggle.classList.toggle('open', superAdmin && _profNavOpen);
+    profToggle.classList.toggle('active', superAdmin && onProfPage && !_profNavOpen);
+  }
   const revBack = document.getElementById('rev-back-link');
   if(revBack){
     revBack.setAttribute('onclick', full ? "pPage('p-submissions')" : "pPage('p-dashboard')");
