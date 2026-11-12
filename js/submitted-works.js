@@ -1,29 +1,34 @@
 /* ══════════════════════════════════════════════════════════════
-   SUBMITTED WORKS — everything the students sent in, grouped by
-   program, then by section.
+   SUBMITTED WORKS — everything the students sent in, drillable
+   down to a single student.
 
-   Three levels of drill-down, one source of truth:
-     • PROGRAMS  — Multimedia Arts / Data Analytics. A reviewer is
-       often asked to look at works outside their own program, so
-       this page is not limited to one program: the tabs sit side by
-       side and each one opens the sections underneath it.
-     • SECTIONS — the classes inside the picked program.
-     • WORKS    — what those students sent in, filterable by status.
+   Three levels, one source of truth:
+     • PROGRAMS  — Multimedia Arts / Data Analytics side by side.
+       A reviewer is often asked to look at works outside their own
+       program, so this page is not limited to one program.
+     • SECTIONS — every section on the roster, not only the ones
+       that happen to have submissions: an empty section is exactly
+       what a professor wants to know about.
+     • STUDENTS — the roster of the picked section. Clicking a name
+       opens that student's works, where the professor can rate and
+       grade them (the Review Panel).
 
-   The sidebar entry expands into the same list (sections grouped
-   under their program), so the professor can jump straight to a
-   section from anywhere. The page repeats both rows as filter tabs,
-   because on a phone the sidebar is a horizontal strip that cannot
-   hold the tree.
+   The page also has an "All Works" level: no section picked means
+   every work sent in by everyone in the current program scope.
 
-   Only works that were actually sent for review show up: drafts
-   (withdrawn submissions and the student's personal gallery) stay
-   private to their owner, exactly like everywhere else in the app.
+   The sidebar entry expands into the same section list, so a
+   professor can jump to a section from anywhere. The page repeats
+   both rows as filter tabs, because on a phone the sidebar is a
+   horizontal strip that cannot hold the tree.
 
-   Data source: portfolio_items joined to portfolios (status,
-   grading period, grade) and to user_profiles (student name,
-   section and program) — the same loadAllItemsForProfessor() feed
-   the "Artworks for Review" queue uses, so both pages always agree.
+   Drafts (withdrawn submissions and the student's personal gallery)
+   stay private to their owner, exactly like everywhere else in the
+   app.
+
+   Data source: portfolio_items joined to portfolios (status, grading
+   period, grade) and to user_profiles (student name, section and
+   program) — the same loadAllItemsForProfessor() feed the "Artworks
+   for Review" queue uses, so both pages always agree.
    ══════════════════════════════════════════════════════════════ */
 
 // Bucket for works whose student has no section (or whose section is not
@@ -32,10 +37,12 @@ const SW_NO_SECTION = '@none';
 
 let _swSections      = [];   // every section on the roster
 let _swItems         = [];   // every work sent in (drafts removed)
+let _swStudents      = [];   // every signed-up student
 let _swRows          = [];   // section rows of the current render — the tabs and the sidebar share the index
 let _swProgRows      = [];   // program rows of the current render
 let _swProgramFilter = null; // null = every program · otherwise a program (department)
-let _swSectionFilter = null; // null = every section · otherwise a section key
+let _swSectionFilter = null; // null = all works · otherwise a section key
+let _swSelectedStudent = null; // user_id of the student whose works are open
 let _swSectionByProgram = {}; // program key → the section last opened in it
 let _swStatusFilter  = 'all';
 let _swNavOpen       = false;
@@ -69,6 +76,27 @@ async function loadSubmittedWorksSections(force){
     }
   }
   return _swSections;
+}
+
+// ── STUDENT ROSTER ──
+// Every signed-up student, so a section can show its full roster —
+// not just the ones who happened to submit something.
+async function loadSubmittedWorksStudents(){
+  if(_swStudents.length) return _swStudents;
+  try{
+    _swStudents = await loadAllStudentProfiles();
+  }catch(err){
+    console.error('loadSubmittedWorksStudents error:', err);
+    _swStudents = [];
+  }
+  return _swStudents;
+}
+
+// The students enrolled in a section (the "no section" bucket holds the
+// ones who never picked one).
+function swStudentsInSection(key){
+  const name = key === SW_NO_SECTION ? '' : (key || '');
+  return _swStudents.filter(s => (s.section || '') === name);
 }
 
 // ── PROGRAMS ──
@@ -139,6 +167,19 @@ function swSectionRows(items){
     });
   });
 
+  // Students who never picked a section get a bucket of their own, so the
+  // professor can still reach their works.
+  const unenrolled = _swStudents.filter(s => !(s.section || ''));
+  if(unenrolled.length && !seen.has(SW_NO_SECTION) && !rows.some(r => r.key === SW_NO_SECTION)){
+    rows.push({
+      key:     SW_NO_SECTION,
+      label:   'No Section',
+      meta:    'Students without a section',
+      program: unenrolled[0].department || PROGRAM_MM,
+      items:   groups.get(SW_NO_SECTION) || []
+    });
+  }
+
   // Flat index — the tabs and the sidebar both address a row by it.
   rows.forEach((r,i) => { r.idx = i; });
   return rows;
@@ -160,22 +201,13 @@ function swSyncItems(){
   return _swItems;
 }
 
-// The section rows that actually have something to show. The roster holds
-// every section in the school, but a section with nothing in it is not
-// actionable — listing them all turns the tabs and the sidebar into a
-// wall of empty rows, so they are skipped (the page says how many were
-// left out).
-function swRowsWithWorks(){
-  return _swRows.filter(r => r.items.length > 0);
-}
-
 // ── PAGE ──
 async function renderSubmittedWorksPage(){
   const listEl = document.getElementById('sw-list');
   if(!listEl) return;
   listEl.innerHTML = loadingHtml('Loading submitted works…');
 
-  await loadSubmittedWorksSections();
+  await Promise.all([ loadSubmittedWorksSections(), loadSubmittedWorksStudents() ]);
 
   // Reuse the professor's cached item list; only fetch it when it is empty.
   if(!_profItems || !_profItems.length) _profItems = await loadAllItemsForProfessor();
@@ -203,78 +235,175 @@ function renderSubmittedWorksBody(){
     progTabsEl.innerHTML = html;
   }
 
-  // ── section tabs — the sections of the program that is open ──
-  const programRows  = _swRows.filter(r => !_swProgramFilter || r.program === _swProgramFilter);
-  const sectionRows  = programRows.filter(r => r.items.length > 0);
-  const hiddenRows   = programRows.length - sectionRows.length;
+  // ── section tabs — every section of the program that is open, even the
+  //    ones with nothing sent in yet (that is worth knowing too) ──
+  const sectionRows = _swRows.filter(r => !_swProgramFilter || r.program === _swProgramFilter);
+  const scopeWorks  = _swProgramFilter
+    ? _swItems.filter(p => swProgramForItem(p) === _swProgramFilter)
+    : _swItems;
   const secTabsEl = document.getElementById('sw-section-tabs');
   if(secTabsEl){
-    secTabsEl.innerHTML = sectionRows.length
-      ? sectionRows.map(r =>
-          `<button class="filter-tab${_swSectionFilter===r.key?' active':''}" onclick="swFilterSection(${r.idx}, this)" title="${esc(r.meta || r.label)}">${esc(r.label)} (${r.items.length})</button>`
-        ).join('')
-      : `<div style="font-size:12px;color:var(--text3);padding:6px 0;">${_swProgramFilter ? 'No works in this program yet.' : 'No works have been sent in yet.'}</div>`;
+    let html = `<button class="filter-tab${_swSectionFilter===null?' active':''}" onclick="swFilterSection(-1, this)">All Works (${scopeWorks.length})</button>`;
+    html += sectionRows.map(r =>
+      `<button class="filter-tab${_swSectionFilter===r.key?' active':''}" onclick="swFilterSection(${r.idx}, this)" title="${esc(r.meta || r.label)}">${esc(r.label)} (${r.items.length})</button>`
+    ).join('');
+    secTabsEl.innerHTML = html;
   }
 
-  // Sections left out because nothing was sent in — a one-line note so the
-  // professor still knows they exist.
-  const secNoteEl = document.getElementById('sw-section-note');
-  if(secNoteEl){
-    secNoteEl.textContent = hiddenRows
-      ? `${hiddenRows} section${hiddenRows===1?'':'s'} with nothing sent in yet — ask them to submit.`
-      : '';
-    secNoteEl.style.display = hiddenRows ? 'block' : 'none';
-  }
+  // The status breakdown only makes sense where works are listed — it is
+  // hidden while the section roster is on screen.
+  const listWorks = _swSelectedStudent
+    ? _swItems.filter(p => p.userId === _swSelectedStudent)
+    : (_swSectionFilter === null ? swVisibleItems() : []);
+  const statusEl = document.getElementById('sw-status-tabs');
+  if(statusEl) statusEl.style.display = (_swSelectedStudent || _swSectionFilter === null) ? '' : 'none';
 
-  const inSection = swVisibleItems();
-
-  // ── status counts (for the section currently open) ──
-  const countOf = st => inSection.filter(p => p.status === st).length;
+  // ── status counts (for the works the list is about to show) ──
+  const countOf = st => listWorks.filter(p => p.status === st).length;
   const setCount = (id,n) => { const el = document.getElementById(id); if(el) el.textContent = '('+n+')'; };
-  setCount('sw-count-all', inSection.length);
+  setCount('sw-count-all', listWorks.length);
   setCount('sw-count-submitted', countOf('submitted'));
   setCount('sw-count-approved', countOf('approved'));
   setCount('sw-count-rejected', countOf('rejected'));
-
-  // ── the list itself: the open section, narrowed by the status tab ──
-  const shown = _swStatusFilter === 'all'
-    ? inSection
-    : inSection.filter(p => p.status === _swStatusFilter);
 
   // ── subtitle ──
   const subEl = document.getElementById('sw-page-sub');
   if(subEl){
     const prog = _swProgramFilter ? departmentLabel(_swProgramFilter) : null;
     const row  = _swRows.find(r => r.key === _swSectionFilter);
-    if(row){
-      const meta = row.meta ? ` · ${row.meta}` : '';
-      subEl.textContent = `${prog ? prog + ' · ' : ''}${row.label}${meta} — ${row.items.length} work${row.items.length===1?'':'s'}`;
-    }else if(prog){
-      const n = _swProgRows.find(r => r.key === _swProgramFilter);
-      subEl.textContent = `${prog} — ${n ? n.items.length : 0} work${n && n.items.length===1?'':'s'} · pick a section below`;
+    const student = _swSelectedStudent ? _swStudents.find(s => s.user_id === _swSelectedStudent) : null;
+    if(student){
+      const n = listWorks.length;
+      subEl.textContent = `${student.full_name || 'Student'} — ${n} work${n===1?'':'s'}${row ? ' · ' + row.label : ''}`;
+    }else if(row){
+      const n = swStudentsInSection(row.key).length;
+      subEl.textContent = `${prog ? prog + ' · ' : ''}${row.label}${row.meta ? ' · ' + row.meta : ''} — ${n} student${n===1?'':'s'} enrolled`;
     }else{
-      const withWorks = swRowsWithWorks().length;
       subEl.textContent = _swItems.length
-        ? `Every work your students sent in — ${_swItems.length} work${_swItems.length===1?'':'s'} across ${withWorks} section${withWorks===1?'':'s'}.`
-        : 'Every work your students sent in, program by program and section by section.';
+        ? `Every work your students sent in — ${_swItems.length} work${_swItems.length===1?'':'s'} across ${_swRows.length} section${_swRows.length===1?'':'s'}.`
+        : 'Every work your students sent in, program by program, section by section, student by student.';
     }
   }
 
-  // ── the list ──
+  // ── the list area: works → students → one student's works ──
+  if(_swSelectedStudent)           renderStudentWorksView(listWorks);
+  else if(_swSectionFilter !== null) renderStudentListView();
+  else                              renderWorksListView(listWorks);
+}
+
+// ── VIEW 1: every work sent in ──
+function renderWorksListView(listWorks){
   const listEl = document.getElementById('sw-list');
-  if(listEl){
-    listEl.innerHTML = shown.length
-      ? shown.map(submissionItemHtml).join('')
-      : `<div class="empty-state"><p>${_swItems.length
-          ? 'No works in this category yet.'
-          : 'No works have been sent in yet.'}</p></div>`;
+  if(!listEl) return;
+  const shown = _swStatusFilter === 'all'
+    ? listWorks
+    : listWorks.filter(p => p.status === _swStatusFilter);
+  listEl.innerHTML = shown.length
+    ? shown.map(submissionItemHtml).join('')
+    : `<div class="empty-state"><p>${_swItems.length
+        ? 'No works in this category yet.'
+        : 'No works have been sent in yet.'}</p></div>`;
+}
+
+// ── VIEW 2: the roster of the picked section ──
+function renderStudentListView(){
+  const listEl = document.getElementById('sw-list');
+  if(!listEl) return;
+  const row  = _swRows.find(r => r.key === _swSectionFilter);
+  const label = row ? row.label : 'this section';
+  const students = swStudentsInSection(_swSectionFilter)
+    .slice().sort((a,b) => (a.full_name||'').localeCompare(b.full_name||''));
+
+  let html = `<div style="margin-bottom:18px;cursor:pointer;color:var(--text3);font-size:13px;" onclick="swFilterSection(-1)">← All works</div>`;
+
+  if(!students.length){
+    html += `<div class="empty-state"><p>No students are enrolled in ${esc(label)} yet.</p></div>`;
+    listEl.innerHTML = html;
+    return;
   }
+
+  html += `<div class="students-list">` + students.map(s => {
+    const works = _swItems.filter(p => p.userId === s.user_id);
+    const meta  = [s.student_id || 'No ID', s.year_level || ''].filter(Boolean).join(' · ');
+    const sent  = works.length
+      ? `${works.length} work${works.length===1?'':'s'} sent in`
+      : 'Nothing sent in yet';
+    return `<div class="student-row" onclick="openSubmittedWorksStudent('${s.user_id}')">
+      <div class="student-ava">${avatarFaceHtml(s.full_name, s.avatar_url)}</div>
+      <div class="student-row-info">
+        <div class="student-row-name">${esc(s.full_name || 'Student')}</div>
+        <div class="student-row-meta">${esc(meta)}</div>
+        <div class="student-row-meta" style="margin-top:3px;">${esc(sent)}</div>
+      </div>
+      <button class="btn-view-sm" onclick="event.stopPropagation();openSubmittedWorksStudent('${s.user_id}')">👁 View Works</button>
+    </div>`;
+  }).join('') + `</div>`;
+
+  listEl.innerHTML = html;
+}
+
+// ── VIEW 3: one student's works (rate + grade them here) ──
+function renderStudentWorksView(listWorks){
+  const listEl = document.getElementById('sw-list');
+  if(!listEl) return;
+  const student = _swStudents.find(s => s.user_id === _swSelectedStudent);
+  const row     = _swRows.find(r => r.key === _swSectionFilter);
+  const works   = listWorks || [];
+  const shown   = _swStatusFilter === 'all'
+    ? works
+    : works.filter(p => p.status === _swStatusFilter);
+
+  const name = student ? (student.full_name || 'Student') : 'Student';
+  let html = `<div style="margin-bottom:18px;cursor:pointer;color:var(--text3);font-size:13px;" onclick="closeSubmittedWorksStudent()">← ${esc(row ? row.label : 'section roster')}</div>`;
+
+  // Header — the same card the professor sees on the Students page.
+  html += `<div class="portfolio-header" style="margin-bottom:20px;">
+    <div class="portfolio-header-inner">
+      <div class="portfolio-avatar-lg">${student ? avatarFaceHtml(student.full_name, student.avatar_url) : ''}</div>
+      <div class="portfolio-info">
+        <div class="portfolio-name">${esc(name)}</div>
+        <div class="portfolio-meta">${esc([
+          student && student.student_id ? student.student_id : 'No student ID',
+          row ? row.label : '',
+          student && student.year_level ? student.year_level : ''
+        ].filter(Boolean).join(' · '))}</div>
+      </div>
+    </div>
+  </div>`;
+
+  if(!works.length){
+    html += `<div class="empty-state"><p>${esc(name)} hasn't sent in any work yet.</p></div>`;
+    listEl.innerHTML = html;
+    return;
+  }
+
+  if(!shown.length){
+    html += `<div class="empty-state"><p>No works in this category yet.</p></div>`;
+    listEl.innerHTML = html;
+    return;
+  }
+
+  html += `<div class="projects-grid">` + shown.map(p => {
+    const thumb = cardThumbHtml(p, 'project-thumb-frame', 'upload-thumb-placeholder', 'height:180px');
+    const badge = p.status==='approved' ? 'badge-approved' : p.status==='rejected' ? 'badge-rejected' : 'badge-pending';
+    const stars = p.rating ? `<span class="sub-rating" style="position:absolute;top:8px;left:8px;z-index:1;background:rgba(0,0,0,.55);padding:2px 7px;border-radius:12px;">★ ${p.rating}</span>` : '';
+    return `<div class="project-card" style="position:relative;cursor:pointer;" onclick="openReviewById('${p.id}')" title="Click to rate and grade">
+      <span class="upload-status-badge ${badge}" style="position:absolute;top:8px;right:8px;z-index:1;">${p.status}</span>
+      ${stars}
+      ${thumb}
+      <div class="project-info">
+        <div class="project-title">${esc(p.title)}</div>
+        <div class="project-cat">${workMeta(p)}</div>
+        <div class="project-desc">${esc(p.desc || '')}</div>
+      </div>
+    </div>`;
+  }).join('') + `</div>`;
+
+  listEl.innerHTML = html;
 }
 
 // ── SIDEBAR SECTION LIST ──
-// The same sections as the page, grouped under their program. Only the
-// sections that actually have works are listed — the sidebar is narrow,
-// and a long list of empty sections would overflow it.
+// The same sections as the page, grouped under their program.
 async function renderSubmittedWorksNav(){
   await loadSubmittedWorksSections();
   swSyncItems();
@@ -283,15 +412,14 @@ async function renderSubmittedWorksNav(){
   if(!el) return;
   _swRows = swSectionRows(_swItems);
 
-  const withWorks = swRowsWithWorks();
-  if(!withWorks.length){
-    el.innerHTML = `<div class="snav-sub-empty">Nothing sent in yet</div>`;
+  if(!_swRows.length){
+    el.innerHTML = `<div class="snav-sub-empty">No sections yet</div>`;
     return;
   }
 
   // Group the rows by program, keeping the program's own order.
   const byProgram = new Map();
-  withWorks.forEach(r => {
+  _swRows.forEach(r => {
     if(!byProgram.has(r.program)) byProgram.set(r.program, []);
     byProgram.get(r.program).push(r);
   });
@@ -309,7 +437,7 @@ async function renderSubmittedWorksNav(){
     ).join('');
   });
 
-  el.innerHTML = html || `<div class="snav-sub-empty">Nothing sent in yet</div>`;
+  el.innerHTML = html || `<div class="snav-sub-empty">No sections yet</div>`;
 }
 
 // ── NAV / FILTER ACTIONS ──
@@ -320,9 +448,23 @@ function openSubmittedWorksSection(i){
   // Open the program that owns the section, so both tab rows agree.
   _swProgramFilter = row.program;
   _swSectionFilter = row.key;
+  _swSelectedStudent = null;
   _swNavOpen = true;
   applySubmittedWorksNavState();
   pPage('p-submitted-works');
+}
+
+// Student picked in the roster: open that student's works.
+function openSubmittedWorksStudent(userId){
+  if(!userId) return;
+  _swSelectedStudent = userId;
+  renderSubmittedWorksBody();
+}
+
+// Back from a student's works to the roster of the section.
+function closeSubmittedWorksStudent(){
+  _swSelectedStudent = null;
+  renderSubmittedWorksBody();
 }
 
 // Program picked in the first tab row (-1 = every program).
@@ -336,21 +478,23 @@ function swFilterProgram(i, btn){
 
   _swProgramFilter = next;
   if(next === null){
-    // "All Sections" means every program and every section — nothing narrows it.
+    // "All Sections" means every program — nothing narrows it.
     _swSectionFilter = null;
   }else{
     const remembered = _swSectionByProgram[next];
     const row = remembered ? _swRows.find(r => r.key === remembered) : null;
     _swSectionFilter = (row && row.program === next) ? remembered : null;
   }
+  _swSelectedStudent = null;
 
   renderSubmittedWorksBody();
   renderSubmittedWorksNav();
 }
 
-// Section picked in the second tab row.
+// Section picked in the second tab row (-1 = all works).
 function swFilterSection(i, btn){
   _swSectionFilter = (i < 0 || !_swRows[i]) ? null : _swRows[i].key;
+  _swSelectedStudent = null;
   renderSubmittedWorksBody();
   renderSubmittedWorksNav();
 }
