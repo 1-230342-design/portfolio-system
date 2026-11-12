@@ -95,7 +95,7 @@ async function renderAssignmentsPage(uid){
   if(!visible.length){
     el.innerHTML = isUnenrolled
       ? `<div class="empty-state"><p>You are not enrolled in any section, so new assignments don't appear here. Re-enroll (Edit Profile → Section) to receive classwork again.</p></div>`
-      : `<div class="empty-state"><p>No classwork posted yet. Check back once your professor posts an assignment.</p></div>`;
+      : `<div class="empty-state"><p>No ${esc(departmentLabel(myProgram))} classwork posted yet. Check back once your professor posts an assignment.</p></div>`;
     return;
   }
 
@@ -115,7 +115,7 @@ async function renderAssignmentsPage(uid){
     return `<div class="assignment-card">
       <div class="assignment-card-top">
         <div>
-          <div class="assignment-title">${esc(a.title)}</div>
+          <div class="assignment-title">${esc(a.title)}${a.department ? ` <span class="assign-dept-badge">${esc(departmentLabel(a.department))}</span>` : ''}</div>
           <div class="assignment-meta">${a.grading_period ? esc(a.grading_period) : ''}${a.due_date ? (a.grading_period ? ' &middot; ' : '')+'Due '+fmtDateTime(a.due_date) : ''}</div>
         </div>
         <span class="upload-status-badge ${esc(badgeCls)}" style="position:static;white-space:nowrap;">${esc(badgeLabel)}</span>
@@ -484,7 +484,7 @@ async function renderProfAssignmentsPage(){
   _assignmentsCache = visible;
 
   if(!visible.length){
-    el.innerHTML = `<div class="empty-state"><p>No assignments posted yet. Click "+ New Assignment" to post your first one.</p></div>`;
+    el.innerHTML = `<div class="empty-state"><p>No assignments posted yet for ${esc(departmentLabel(scope || (currentProfile && currentProfile.department)))}. Click "+ New Assignment" to post your first one.</p></div>`;
     return;
   }
 
@@ -495,7 +495,7 @@ async function renderProfAssignmentsPage(){
     return `<div class="assignment-card">
       <div class="assignment-card-top">
         <div>
-          <div class="assignment-title">${esc(a.title)}</div>
+          <div class="assignment-title">${esc(a.title)}${a.department ? ` <span class="assign-dept-badge">${esc(departmentLabel(a.department))}</span>` : ''}</div>
           <div class="assignment-meta">${a.grading_period ? esc(a.grading_period) : ''}${a.due_date ? (a.grading_period ? ' &middot; ' : '')+'Due '+fmtDateTime(a.due_date) : ''}</div>
         </div>
         <div style="display:flex;gap:8px;flex-shrink:0;">
@@ -535,6 +535,11 @@ function openCreateAssignmentModal(){
   document.getElementById('ca-instructions').value = '';
   document.getElementById('ca-due').value = '';
   document.getElementById('ca-period').value = '';
+  const note = document.getElementById('ca-program-note');
+  if(note){
+    const dept = (currentProfile && currentProfile.department) || 'BS Information Technology Major in Multimedia Arts';
+    note.textContent = `Posting to the ${departmentLabel(dept)} program — only ${departmentLabel(dept)} students will see this assignment.`;
+  }
   document.getElementById('createAssignmentOverlay').classList.add('open');
 }
 function closeCreateAssignmentModal(){

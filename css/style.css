@@ -526,6 +526,16 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 .snav-icon{width:16px;height:16px;flex-shrink:0;opacity:.7;}
 .snav-item.active .snav-icon{opacity:1;}
 
+/* Program badge on assignment cards (multi-program separation) */
+.assign-dept-badge{
+  display:inline-block;
+  font-size:10px;font-weight:700;
+  padding:2px 7px;border-radius:999px;
+  background:rgba(61,168,101,.16);color:#3da865;
+  vertical-align:middle;margin-left:6px;
+  letter-spacing:.2px;
+}
+
 /* Two-mode sidebar for super admins: "Professor View" expands the
    teaching menu; everyone else sees the group flat and always open. */
 .prof-nav-group{margin:2px 0 4px 10px;padding-left:6px;border-left:1px solid rgba(255,255,255,.1);}
