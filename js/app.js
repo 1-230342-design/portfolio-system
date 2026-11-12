@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v158';
+const APP_BUILD = 'v159';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -2567,16 +2567,54 @@ async function runLandingSearch(inputId){
   }
   if(error){ console.error('public search error:', error); showToast('❌ '+error.message); return; }
 
-  document.getElementById('public-search-summary').textContent =
-    (data && data.length) ? `${data.length} result${data.length===1?'':'s'} for "${q}"` : `No students found for "${q}"`;
+  // Public search obeys the same rule as the browse list: only students
+  // who have published at least one work are discoverable.
+  const publicIds = await loadPublicStudentIds();
+  const visible = (data || []).filter(s=>!publicIds || publicIds.has(s.user_id));
 
-  renderStudentResults(data);
+  document.getElementById('public-search-summary').textContent =
+    visible.length ? `${visible.length} result${visible.length===1?'':'s'} for "${q}"` : `No students with public works found for "${q}"`;
+
+  renderStudentResults(visible);
   go('s-public-search');
 }
 
 // ── BROWSE ALL STUDENTS (no login required) — for visitors who don't know the
 // exact name or student number, this lists everyone enrolled so they can scroll
 // and find the person, instead of being forced to type a perfect search query. ──
+// ── PUBLIC STUDENT LIST = ONLY STUDENTS WITH PUBLIC WORKS ──
+// A student appears in the public directory once at least one of their
+// portfolio_items is marked is_public. Making every work private (or
+// deleting the public ones) removes them on the next load.
+// Returns null when the lookup itself fails, so the caller can fall back
+// to showing everyone instead of hiding the whole directory.
+async function loadPublicStudentIds(){
+  try{
+    const { data: items, error } = await sb
+      .from('portfolio_items')
+      .select('portfolio_id')
+      .eq('is_public', true)
+      .limit(5000);
+    if(error) throw error;
+    const portIds = [...new Set((items||[]).map(r=>r.portfolio_id).filter(Boolean))];
+    if(!portIds.length) return new Set();
+    const ids = new Set();
+    for(let i=0; i<portIds.length; i+=100){
+      const chunk = portIds.slice(i, i+100);
+      const { data: ports, error: pe } = await sb
+        .from('portfolios')
+        .select('id, student_id')
+        .in('id', chunk);
+      if(pe) throw pe;
+      (ports||[]).forEach(p=>{ if(p.student_id) ids.add(p.student_id); });
+    }
+    return ids;
+  }catch(err){
+    console.warn('Public-student filter unavailable — showing all students:', err);
+    return null;
+  }
+}
+
 async function browseAllStudents(){
   showToastLoading('Loading student list…');
   let data, error;
@@ -2594,6 +2632,10 @@ async function browseAllStudents(){
   }
   if(error){ console.error('browse students error:', error); showToast('❌ '+error.message); return; }
 
+  // Only students who have published at least one work.
+  const publicIds = await loadPublicStudentIds();
+  const visible = (data || []).filter(s=>!publicIds || publicIds.has(s.user_id));
+
   // The official section roster (same table that feeds sign-up + archives),
   // so sections show even when nobody has enrolled in them yet.
   let sections = [];
@@ -2603,9 +2645,9 @@ async function browseAllStudents(){
   }catch(secErr){ console.warn('browse sections lookup skipped:', secErr); }
 
   document.getElementById('public-search-summary').textContent =
-    (data && data.length) ? `${data.length} enrolled student${data.length===1?'':'s'}` : `No enrolled students found.`;
+    visible.length ? `${visible.length} student${visible.length===1?'':'s'} with public works` : `No students have published works yet.`;
 
-  renderBrowseSections(data || [], sections);
+  renderBrowseSections(visible, sections);
   go('s-public-search');
 }
 
@@ -2636,14 +2678,15 @@ function renderBrowseSections(students, sectionNames){
   });
 
   // Roster order (alphabetical), then any student sections missing from the
-  // roster, then the "No Section" catch-all last.
+  // roster, then the "No Section" catch-all last. Empty sections are hidden:
+  // the public directory only shows places that actually have published work.
   const roster = [...new Set(sectionNames || [])].sort((a, b)=>a.localeCompare(b));
   const extras = Object.keys(counts).filter(k=>k !== 'No Section' && !roster.includes(k)).sort((a, b)=>a.localeCompare(b));
-  const names = [...roster, ...extras];
+  const names = [...roster, ...extras].filter(n=>counts[n]);
   if(counts['No Section']) names.push('No Section');
 
   if(!names.length){
-    resultsEl.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No sections yet.</div>`;
+    resultsEl.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No students have published works yet.</div>`;
     return;
   }
 
