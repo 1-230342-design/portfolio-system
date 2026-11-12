@@ -48,6 +48,14 @@
           Students
           <span class="nav-badge" id="pstud-badge"></span>
         </a>
+        <!-- SUBMITTED WORKS — expands into one row per section, each with a
+             live count of the works sent in by that section's students. -->
+        <a class="snav-item" id="nav-p-submitted-works" onclick="pPage('p-submitted-works'); expandSubmittedWorksNav();">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          Submitted Works
+          <svg class="snav-caret snav-caret-toggle" id="nav-p-submitted-works-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" onclick="event.stopPropagation();toggleSubmittedWorksNav();"><polyline points="9 18 15 12 9 6"/></svg>
+        </a>
+        <div class="snav-sub" id="nav-p-submitted-works-list"></div>
         <a class="snav-item" id="nav-p-rankings" onclick="pPage('p-rankings')">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 20 18 10"/><polyline points="12 20 12 4"/><polyline points="6 20 6 14"/></svg>
           Overall Rankings
@@ -170,6 +178,27 @@
         </div>
         <div class="section-title" style="margin-bottom:14px;">Submitted Works</div>
         <div class="projects-grid" id="psd-works"></div>
+      </div>
+
+      <!-- SUBMITTED WORKS — every work the students sent in, grouped per section -->
+      <div id="p-submitted-works" style="display:none">
+        <div class="page-title">Submitted Works</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:18px;margin-top:-14px;" id="sw-page-sub">Every work your students sent in, section by section.</div>
+
+        <!-- Section drill-down (same list the sidebar expands into) -->
+        <div class="filter-tabs sw-section-tabs" id="sw-section-tabs"></div>
+
+        <!-- Status breakdown inside the open section -->
+        <div class="filter-tabs" id="sw-status-tabs">
+          <button class="filter-tab active" onclick="swFilterStatus('all', this)">All <span id="sw-count-all"></span></button>
+          <button class="filter-tab" onclick="swFilterStatus('submitted', this)">Pending Review <span id="sw-count-submitted"></span></button>
+          <button class="filter-tab" onclick="swFilterStatus('approved', this)">Approved <span id="sw-count-approved"></span></button>
+          <button class="filter-tab" onclick="swFilterStatus('rejected', this)">Rejected <span id="sw-count-rejected"></span></button>
+        </div>
+
+        <div class="submissions-list" id="sw-list">
+          <div class="art-loader"><span class="adot"></span><span class="adot"></span><span class="adot"></span><span>Loading works…</span></div>
+        </div>
       </div>
 
       <!-- REVIEW PANEL -->

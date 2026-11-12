@@ -548,6 +548,45 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 .prof-nav-toggle.open .snav-caret{transform:rotate(90deg);}
 .prof-nav-toggle.open{color:#fff;}
 
+/* SUBMITTED WORKS — the "Submitted Works" sidebar entry expands into one
+   row per section, each with that section's number of sent-in works. */
+.snav-sub{
+  display:none;
+  margin:0 0 6px 14px;padding:2px 0 2px 8px;
+  border-left:1px solid rgba(255,255,255,.1);
+}
+.snav-sub.open{display:block;}
+.snav-sub-item{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 10px;border-radius:8px;
+  font-size:12px;font-weight:500;color:rgba(255,255,255,.55);
+  cursor:pointer;transition:all .2s;
+}
+.snav-sub-item:hover{color:#fff;background:rgba(61,168,101,.14);}
+.snav-sub-item.active{
+  color:#fff;
+  background:linear-gradient(90deg,rgba(201,162,39,.2),rgba(61,168,101,.3));
+  box-shadow:inset 3px 0 0 var(--gold);
+}
+.snav-sub-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.snav-sub-count{
+  font-size:10px;font-weight:700;color:rgba(255,255,255,.6);
+  background:rgba(255,255,255,.1);border-radius:9px;padding:1px 7px;flex-shrink:0;
+}
+.snav-sub-empty{padding:6px 10px;font-size:11px;color:rgba(255,255,255,.35);}
+/* The caret on the Submitted Works entry spins open/closed like the one on
+   the super-admin "Professor View" toggle. It sits over the item's right
+   edge so the label keeps the full width of the sidebar. */
+.snav-caret-toggle{
+  position:absolute;right:9px;top:50%;
+  transform:translateY(-50%);
+  width:12px;height:12px;opacity:.5;
+  transition:transform .2s,opacity .2s;flex-shrink:0;cursor:pointer;
+}
+.snav-caret-toggle:hover{opacity:.9;}
+.snav-caret-toggle.open{transform:translateY(-50%) rotate(90deg);}
+#nav-p-submitted-works{position:relative;padding-right:26px;}
+
 .sidebar-logout{
   padding:16px 16px 20px;
   border-top:1px solid rgba(255,255,255,.08);
@@ -969,6 +1008,9 @@ video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{backgro
    MY PROJECTS
 ══════════════════════════════════ */
 .filter-tabs{display:flex;gap:8px;margin-bottom:24px;}
+/* Submitted Works — one tab per section; they wrap on desktop and scroll
+   sideways on a phone (the mobile rule below already handles .filter-tabs). */
+.sw-section-tabs{flex-wrap:wrap;margin-bottom:14px;}
 .filter-tab{
   padding:9px 20px;border-radius:999px;font-size:13px;font-weight:500;
   border:1.5px solid var(--border);background:var(--white);
@@ -1428,6 +1470,10 @@ video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{backgro
     margin:0;padding:0;border-left:0;
   }
   .prof-nav-toggle .snav-caret{display:none;}
+  /* The per-section list of "Submitted Works" doesn't fit the phone's
+     horizontal sidebar strip — the page's own section tabs do the job. */
+  .snav-sub{display:none!important;}
+  .snav-caret-toggle{display:none;}
   .sidebar-logout{
     padding:8px 10px;border-top:none;border-left:1px solid rgba(255,255,255,.08);flex-shrink:0;
   }

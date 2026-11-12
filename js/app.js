@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v161';
+const APP_BUILD = 'v162';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -133,6 +133,7 @@ let currentUser        = null;  // Supabase auth user
 let currentProfile     = null;  // user_profiles row
 let studentProjects    = {};    // cache: userId → [items]
 let currentReview      = null;  // { itemId, portfolioId }
+let _reviewBackPage    = null;  // professor page the open review was opened from (Review Panel back link)
 let allStudentProfiles = [];    // professor view cache
 let _profItems         = [];    // all portfolio_items for professor
 let pendingRawFile     = null;  // File object for Cloudinary
@@ -5246,6 +5247,8 @@ function pPage(page){
   if(page==='p-assignments' && typeof renderProfAssignmentsPage === 'function') renderProfAssignmentsPage();
   if(page==='p-archives' && typeof renderArchivesPage === 'function') renderArchivesPage();
   if(page==='p-admin') renderAdminPage();
+  // Defined in js/submitted-works.js — the per-section list of sent-in works
+  if(page==='p-submitted-works' && typeof renderSubmittedWorksPage === 'function') renderSubmittedWorksPage();
   // Re-apply on every page switch: keeps the Super Admin nav and role label
   // correct even if the profile finished loading after the first render.
   applyProfessorPermissions();
@@ -6514,6 +6517,11 @@ function applyProfessorPermissions(){
   navShow('nav-p-assignments', full);
   navShow('nav-p-archives', full);
   navShow('nav-p-admin', superAdmin);
+  // Submitted Works is a read-only browse of everything the students sent
+  // in, grouped per section — every professor gets it (reviewer-only
+  // accounts can open a work to leave a rating/comment, same as from
+  // Students → works → Review Panel).
+  navShow('nav-p-submitted-works', true);
 
   // Two-mode sidebar. Super admins start with just two entries; clicking
   // "Professor View" reveals the teaching menu. Normal professors always
@@ -6538,9 +6546,28 @@ function applyProfessorPermissions(){
   }
   const revBack = document.getElementById('rev-back-link');
   if(revBack){
-    revBack.setAttribute('onclick', full ? "pPage('p-submissions')" : "pPage('p-dashboard')");
-    revBack.textContent = full ? '← Back to Artworks for Review' : '← Back to Dashboard';
+    // Normally the back link returns to the review queue (or the dashboard
+    // for reviewer-only professors). When the work was opened from another
+    // list — e.g. Submitted Works — go back there instead.
+    let backPage  = full ? 'p-submissions' : 'p-dashboard';
+    let backLabel = full ? '← Back to Artworks for Review' : '← Back to Dashboard';
+    if(_reviewBackPage === 'p-submitted-works'){
+      backPage  = 'p-submitted-works';
+      backLabel = '← Back to Submitted Works';
+    }
+    revBack.setAttribute('onclick', "pPage('" + backPage + "')");
+    revBack.textContent = backLabel;
   }
+}
+
+// Which professor page is on screen right now — used to send the Review
+// Panel's back link back to the list the work was opened from.
+function currentProfPage(){
+  const panels = document.querySelectorAll('#s-professor .main-content > div');
+  for(const p of panels){
+    if(p.id && p.style.display !== 'none') return p.id;
+  }
+  return 'p-dashboard';
 }
 
 // ══════════════════════════════════════════════════════
@@ -6856,6 +6883,10 @@ async function refreshProfViews(){
 
   renderSubmissionsList();
 
+  // Keep the "Submitted Works" sidebar list in step with the counts here
+  // (one row per section, with that section's number of works).
+  if(typeof renderSubmittedWorksNav === 'function') renderSubmittedWorksNav();
+
   // Quietly get the AI comparison ready in the background (no waiting, no counters) so
   // opening a review is instant. Does nothing if js/similarity-ai.js isn't loaded.
   if(typeof embWarmUp === 'function') embWarmUp();
@@ -6907,10 +6938,17 @@ function submissionItemHtml(p){
   // Reviewer-only keeps Review even when graded — it's their only way
   // to preview the work and leave stars + comment (no grading inside).
   const reviewBtn = (isGraded && fullProf) ? '' : `<button class="btn-review" onclick="openReviewById('${p.id}')">👁 Review</button>`;
+  // Meta line: student · section · period · date. The section is left out
+  // when the student isn't enrolled in one (otherwise the line shows a
+  // dangling separator), and so is the period for ungraded work.
+  const metaParts = [esc(p.studentName)];
+  if(p.section)          metaParts.push(esc(p.section));
+  if(p.gradingPeriod)    metaParts.push(esc(p.gradingPeriod));
+  metaParts.push(fmtDate(p.submittedAt));
   return `<div class="submission-item">${clickableThumb}
     <div class="sub-info">
       <div class="sub-title">${esc(p.title)} <span class="upload-status-badge ${badge}" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">${p.status}</span>${gradedPill}</div>
-      <div class="sub-meta">by ${esc(p.studentName)} · ${esc(p.section)} · ${p.gradingPeriod ? esc(p.gradingPeriod)+' · ' : ''}${fmtDate(p.submittedAt)}</div>
+      <div class="sub-meta">by ${metaParts.join(' · ')}</div>
     </div>
     ${reviewBtn}
     ${editGradeBtn}
@@ -6995,6 +7033,9 @@ async function openReviewById(itemId){
   // so the professor never waits on it.
   showSimilarityChecking();
   renderAiBadge(itemId, p);
+  // Remember where this work was opened from, so the panel's back link
+  // returns there (Submitted Works, Students, Artworks for Review…).
+  _reviewBackPage = currentProfPage();
   applyProfessorPermissions();
   pPage('p-review');
   renderReviewSimilarity(itemId);
