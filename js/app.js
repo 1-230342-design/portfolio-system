@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v162';
+const APP_BUILD = 'v163';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -2312,12 +2312,20 @@ async function loadAllItemsForProfessor(){
   const studentIds = [...new Set(portfolios.map(p=>p.student_id).filter(Boolean))];
   let profileMap = {};
   if(studentIds.length){
-    const { data: profiles, error: profErr } = await sb
+    let profRes = await sb
       .from('user_profiles')
-      .select('user_id, full_name, student_id, section, email')
+      .select('user_id, full_name, student_id, section, email, department')
       .in('user_id', studentIds);
-    if(profErr) console.error('profile fetch error:', profErr);
-    (profiles||[]).forEach(pr=>{ profileMap[pr.user_id] = pr; });
+    if(profRes.error){
+      // The department column may not be deployed yet — fall back to the old
+      // shape so the names/sections still come through.
+      profRes = await sb
+        .from('user_profiles')
+        .select('user_id, full_name, student_id, section, email')
+        .in('user_id', studentIds);
+    }
+    if(profRes.error) console.error('profile fetch error:', profRes.error);
+    (profRes.data||[]).forEach(pr=>{ profileMap[pr.user_id] = pr; });
   }
 
   // Latest feedback comment per portfolio — so the professor sees their own
@@ -2355,6 +2363,9 @@ async function loadAllItemsForProfessor(){
       studentId:     profile.student_id || '',
       studentEmail:  profile.email || '',
       section:       profile.section || '',
+      // The student's own program (Multimedia Arts / Data Analytics) — used to
+      // group works under a program before drilling into their section.
+      department:    profile.department || '',
       userId:        port.student_id,
       rating:            port.rating || 0,
       creativityScore:   port.creativity_score,
@@ -6945,9 +6956,14 @@ function submissionItemHtml(p){
   if(p.section)          metaParts.push(esc(p.section));
   if(p.gradingPeriod)    metaParts.push(esc(p.gradingPeriod));
   metaParts.push(fmtDate(p.submittedAt));
+  // Stars already given — a reviewer can see at a glance which works they
+  // have rated and which ones still need one.
+  const ratingPill = p.rating
+    ? ` <span class="sub-rating" title="Professor rating">★ ${p.rating}</span>`
+    : '';
   return `<div class="submission-item">${clickableThumb}
     <div class="sub-info">
-      <div class="sub-title">${esc(p.title)} <span class="upload-status-badge ${badge}" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">${p.status}</span>${gradedPill}</div>
+      <div class="sub-title">${esc(p.title)} <span class="upload-status-badge ${badge}" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">${p.status}</span>${gradedPill}${ratingPill}</div>
       <div class="sub-meta">by ${metaParts.join(' · ')}</div>
     </div>
     ${reviewBtn}

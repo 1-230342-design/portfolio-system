@@ -569,6 +569,12 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
   box-shadow:inset 3px 0 0 var(--gold);
 }
 .snav-sub-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* Program heading inside the sidebar list (Multimedia Arts / Data Analytics) */
+.snav-sub-group{
+  padding:10px 10px 4px;
+  font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
+  color:rgba(255,255,255,.32);
+}
 .snav-sub-count{
   font-size:10px;font-weight:700;color:rgba(255,255,255,.6);
   background:rgba(255,255,255,.1);border-radius:9px;padding:1px 7px;flex-shrink:0;
@@ -1008,8 +1014,10 @@ video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{backgro
    MY PROJECTS
 ══════════════════════════════════ */
 .filter-tabs{display:flex;gap:8px;margin-bottom:24px;}
-/* Submitted Works — one tab per section; they wrap on desktop and scroll
-   sideways on a phone (the mobile rule below already handles .filter-tabs). */
+/* Submitted Works — one tab per program, then one per section; they wrap on
+   desktop and scroll sideways on a phone (the mobile rule below already
+   handles .filter-tabs). */
+.sw-program-tabs{flex-wrap:wrap;margin-bottom:12px;}
 .sw-section-tabs{flex-wrap:wrap;margin-bottom:14px;}
 .filter-tab{
   padding:9px 20px;border-radius:999px;font-size:13px;font-weight:500;
@@ -1082,6 +1090,8 @@ video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{backgro
 .sub-info{flex:1;}
 .sub-title{font-size:14px;font-weight:600;color:var(--ink);margin-bottom:3px;}
 .sub-meta{font-size:12px;color:var(--text3);}
+/* Stars already given by the professor, shown next to the title. */
+.sub-rating{color:var(--star);font-size:12px;font-weight:700;white-space:nowrap;}
 .btn-review{
   display:flex;align-items:center;gap:6px;
   background:var(--accent-grad);color:#fff;
