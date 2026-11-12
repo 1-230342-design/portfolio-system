@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v159';
+const APP_BUILD = 'v160';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -248,9 +248,30 @@ async function purgeRogueSimilarityRow(itemId){
   if(Array.isArray(_profItems)) _profItems = _profItems.filter(x=>x.id!==itemId);
 }
 
+// ── PROGRAMS / DEPARTMENTS ──
+// The student sign-up form uses these as the Program choices. The exact
+// string is stored on user_profiles.department and on sections.department,
+// so it is also what scopes sections and assignments per program.
+const PROGRAM_MM = 'BS Information Technology Major in Multimedia Arts';
+const PROGRAM_DA = 'BS Information Technology Major in Data Analytics';
+const STUDENT_PROGRAMS = [
+  { value: PROGRAM_MM, label: 'Multimedia Arts' },
+  { value: PROGRAM_DA, label: 'Data Analytics' }
+];
+const DEPARTMENT_LABELS = {
+  [PROGRAM_MM]: 'Multimedia Arts',
+  [PROGRAM_DA]: 'Data Analytics',
+  'Art Appreciation': 'Art Appreciation'
+};
+function departmentLabel(dept){
+  if(!dept) return 'No program';
+  return DEPARTMENT_LABELS[dept] || dept;
+}
+
 // ── PROFESSOR PERMISSIONS ──
 // Full grading + approve/reject power goes to:
 //   • Multimedia Arts majors
+//   • Data Analytics majors
 //   • Art Appreciation teachers
 //   • any professor explicitly granted can_grade by a super admin
 //   • super admins
@@ -258,7 +279,8 @@ async function purgeRogueSimilarityRow(itemId){
 // submissions, leave a star rating, and comment, but cannot grade or change
 // a submission's status.
 const FULL_ACCESS_DEPARTMENTS = [
-  'BS Information Technology Major in Multimedia Arts',
+  PROGRAM_MM,
+  PROGRAM_DA,
   'Art Appreciation'
 ];
 const FULL_ACCESS_DEPARTMENT = FULL_ACCESS_DEPARTMENTS[0]; // legacy callers
@@ -267,7 +289,8 @@ const PROFESSOR_DEPARTMENTS = [
   'BS Tourism Management',
   'BS Hospitality Management',
   'BS Information Technology',
-  'BS Information Technology Major in Multimedia Arts',
+  PROGRAM_MM,
+  PROGRAM_DA,
   'Art Appreciation'
 ];
 function isProfessorRole(){
@@ -284,6 +307,55 @@ function isFullProfessor(){
     || currentProfile.can_grade === true
     || currentProfile.is_super_admin === true
   ));
+}
+
+// ── PROGRAM SCOPING ──
+// Professors only see sections/students/assignments that belong to their
+// own program. Super admins see everything. Rows created before the
+// department column existed (department = null) are treated as Multimedia
+// Arts, which is where the whole system started.
+function currentScopeDepartment(){
+  if(isSuperAdmin()) return null;          // no filter
+  return (currentProfile && currentProfile.department) || null;
+}
+function sectionInScope(sec){
+  const scope = currentScopeDepartment();
+  if(!scope) return true;
+  const dept = (sec && sec.department) || PROGRAM_MM;
+  return dept === scope;
+}
+function studentInScope(st){
+  const scope = currentScopeDepartment();
+  if(!scope) return true;
+  const dept = (st && st.department) || PROGRAM_MM;
+  return dept === scope;
+}
+
+// Section name → department map. Used to resolve a student's program when
+// their profile.department is missing (older accounts). Cached per page load.
+let _sectionDeptMap = null;
+async function loadSectionDeptMap(){
+  if(_sectionDeptMap) return _sectionDeptMap;
+  try{
+    const { data, error } = await sb.from('sections').select('name,department');
+    if(error) throw error;
+    _sectionDeptMap = {};
+    (data||[]).forEach(s=>{ _sectionDeptMap[s.name] = s.department || PROGRAM_MM; });
+  }catch(err){
+    // department column not deployed yet — treat every section as MM
+    try{
+      const { data } = await sb.from('sections').select('name');
+      _sectionDeptMap = {};
+      (data||[]).forEach(s=>{ _sectionDeptMap[s.name] = PROGRAM_MM; });
+    }catch(e2){ _sectionDeptMap = {}; }
+  }
+  return _sectionDeptMap;
+}
+async function programForStudent(profile){
+  if(!profile) return PROGRAM_MM;
+  const map = await loadSectionDeptMap();
+  if(profile.section && map[profile.section]) return map[profile.section];
+  return profile.department || PROGRAM_MM;
 }
 
 // ── EDIT PROFILE: skills catalog + state ──
@@ -3679,13 +3751,24 @@ async function doSignupStudent(){
   const firstName = document.querySelector('#s-signup-student input[placeholder="First Name"]').value.trim();
   const lastName  = document.querySelector('#s-signup-student input[placeholder="Last Name"]').value.trim();
   const studentId = document.querySelector('#s-signup-student input[placeholder="ex. 1 - 230371"]').value.trim();
+  const programEl = document.getElementById('signup-student-program');
+  const program   = programEl ? programEl.value : '';
   const section   = document.getElementById('signup-student-section').value;
   const yearLevel = yearFromSection(section); // derived — never user-picked
   const emailInp  = document.querySelector('#s-signup-student input[type="email"]').value.trim();
   if(!firstName||!lastName||!emailInp){ showToast('⚠️ Please fill in all required fields'); return; }
+  if(!program){ showToast('⚠️ Please choose your program'); return; }
+  if(!section){ showToast('⚠️ Please choose your section'); return; }
   // Student ID must be the ID number, not an email — an email typed here used
   // to leak its domain onto public pages via the masked-ID display.
   if(studentId && studentId.includes('@')){ showToast('⚠️ Student ID should be your ID number (e.g. 1 - 230371), not an email address'); return; }
+  // The section list is filtered by program, but re-check here so a stale
+  // dropdown (or the console) can't put a student in another program.
+  const map = await loadSectionDeptMap();
+  if(map[section] && map[section] !== program){
+    showToast('⚠️ That section belongs to a different program. Pick your program again.');
+    return;
+  }
   const email = requireAsiatechEmail(emailInp);
   if(!email) return;
   const pass = prompt('Create a password (min 6 characters):');
@@ -3705,7 +3788,8 @@ async function doSignupStudent(){
     full_name:  firstName+' '+lastName,
     student_id: studentId,
     section:    section,
-    year_level: yearLevel
+    year_level: yearLevel,
+    department: program
   }));
   go('s-verify-student');
   resetOtpTimer('student');
@@ -3777,6 +3861,7 @@ async function verifyStudentOtp(){
     role:       pending.role,
     section:    pending.section,
     year_level: pending.year_level,
+    department: pending.department || null,
     email:      pending.email
   }]);
   sessionStorage.removeItem('pendingSignup');
@@ -4899,25 +4984,47 @@ async function populateSubjectDropdown(){
 //  and can later be used to filter/archive grades per section)
 // ══════════════════════════════════════════════════════
 async function loadSections(){
+  // department is added by the multi-program SQL. Before it exists we fall
+  // back to the original two-column query and treat every section as MM.
   try{
-    const { data, error } = await sb.from('sections').select('id,name').order('name');
+    const { data, error } = await sb.from('sections').select('id,name,department').order('name');
     if(error) throw error;
-    return data || [];
+    const rows = (data || []).map(s=>({ ...s, department: s.department || PROGRAM_MM }));
+    _sectionDeptMap = {};
+    rows.forEach(s=>{ _sectionDeptMap[s.name] = s.department; });
+    return rows;
   }catch(err){
-    console.error('loadSections error:', err);
-    return [];
+    try{
+      const { data } = await sb.from('sections').select('id,name').order('name');
+      const rows = (data || []).map(s=>({ ...s, department: PROGRAM_MM }));
+      _sectionDeptMap = {};
+      rows.forEach(s=>{ _sectionDeptMap[s.name] = PROGRAM_MM; });
+      return rows;
+    }catch(e2){
+      console.error('loadSections error:', err);
+      return [];
+    }
   }
 }
 
-// Populates the Section <select> on the student signup page. Runs on app
-// boot (before login) so the dropdown is ready whenever someone lands on
-// the signup screen — same pattern as populateSubjectDropdown().
+// Populates the Section <select> on the student signup page. Filtered by the
+// Program the student picked above it; before a program is chosen the list
+// stays empty so students can't land in the wrong department's section.
 async function populateSectionDropdown(){
-  const sel = document.getElementById('signup-student-section');
+  const sel  = document.getElementById('signup-student-section');
   if(!sel) return;
+  const progEl = document.getElementById('signup-student-program');
+  const prog = progEl ? progEl.value : '';
+  if(!prog){
+    sel.innerHTML = '<option value="">Select Program first</option>';
+    return;
+  }
   const sections = await loadSections();
+  const list = sections.filter(s=>!s.department || s.department === prog);
   sel.innerHTML = '<option value="">Select Section</option>' +
-    sections.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('');
+    (list.length
+      ? list.map(s=>`<option value="${esc(s.name)}">${esc(s.name)}</option>`).join('')
+      : '<option value="" disabled>No sections for this program yet</option>');
 }
 
 function handleUploadFileSelect(e){ processUploadFile(e.target.files&&e.target.files[0]); }
@@ -5162,11 +5269,20 @@ let currentSectionId       = null;  // section currently open in the "students i
 async function loadAllStudentProfiles(){
   const { data, error } = await sb
     .from('user_profiles')
-    .select('user_id, full_name, student_id, section, year_level, social_link, show_social_on_qr, avatar_url')
+    .select('user_id, full_name, student_id, section, year_level, department, social_link, show_social_on_qr, avatar_url')
     .eq('role', 'student')
     .order('full_name');
-  if(error){ console.error('loadAllStudentProfiles error:', error); return []; }
-  return data || [];
+  if(error){
+    // department column not deployed yet — fall back to the old shape.
+    const { data: basic } = await sb
+      .from('user_profiles')
+      .select('user_id, full_name, student_id, section, year_level, social_link, show_social_on_qr, avatar_url')
+      .eq('role', 'student')
+      .order('full_name');
+    if(!basic) console.error('loadAllStudentProfiles error:', error);
+    return (basic || []).map(s=>({ ...s, department: PROGRAM_MM }));
+  }
+  return (data || []).map(s=>({ ...s, department: s.department || PROGRAM_MM }));
 }
 
 // Kept for other callers (Overall Rankings) that just need the lookup cache populated.
@@ -5203,15 +5319,27 @@ async function renderStudentsPage(){
 
   try{
     const [{ data: sections, error }, students] = await Promise.all([
-      sb.from('sections').select('id,name,school_year,semester').order('name'),
+      sb.from('sections').select('id,name,school_year,semester,department').order('name'),
       loadAllStudentProfiles()
     ]);
     if(error) throw error;
-    _studentSections  = sections || [];
+    // Only sections belonging to the signed-in professor's program
+    // (super admins see every program).
+    _studentSections  = (sections || []).filter(sectionInScope).map(s=>({ ...s, department: s.department || PROGRAM_MM }));
     _allStudentsCache = students;
   }catch(err){
     console.error('renderStudentsPage error:', err);
-    _studentSections = [];
+    // Retry without department if that column isn't deployed yet.
+    try{
+      const [{ data: sections }, students] = await Promise.all([
+        sb.from('sections').select('id,name,school_year,semester').order('name'),
+        loadAllStudentProfiles()
+      ]);
+      _studentSections  = (sections || []).map(s=>({ ...s, department: PROGRAM_MM })).filter(sectionInScope);
+      _allStudentsCache = students;
+    }catch(e2){
+      _studentSections = [];
+    }
   }
 
   if(!_studentSections.length){
@@ -5222,7 +5350,7 @@ async function renderStudentsPage(){
     return;
   }
 
-  const unenrolledCount = _allStudentsCache.filter(st=>!st.section).length;
+  const unenrolledCount = _allStudentsCache.filter(st=>!st.section && studentInScope(st)).length;
   const unenrolledRow = unenrolledCount
     ? `<div class="section-group" onclick="openUnenrolledStudents()">
         <div class="section-group-info">
@@ -5371,7 +5499,7 @@ async function openUnenrolledStudents(){
   if(el) el.innerHTML = loadingHtml('Loading students…');
 
   _allStudentsCache = await loadAllStudentProfiles();
-  _currentSectionStudents = _allStudentsCache.filter(s=>!s.section);
+  _currentSectionStudents = _allStudentsCache.filter(s=>!s.section && studentInScope(s));
   _inUnenrolledView = true;
   await loadPendingTransferMap();
   renderSectionStudentsList(_currentSectionStudents);

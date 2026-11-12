@@ -13,9 +13,16 @@
       </div>
       <label class="flabel">Student ID</label>
       <input class="finput" placeholder="ex. 1 - 230371"/>
+      <div><label class="flabel">Program</label>
+        <select class="fselect" id="signup-student-program" onchange="populateSectionDropdown()">
+          <option value="">Select Program</option>
+          <option value="BS Information Technology Major in Multimedia Arts">Multimedia Arts</option>
+          <option value="BS Information Technology Major in Data Analytics">Data Analytics</option>
+        </select>
+      </div>
       <div><label class="flabel">Section</label>
         <select class="fselect" id="signup-student-section">
-          <option value="">Select Section</option>
+          <option value="">Select Program first</option>
         </select>
         <div style="font-size:11px;color:var(--text3);margin-top:6px;">Year level follows your section automatically.</div>
       </div>

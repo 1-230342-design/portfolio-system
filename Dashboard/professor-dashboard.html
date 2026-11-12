@@ -336,9 +336,16 @@
               </select>
             </div>
           </div>
+          <label class="flabel">Program</label>
+          <select class="fselect" id="new-section-dept">
+            <option value="BS Information Technology Major in Multimedia Arts">Multimedia Arts</option>
+            <option value="BS Information Technology Major in Data Analytics">Data Analytics</option>
+          </select>
+          <div style="font-size:11px;color:var(--text3);margin-top:-10px;margin-bottom:14px;">Sections are only visible to students and professors in the same program. A super admin can create sections for any program.</div>
           <button class="btn-submit-work" onclick="addSection()">➕ Add Section</button>
         </div>
 
+        <!-- PROGRAM FILTER NOTE — sections are scoped to the professor's program -->
         <div class="section-title" style="margin-bottom:14px;">Sections</div>
         <div class="submissions-list" id="sections-list">
           <div class="art-loader"><span class="adot"></span><span class="adot"></span><span class="adot"></span><span>Loading sections…</span></div>

@@ -37,15 +37,24 @@ async function addSection(){
   const name       = document.getElementById('new-section-name').value.trim();
   const schoolYear = document.getElementById('new-section-syear').value.trim();
   const semester   = document.getElementById('new-section-semester').value;
+  const deptEl     = document.getElementById('new-section-dept');
+  const department = (deptEl && deptEl.value) || (currentProfile && currentProfile.department) || PROGRAM_MM;
   if(!name){ showToast('⚠️ Enter a section name'); return; }
   if(!schoolYear){ showToast('⚠️ Enter a school year (e.g. 2026-2027)'); return; }
   showToast('💾 Adding section…');
   try{
-    const { error } = await sb.from('sections').insert([{ name, school_year: schoolYear, semester, created_by: currentUser.id }]);
+    const row = { name, school_year: schoolYear, semester, created_by: currentUser.id, department };
+    let { error } = await sb.from('sections').insert([row]);
+    // department column not deployed yet → retry the original shape.
+    if(error && /department/i.test(error.message || '')){
+      const fallback = { name, school_year: schoolYear, semester, created_by: currentUser.id };
+      ({ error } = await sb.from('sections').insert([fallback]));
+    }
     if(error) throw error;
     document.getElementById('new-section-name').value  = '';
     document.getElementById('new-section-syear').value = '';
     showToast('✅ Section added: '+name);
+    _sectionDeptMap = null; // refresh the section → department cache
     renderSectionsManager();
   }catch(err){
     console.error('addSection error:', err);
@@ -66,21 +75,45 @@ async function deleteSection(id){
   }
 }
 
+function initSectionDeptSelect(){
+  const sel = document.getElementById('new-section-dept');
+  if(!sel) return;
+  const opts = [PROGRAM_MM, PROGRAM_DA, 'Art Appreciation'];
+  const own = currentProfile && currentProfile.department;
+  if(own && !opts.includes(own)) opts.push(own);
+  sel.innerHTML = opts.map(d=>`<option value="${esc(d)}">${esc(departmentLabel(d))}</option>`).join('');
+  if(isSuperAdmin()){
+    sel.disabled = false;
+    sel.value = PROGRAM_MM;
+  }else{
+    // Professors create sections for their own program only.
+    sel.value = own && opts.includes(own) ? own : PROGRAM_MM;
+    sel.disabled = true;
+  }
+}
+
 async function renderSectionsManager(){
   const el = document.getElementById('sections-list');
   if(!el) return;
+  initSectionDeptSelect();
   el.innerHTML = loadingHtml('Loading sections…');
   try{
-    const { data, error } = await sb.from('sections').select('id,name,school_year,semester').order('name');
+    let { data, error } = await sb.from('sections').select('id,name,school_year,semester,department').order('name');
+    if(error && /department/i.test(error.message || '')){
+      ({ data, error } = await sb.from('sections').select('id,name,school_year,semester').order('name'));
+    }
     if(error) throw error;
-    _sectionsCache = data || [];
+    _sectionsCache = (data || [])
+      .map(s=>({ ...s, department: s.department || PROGRAM_MM }))
+      .filter(sectionInScope);
   }catch(err){
     console.error('renderSectionsManager error:', err);
     _sectionsCache = [];
   }
 
   if(!_sectionsCache.length){
-    el.innerHTML = `<div class="empty-state"><p>No sections yet. Add one above — it'll appear as a choice on the student sign-up page right away.</p></div>`;
+    const scope = currentScopeDepartment();
+    el.innerHTML = `<div class="empty-state"><p>No sections for ${scope ? esc(departmentLabel(scope)) : 'this program'} yet. Add one above — it'll appear as a choice on the student sign-up page right away.</p></div>`;
     return;
   }
 
@@ -88,7 +121,7 @@ async function renderSectionsManager(){
     <div class="section-group" onclick="openSectionPreview('${s.id}')">
       <div class="section-group-info">
         <div class="section-name">${esc(s.name)}</div>
-        <div class="section-year">${esc(s.school_year || 'No school year set')} &middot; ${esc(s.semester || '')}</div>
+        <div class="section-year">${esc(s.school_year || 'No school year set')} &middot; ${esc(s.semester || '')} &middot; ${esc(departmentLabel(s.department))}</div>
       </div>
       <button class="btn-cancel" style="padding:8px 12px;" onclick="event.stopPropagation();deleteSection('${s.id}')">🗑️</button>
     </div>`).join('');

@@ -22,10 +22,18 @@ async function loadAssignments(){
     // the TOP of the Classwork/Assignments list — previously this sorted by due_date
     // (soonest deadline first), so a new assignment with a later or no due date could
     // silently land near the bottom instead of showing up where the professor just put it.
-    const { data, error } = await sb
+    const base = 'id, professor_id, title, instructions, subject_id, grading_period, due_date, created_at, subjects(name,code)';
+    let { data, error } = await sb
       .from('assignments')
-      .select('id, professor_id, title, instructions, subject_id, grading_period, due_date, created_at, subjects(name,code)')
+      .select(base + ', department')
       .order('created_at', { ascending: false });
+    // department column not deployed yet → use the original shape.
+    if(error && /department/i.test(error.message || '')){
+      ({ data, error } = await sb
+        .from('assignments')
+        .select(base)
+        .order('created_at', { ascending: false }));
+    }
     if(error) throw error;
     return data || [];
   }catch(err){
@@ -66,11 +74,16 @@ async function renderAssignmentsPage(uid){
   myPorts.forEach(p => { byAssignment[p.assignment_id] = p; });
   _myAssignmentPorts = byAssignment;
 
+  // Assignments belong to the program that created them. Legacy rows with
+  // no department stay visible to everyone (pre-multi-program data).
+  const myProgram = await programForStudent(currentProfile);
+  const scoped = assignments.filter(a => !a.department || a.department === myProgram);
+
   // Unenrolled students (no section) stop receiving NEW assignments — but keep
   // every entry they already have, so existing submissions stay manageable
   // (view, unsubmit, grades) exactly as the unenroll rules promise.
   const isUnenrolled = !((currentProfile && currentProfile.section) || '').trim();
-  const visible = isUnenrolled ? assignments.filter(a => byAssignment[a.id]) : assignments;
+  const visible = isUnenrolled ? scoped.filter(a => byAssignment[a.id]) : scoped;
 
   const badge = document.getElementById('assign-badge');
   if(badge){
@@ -465,12 +478,17 @@ async function renderProfAssignmentsPage(){
   const [assignments, counts] = await Promise.all([loadAssignments(), loadAssignmentSubmissionCounts()]);
   _assignmentsCache = assignments;
 
-  if(!assignments.length){
+  // Professors only see their own program's assignments (super admins see all).
+  const scope = isSuperAdmin() ? null : (currentProfile && currentProfile.department);
+  const visible = scope ? assignments.filter(a => !a.department || a.department === scope) : assignments;
+  _assignmentsCache = visible;
+
+  if(!visible.length){
     el.innerHTML = `<div class="empty-state"><p>No assignments posted yet. Click "+ New Assignment" to post your first one.</p></div>`;
     return;
   }
 
-  el.innerHTML = assignments.map(a => {
+  el.innerHTML = visible.map(a => {
     const c = counts[a.id] || { total: 0, submitted: 0 };
     const mine = a.professor_id === (currentUser && currentUser.id);
     const pastDue = a.due_date && new Date(a.due_date) <= new Date();
@@ -535,12 +553,18 @@ async function createAssignment(){
 
   showToast('💾 Posting assignment…');
   try{
-    // This school only has one subject (Multimedia Arts), so we don't ask the
-    // professor to pick one — just reuse the same auto-resolved subject the
-    // student Upload flow already uses (defaultSubjectId, set in app.js).
+    // An assignment belongs to the program of the professor who posts it,
+    // so only students in that program ever see it.
     const insertData = { professor_id: currentUser.id, title, instructions: instructions || null, grading_period: gradingPeriod, due_date: dueDate };
     if(typeof defaultSubjectId !== 'undefined' && defaultSubjectId) insertData.subject_id = defaultSubjectId;
-    const { error } = await sb.from('assignments').insert([insertData]);
+    if(currentProfile && currentProfile.department) insertData.department = currentProfile.department;
+    let { error } = await sb.from('assignments').insert([insertData]);
+    // department column not deployed yet → retry without it.
+    if(error && /department/i.test(error.message || '')){
+      const fallback = { ...insertData };
+      delete fallback.department;
+      ({ error } = await sb.from('assignments').insert([fallback]));
+    }
     if(error) throw error;
     closeCreateAssignmentModal();
     showToast('✅ Assignment posted!');
