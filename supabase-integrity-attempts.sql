@@ -155,7 +155,7 @@ set search_path = public
 as $$
 begin
   if not _is_full_professor() then
-    raise exception 'Only Multimedia Arts professors can view integrity attempts.';
+    raise exception 'Only full-access professors can view integrity attempts.';
   end if;
 
   return query
@@ -194,7 +194,7 @@ set search_path = public
 as $$
 begin
   if not _is_full_professor() then
-    raise exception 'Only Multimedia Arts professors can decide integrity cases.';
+    raise exception 'Only full-access professors can decide integrity cases.';
   end if;
   if p_status is null or p_status not in ('pending', 'confirmed', 'dismissed') then
     raise exception 'Unknown status: %', p_status;

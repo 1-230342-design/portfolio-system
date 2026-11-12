@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v154';
+const APP_BUILD = 'v155';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -249,12 +249,41 @@ async function purgeRogueSimilarityRow(itemId){
 }
 
 // ── PROFESSOR PERMISSIONS ──
-// Only professors from this department get full grading + approve/reject power.
-// Every other professor department is "reviewer only": they can view submissions,
-// leave a star rating, and comment, but cannot grade or change a submission's status.
-const FULL_ACCESS_DEPARTMENT = 'BS Information Technology Major in Multimedia Arts';
+// Full grading + approve/reject power goes to:
+//   • Multimedia Arts majors
+//   • Art Appreciation teachers
+//   • any professor explicitly granted can_grade by a super admin
+//   • super admins
+// Every other professor department is "reviewer only": they can view
+// submissions, leave a star rating, and comment, but cannot grade or change
+// a submission's status.
+const FULL_ACCESS_DEPARTMENTS = [
+  'BS Information Technology Major in Multimedia Arts',
+  'Art Appreciation'
+];
+const FULL_ACCESS_DEPARTMENT = FULL_ACCESS_DEPARTMENTS[0]; // legacy callers
+const PROFESSOR_DEPARTMENTS = [
+  'BS Accountancy',
+  'BS Tourism Management',
+  'BS Hospitality Management',
+  'BS Information Technology',
+  'BS Information Technology Major in Multimedia Arts',
+  'Art Appreciation'
+];
+function isProfessorRole(){
+  return !!(currentProfile && (currentProfile.role === 'professor' || currentProfile.role === 'admin'));
+}
+// is_super_admin / can_grade only exist after supabase-super-admin.sql has
+// been run; undefined reads safely as false, so the app keeps working before.
+function isSuperAdmin(){
+  return !!(isProfessorRole() && currentProfile.is_super_admin === true);
+}
 function isFullProfessor(){
-  return !!(currentProfile && (currentProfile.role === 'professor' || currentProfile.role === 'admin') && currentProfile.department === FULL_ACCESS_DEPARTMENT);
+  return !!(isProfessorRole() && (
+    FULL_ACCESS_DEPARTMENTS.includes(currentProfile.department)
+    || currentProfile.can_grade === true
+    || currentProfile.is_super_admin === true
+  ));
 }
 
 // ── EDIT PROFILE: skills catalog + state ──
@@ -5036,6 +5065,10 @@ function pPage(page){
   // queue are hidden in the sidebar AND blocked here (direct clicks,
   // Back buttons, deep links). Stars/comments remain via Dashboard
   // Recent Submissions + Students → works → Review Panel.
+  if(page === 'p-admin' && !isSuperAdmin()){
+    showToast('🔒 Super admin access required.');
+    page = 'p-dashboard';
+  }
   if(typeof isFullProfessor === 'function' && !isFullProfessor()
      && (page === 'p-assignments' || page === 'p-archives' || page === 'p-submissions')){
     showToast('🔒 Reviewer Only access: Dashboard, Students, and Overall Rankings only.');
@@ -5060,6 +5093,7 @@ function pPage(page){
   // Defined in js/assignments.js — guarded in case that file hasn't loaded yet
   if(page==='p-assignments' && typeof renderProfAssignmentsPage === 'function') renderProfAssignmentsPage();
   if(page==='p-archives' && typeof renderArchivesPage === 'function') renderArchivesPage();
+  if(page==='p-admin') renderAdminPage();
   _pushNavState('s-professor', page);
 }
 
@@ -5251,7 +5285,7 @@ async function refreshTransferBadge(){
 }
 
 async function decideSectionRequest(reqId, approve){
-  if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can decide transfers.'); return; }
+  if(!isFullProfessor()){ showToast('⚠️ Only full-access professors can decide transfers.'); return; }
   if(!confirm((approve ? 'Approve' : 'Decline') + ' this section transfer?')) return;
   showToast(approve ? '✅ Approving…' : '⏳ Declining…');
   try{
@@ -5314,7 +5348,7 @@ function renderSectionStudentsList(students){
            <button class="btn-cancel" style="padding:6px 10px;margin-left:4px;" onclick="event.stopPropagation();decideSectionRequest('${req.id}', false)">✕ Decline</button>
          </div>`
       : '';
-    // Enrollment is professor-only now: full Multimedia Arts professors get a
+    // Enrollment is professor-only now: full-access professors get a
     // section picker on EVERY student row — place an unenrolled student, or
     // move someone to a different section. Reviewer-only accounts never see it.
     const canManage = isFullProfessor();
@@ -5347,7 +5381,7 @@ function renderSectionStudentsList(students){
 // row: an unenrolled student gets placed, an enrolled one gets moved.
 async function enrollStudent(userId, sectionName, sel){
   if(!sectionName) return;
-  if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can enroll students.'); if(sel) sel.value=''; return; }
+  if(!isFullProfessor()){ showToast('⚠️ Only full-access professors can enroll students.'); if(sel) sel.value=''; return; }
   const student = _allStudentsCache.find(s=>s.user_id===userId);
   if(student && student.section === sectionName){ return; } // already there — nothing to save
   showToast(student && student.section ? '💾 Moving to ' + sectionName + '…' : '💾 Enrolling…');
@@ -5422,7 +5456,7 @@ function filterSectionStudents(q){
 // Students cannot do this themselves — Edit Profile has no unenroll control,
 // and supabase-lock-section.sql (optional) enforces it in the database too.
 async function unenrollStudent(userId, name){
-  if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can change enrollment.'); return; }
+  if(!isFullProfessor()){ showToast('⚠️ Only full-access professors can change enrollment.'); return; }
   if(!confirm(`Unenroll ${name} from this section? They'll stay signed up and keep all their work — only their Section is cleared. Already-saved grades keep the section they were graded under and won't change.`)) return;
   showToast('💾 Unenrolling…');
   try{
@@ -6165,7 +6199,7 @@ function _renderIntegrityLocked(){
   if(summaryEl) summaryEl.innerHTML = '';
   if(filtersEl) filtersEl.style.display = 'none';
   if(listEl){
-    listEl.innerHTML = `<div class="int-empty"><div class="int-empty-icon">🔒</div><strong>Restricted section</strong><p>Only Multimedia Arts professors can view integrity records.</p></div>`;
+    listEl.innerHTML = `<div class="int-empty"><div class="int-empty-icon">🔒</div><strong>Restricted section</strong><p>Only full-access professors can view integrity records.</p></div>`;
   }
 }
 
@@ -6259,6 +6293,7 @@ async function openIntegrityWork(itemId){
 // object was refreshed in between.
 function applyProfessorPermissions(){
   const full        = isFullProfessor();
+  const superAdmin  = isSuperAdmin();
   const gradePanel  = document.getElementById('grade-panel');
   const decideBtns  = document.getElementById('approve-reject-actions');
   const feedbackBtn = document.getElementById('btn-submit-feedback');
@@ -6268,14 +6303,15 @@ function applyProfessorPermissions(){
   if(decideBtns)  decideBtns.style.display  = full ? '' : 'none';
   if(feedbackBtn) feedbackBtn.style.display = full ? 'none' : 'block';
   if(note)        note.style.display        = full ? 'none' : 'flex';
-  if(roleEl && currentProfile && (currentProfile.role==='professor'||currentProfile.role==='admin')){
-    roleEl.textContent = full ? 'Professor' : 'Professor · Reviewer Only';
+  if(roleEl && isProfessorRole()){
+    roleEl.textContent = superAdmin ? 'Super Admin' : (full ? 'Professor' : 'Professor · Reviewer Only');
   }
-  // Reviewer-only (non-Multimedia Arts) professors: Dashboard + Students +
+  // Reviewer-only (non-full-access) professors: Dashboard + Students +
   // Overall Rankings only. No Assignments (can't create/delete/reopen),
   // no Grade Archives (can't view/download/freeze grades), and no
   // Artworks queue nav — stars/comments are still reachable from
   // Dashboard Recent Submissions and Students → works → Review Panel.
+  // Super Admin is shown only to accounts with is_super_admin = true.
   const navShow = (id, show)=>{ const el = document.getElementById(id); if(el) el.style.display = show ? '' : 'none'; };
   navShow('nav-p-dashboard', true);
   navShow('nav-p-students', true);
@@ -6283,10 +6319,236 @@ function applyProfessorPermissions(){
   navShow('nav-p-submissions', full);
   navShow('nav-p-assignments', full);
   navShow('nav-p-archives', full);
+  navShow('nav-p-admin', superAdmin);
   const revBack = document.getElementById('rev-back-link');
   if(revBack){
     revBack.setAttribute('onclick', full ? "pPage('p-submissions')" : "pPage('p-dashboard')");
     revBack.textContent = full ? '← Back to Artworks for Review' : '← Back to Dashboard';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  SUPER ADMIN — account + permission management
+//  Server-side companion: supabase-super-admin.sql
+//  Every change is re-checked by a database trigger, and the
+//  trigger writes to admin_audit_log automatically.
+// ══════════════════════════════════════════════════════
+let _adminUsers = [];
+let _adminRoleFilter = 'all';
+let _adminAuditRows = [];
+
+async function renderAdminPage(){
+  const list = document.getElementById('admin-users-list');
+  if(!list) return;
+  if(!isSuperAdmin()){
+    list.innerHTML = `<div class="empty-state"><p>Super admin access required.</p></div>`;
+    return;
+  }
+  list.innerHTML = loadingHtml('Loading accounts…');
+  try{
+    const { data, error } = await sb
+      .from('user_profiles')
+      .select('user_id, full_name, email, role, department, section, year_level, student_id, is_super_admin, can_grade')
+      .order('full_name');
+    if(error) throw error;
+    _adminUsers = data || [];
+    renderAdminUsers();
+    renderAdminAudit();
+  }catch(err){
+    console.error('renderAdminPage error:', err);
+    const missing = /is_super_admin|can_grade/i.test(err.message || '');
+    list.innerHTML = `<div class="empty-state"><p>${missing
+      ? 'Super Admin columns are missing. Run <strong>supabase-super-admin.sql</strong> in the Supabase SQL Editor, then reload.'
+      : 'Could not load accounts: ' + esc(err.message || err)}</p></div>`;
+  }
+}
+
+function adminFilterRole(role, btn){
+  _adminRoleFilter = role;
+  document.querySelectorAll('#admin-role-tabs .filter-tab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderAdminUsers();
+}
+
+function adminRoleChanged(sel){
+  const row = sel.closest('.admin-user-row');
+  const fields = row && row.querySelector('.admin-prof-fields');
+  if(!fields) return;
+  const isProf = sel.value === 'professor' || sel.value === 'admin';
+  fields.style.display = isProf ? '' : 'none';
+  if(!isProf){
+    const cg = row.querySelector('.admin-cangrade');
+    const sa = row.querySelector('.admin-super');
+    if(cg) cg.checked = false;
+    if(sa) sa.checked = false;
+  }
+}
+
+function adminDeptOptions(selected){
+  const list = [...PROFESSOR_DEPARTMENTS];
+  if(selected && !list.includes(selected)) list.unshift(selected);
+  return `<option value="">— None —</option>` +
+    list.map(d=>`<option value="${esc(d)}" ${selected===d?'selected':''}>${esc(d)}</option>`).join('');
+}
+
+function renderAdminUsers(){
+  const el = document.getElementById('admin-users-list');
+  if(!el) return;
+  const q = ((document.getElementById('admin-search') || {}).value || '').trim().toLowerCase();
+  const rows = _adminUsers.filter(u=>{
+    const isProf = u.role === 'professor' || u.role === 'admin';
+    if(_adminRoleFilter === 'student' && u.role !== 'student') return false;
+    if(_adminRoleFilter === 'professor' && !isProf) return false;
+    if(!q) return true;
+    return [u.full_name, u.email, u.student_id, u.department, u.section]
+      .filter(Boolean).join(' ').toLowerCase().includes(q);
+  });
+
+  if(!rows.length){
+    el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No accounts match this filter.</div>`;
+    return;
+  }
+
+  el.innerHTML = rows.map(u=>{
+    const isSelf = !!(currentUser && u.user_id === currentUser.id);
+    const isProf = u.role === 'professor' || u.role === 'admin';
+    const meta = [u.email, u.student_id, u.section, u.department].filter(Boolean).join(' · ') || 'No details';
+    return `<div class="student-row admin-user-row" style="align-items:flex-start;gap:12px;flex-wrap:wrap;">
+      <div class="student-ava">${avatarFaceHtml(u.full_name, null)}</div>
+      <div class="student-row-info" style="min-width:180px;">
+        <div class="student-row-name">${esc(u.full_name || 'Unnamed')}${isSelf ? ' <span style="font-size:10px;font-weight:700;color:var(--orange);">(YOU)</span>' : ''}</div>
+        <div class="student-row-meta">${esc(meta)}</div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;flex:1;">
+        <select class="fselect admin-role" ${isSelf?'disabled':''} onchange="adminRoleChanged(this)" style="width:auto;min-width:120px;margin:0;padding:8px 10px;font-size:12px;">
+          <option value="student" ${u.role==='student'?'selected':''}>Student</option>
+          <option value="professor" ${u.role==='professor'?'selected':''}>Professor</option>
+          <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
+        </select>
+        <div class="admin-prof-fields" style="display:${isProf?'flex':'none'};flex-wrap:wrap;gap:8px;align-items:center;">
+          <select class="fselect admin-dept" style="width:auto;max-width:230px;margin:0;padding:8px 10px;font-size:12px;">
+            ${adminDeptOptions(u.department)}
+          </select>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer;">
+            <input type="checkbox" class="admin-cangrade" ${u.can_grade?'checked':''} ${isSelf?'disabled':''} style="width:15px;height:15px;accent-color:var(--dark);"/>
+            Full grading access
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer;">
+            <input type="checkbox" class="admin-super" ${u.is_super_admin?'checked':''} ${isSelf?'disabled':''} style="width:15px;height:15px;accent-color:var(--red);"/>
+            Super admin
+          </label>
+        </div>
+        <button class="btn-view-sm" onclick="adminSaveUser('${u.user_id}', this)">💾 Save</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function adminSaveUser(userId, btn){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin access required.'); return; }
+  const row = btn && btn.closest('.admin-user-row');
+  if(!row) return;
+  const roleSel  = row.querySelector('.admin-role');
+  const deptSel  = row.querySelector('.admin-dept');
+  const cgBox    = row.querySelector('.admin-cangrade');
+  const saBox    = row.querySelector('.admin-super');
+
+  let role = roleSel ? roleSel.value : 'student';
+  let department = deptSel ? (deptSel.value || null) : null;
+  let canGrade = !!(cgBox && cgBox.checked);
+  let isSuper = !!(saBox && saBox.checked);
+
+  // Students never carry professor-only flags.
+  if(role === 'student'){
+    if(isSuper){ showToast('⚠️ A student cannot be a super admin — choose Professor or Admin first.'); return; }
+    canGrade = false;
+    department = null;
+  }
+  if(isSuper && role !== 'professor' && role !== 'admin'){
+    showToast('⚠️ Super admin requires a Professor or Admin role.'); return;
+  }
+
+  const isSelf = !!(currentUser && userId === currentUser.id);
+  if(isSelf && (
+    role !== currentProfile.role ||
+    isSuper !== !!currentProfile.is_super_admin ||
+    canGrade !== !!currentProfile.can_grade
+  )){
+    showToast('⚠️ You cannot change your own role or access flags.');
+    return;
+  }
+
+  if(btn){ btn.disabled = true; btn.textContent = 'Saving…'; }
+  showToast('💾 Saving account…');
+  try{
+    const { data, error } = await sb
+      .from('user_profiles')
+      .update({ role, department, can_grade: canGrade, is_super_admin: isSuper })
+      .eq('user_id', userId)
+      .select();
+    if(error) throw error;
+    if(!data || !data.length){
+      throw new Error('Nothing was updated — check the RLS policy from supabase-super-admin.sql.');
+    }
+    const updated = data[0];
+    _adminUsers = _adminUsers.map(u=>u.user_id === userId ? { ...u, ...updated } : u);
+    // Keep the signed-in admin's own cached profile fresh if they edited
+    // their own department (role/flags are blocked for self above).
+    if(isSelf){
+      currentProfile = { ...currentProfile, ...updated };
+      applyProfessorPermissions();
+    }
+    renderAdminUsers();
+    renderAdminAudit();
+    showToast('✅ Account updated.');
+  }catch(err){
+    console.error('adminSaveUser error:', err);
+    showToast('❌ Error: ' + (err.message || err));
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '💾 Save'; }
+  }
+}
+
+function adminAuditDetail(d){
+  if(!d) return '';
+  const parts = [];
+  if(d.old_role !== d.new_role) parts.push(`role: ${d.old_role || '—'} → ${d.new_role || '—'}`);
+  if(d.old_department !== d.new_department) parts.push(`dept: ${d.old_department || '—'} → ${d.new_department || '—'}`);
+  if(d.old_can_grade !== d.new_can_grade) parts.push(`full access: ${d.old_can_grade?'yes':'no'} → ${d.new_can_grade?'yes':'no'}`);
+  if(d.old_super_admin !== d.new_super_admin) parts.push(`super admin: ${d.old_super_admin?'yes':'no'} → ${d.new_super_admin?'yes':'no'}`);
+  return parts.join(' · ');
+}
+
+async function renderAdminAudit(){
+  const el = document.getElementById('admin-audit-list');
+  if(!el || !isSuperAdmin()) return;
+  el.innerHTML = loadingHtml('Loading audit log…');
+  try{
+    const { data, error } = await sb
+      .from('admin_audit_log')
+      .select('id, actor_name, action, target_name, detail, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if(error) throw error;
+    _adminAuditRows = data || [];
+    if(!_adminAuditRows.length){
+      el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No admin changes recorded yet.</div>`;
+      return;
+    }
+    el.innerHTML = _adminAuditRows.map(r=>{
+      const detail = adminAuditDetail(r.detail);
+      return `<div class="student-row" style="align-items:flex-start;">
+        <div class="student-ava"><div class="avatar-initial" style="background:var(--surface2);color:var(--text2);width:100%;height:100%;">📝</div></div>
+        <div class="student-row-info">
+          <div class="student-row-name">${esc(r.target_name || 'Account')} <span style="font-weight:400;color:var(--text3);">by ${esc(r.actor_name || 'SQL / system')}</span></div>
+          <div class="student-row-meta">${esc(detail || r.action)}</div>
+          <div class="student-row-meta" style="margin-top:3px;color:var(--text3);">${esc(fmtDateTime(r.created_at))}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(err){
+    console.error('renderAdminAudit error:', err);
+    el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">Audit log unavailable — run <strong>supabase-super-admin.sql</strong>. ${esc(err.message || '')}</div>`;
   }
 }
 
@@ -6493,7 +6755,7 @@ function refreshAlreadyGradedUI(p){
 // Edit Grade shortcut from the list rows: same review panel, but scrolled
 // down to the grade inputs and focused so editing is one click away.
 async function openReviewForGrading(itemId){
-  if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can edit grades.'); return; }
+  if(!isFullProfessor()){ showToast('⚠️ Only full-access professors can edit grades.'); return; }
   await openReviewById(itemId);
   setTimeout(()=>{
     const gp = document.getElementById('grade-panel');
@@ -6650,7 +6912,7 @@ function closeInspectSimilar(){
 
 async function decideReview(decision){
   if(!currentReview){ showToast('⚠️ No submission selected'); return; }
-  if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can approve or reject submissions.'); return; }
+  if(!isFullProfessor()){ showToast('⚠️ Only full-access professors can approve or reject submissions.'); return; }
   const { portfolioId } = currentReview;
   const stars   = document.querySelectorAll('.star-btn.active').length;
   const comment = document.getElementById('rev-comment').value.trim();
@@ -6723,7 +6985,7 @@ function calcFinalGrade(){
 
 async function saveGrade(){
   if(!currentReview){ showToast('⚠️ No submission selected'); return; }
-  if(!isFullProfessor()){ showToast('⚠️ Only Multimedia Arts professors can grade submissions.'); return; }
+  if(!isFullProfessor()){ showToast('⚠️ Only full-access professors can grade submissions.'); return; }
   const c1 = parseFloat(document.getElementById('grade-c1').value)||0;
   const c2 = parseFloat(document.getElementById('grade-c2').value)||0;
   const c3 = parseFloat(document.getElementById('grade-c3').value)||0;

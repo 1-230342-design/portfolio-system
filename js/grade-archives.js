@@ -98,7 +98,7 @@ async function renderSectionsManager(){
 // Reviewer-only professors (non-Multimedia Arts) have no Archives access —
 // pPage already redirects them, this is defence in depth.
 async function renderArchivesPage(){
-  if(typeof isFullProfessor === 'function' && !isFullProfessor()){ showToast('🔒 Grade Archives is for Multimedia Arts professors only.'); return; }
+  if(typeof isFullProfessor === 'function' && !isFullProfessor()){ showToast('🔒 Grade Archives is for full-access professors only.'); return; }
   renderSectionsManager();
 }
 
@@ -528,7 +528,7 @@ async function refreshFreezeNote(){
 }
 
 async function toggleFreeze(){
-  if(typeof isFullProfessor === 'function' && !isFullProfessor()){ showToast('🔒 Only Multimedia Arts professors can freeze periods.'); return; }
+  if(typeof isFullProfessor === 'function' && !isFullProfessor()){ showToast('🔒 Only full-access professors can freeze periods.'); return; }
   const section = _sectionsCache.find(s => s.id === currentPreviewSectionId);
   if(!section || !currentUser) return;
   if(currentPreviewView === 'summary'){ showToast('⚠️ Switch to Details and pick the period to freeze.'); return; }
