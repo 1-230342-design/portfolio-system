@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v155';
+const APP_BUILD = 'v156';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -5094,6 +5094,9 @@ function pPage(page){
   if(page==='p-assignments' && typeof renderProfAssignmentsPage === 'function') renderProfAssignmentsPage();
   if(page==='p-archives' && typeof renderArchivesPage === 'function') renderArchivesPage();
   if(page==='p-admin') renderAdminPage();
+  // Re-apply on every page switch: keeps the Super Admin nav and role label
+  // correct even if the profile finished loading after the first render.
+  applyProfessorPermissions();
   _pushNavState('s-professor', page);
 }
 
