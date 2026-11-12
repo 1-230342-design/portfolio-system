@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v156';
+const APP_BUILD = 'v157';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -6442,6 +6442,7 @@ function renderAdminUsers(){
           </label>
         </div>
         <button class="btn-view-sm" onclick="adminSaveUser('${u.user_id}', this)">💾 Save</button>
+        ${isSelf ? '' : `<button class="btn-view-sm" style="border-color:var(--red);color:var(--red);" onclick="adminRemoveUser('${u.user_id}', this)">🗑 Remove</button>`}
       </div>
     </div>`;
   }).join('');
@@ -6509,6 +6510,59 @@ async function adminSaveUser(userId, btn){
     showToast('❌ Error: ' + (err.message || err));
   }finally{
     if(btn){ btn.disabled = false; btn.textContent = '💾 Save'; }
+  }
+}
+
+// Remove an account's Artfolio profile. The Supabase Auth login is separate:
+// deleting it needs the service-role key, which never belongs in the browser,
+// so the confirm dialog points the admin at Authentication → Users.
+async function adminRemoveUser(userId, btn){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin access required.'); return; }
+  if(currentUser && userId === currentUser.id){
+    showToast('⚠️ You cannot remove your own account.');
+    return;
+  }
+  const u = _adminUsers.find(x=>x.user_id === userId);
+  if(!u) return;
+
+  if(u.is_super_admin){
+    const otherAdmins = _adminUsers.filter(x=>x.is_super_admin && x.user_id !== userId).length;
+    if(otherAdmins === 0){
+      showToast('⚠️ This is the last super admin — promote someone else first.');
+      return;
+    }
+  }
+
+  const name = u.full_name || 'this account';
+  const ok = confirm(
+    `Remove ${name} from Artfolio?\n\n` +
+    `This deletes the profile row and cannot be undone.\n\n` +
+    `The login itself is stored in Supabase Authentication → Users. ` +
+    `Delete it there too if you want to block sign-in completely.`
+  );
+  if(!ok) return;
+
+  if(btn){ btn.disabled = true; btn.textContent = 'Removing…'; }
+  showToast('🗑 Removing account…');
+  try{
+    const { data, error } = await sb
+      .from('user_profiles')
+      .delete()
+      .eq('user_id', userId)
+      .select('user_id');
+    if(error) throw error;
+    if(!data || !data.length){
+      throw new Error('Nothing was deleted — run the delete policy in supabase-super-admin.sql.');
+    }
+    _adminUsers = _adminUsers.filter(x=>x.user_id !== userId);
+    renderAdminUsers();
+    renderAdminAudit();
+    showToast('✅ Account removed.');
+  }catch(err){
+    console.error('adminRemoveUser error:', err);
+    showToast('❌ Error: ' + (err.message || err));
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = '🗑 Remove'; }
   }
 }
 

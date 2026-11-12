@@ -15,6 +15,8 @@
 --       every role / department / permission change.
 --    7. RLS policies                  — super admin and full-access
 --       professors work consistently across grading tables.
+--    8. Account removal               — super admins can delete a
+--       profile row from the panel (auth login is separate).
 --
 --  HOW TO INSTALL:
 --    1. Supabase Dashboard → SQL Editor → New query.
@@ -282,6 +284,93 @@ create policy "super admin updates profiles"
   for update to authenticated
   using (public.is_super_admin())
   with check (public.is_super_admin());
+
+-- Super admin may remove a profile row from the panel. The auth login
+-- (Authentication → Users) is intentionally NOT touched here — deleting
+-- that requires the service-role key, which must stay off the client.
+drop policy if exists "super admin deletes profiles" on public.user_profiles;
+create policy "super admin deletes profiles"
+  on public.user_profiles
+  for delete to authenticated
+  using (public.is_super_admin());
+
+create or replace function public.guard_profile_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- Never allow the last super admin to be deleted, even from SQL Editor.
+  if old.is_super_admin = true
+     and (select count(*) from public.user_profiles where is_super_admin = true) <= 1 then
+    raise exception 'There must always be at least one super admin.'
+      using errcode = '42501';
+  end if;
+
+  -- SQL Editor / service role: allow provisioning cleanup.
+  if auth.uid() is null then
+    return old;
+  end if;
+
+  if old.user_id = auth.uid() then
+    raise exception 'You cannot delete your own account.'
+      using errcode = '42501';
+  end if;
+
+  if not public.is_super_admin() then
+    raise exception 'Only a super admin can delete accounts.'
+      using errcode = '42501';
+  end if;
+
+  return old;
+end;
+$$;
+
+drop trigger if exists guard_profile_delete on public.user_profiles;
+create trigger guard_profile_delete
+  before delete on public.user_profiles
+  for each row
+  execute function public.guard_profile_delete();
+
+create or replace function public.log_profile_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_actor_name text;
+begin
+  select full_name into v_actor_name
+    from public.user_profiles
+   where user_id = auth.uid();
+
+  insert into public.admin_audit_log (
+    actor_id, actor_name, action, target_user_id, target_name, detail
+  ) values (
+    auth.uid(),
+    v_actor_name,
+    'profile_deleted',
+    old.user_id,
+    old.full_name,
+    jsonb_build_object(
+      'role',         old.role,
+      'department',   old.department,
+      'can_grade',    old.can_grade,
+      'super_admin',  old.is_super_admin
+    )
+  );
+
+  return old;
+end;
+$$;
+
+drop trigger if exists audit_profile_delete on public.user_profiles;
+create trigger audit_profile_delete
+  after delete on public.user_profiles
+  for each row
+  execute function public.log_profile_delete();
 
 -- ── 6. RLS: full-access professors grade consistently ───────
 -- These are additive permissive policies. They make can_grade and
