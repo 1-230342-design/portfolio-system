@@ -492,6 +492,10 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
   width:196px;background:var(--dark-grad);
   display:flex;flex-direction:column;
   flex-shrink:0;position:sticky;top:0;height:100vh;
+  /* The nav can be taller than the sidebar (a long section list). Clip it
+     here so it scrolls inside the sidebar instead of spilling over the
+     page content. */
+  overflow:hidden;
 }
 .sidebar-logo{
   font-family:'Fraunces',serif;font-size:22px;
@@ -513,7 +517,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
 .sidebar-name{font-size:13px;font-weight:600;color:#fff;line-height:1.2;}
 .sidebar-role{font-size:11px;color:rgba(255,255,255,.45);}
 
-.sidebar-nav{flex:1;padding:0 8px;}
+.sidebar-nav{flex:1;padding:0 8px;overflow-y:auto;min-height:0;}
 .snav-item{
   display:flex;align-items:center;gap:10px;
   padding:10px 12px;border-radius:8px;
@@ -1468,7 +1472,7 @@ video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{backgro
   .sidebar-user-info{display:none;}
   .sidebar-nav{
     flex:1;display:flex;flex-direction:row;gap:2px;padding:6px 4px;
-    overflow-x:auto;-webkit-overflow-scrolling:touch;
+    overflow-x:auto;-webkit-overflow-scrolling:touch;overflow-y:hidden;
   }
   .snav-item{
     flex-direction:column;gap:4px;padding:8px 10px;

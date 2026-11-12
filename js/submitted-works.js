@@ -160,6 +160,15 @@ function swSyncItems(){
   return _swItems;
 }
 
+// The section rows that actually have something to show. The roster holds
+// every section in the school, but a section with nothing in it is not
+// actionable — listing them all turns the tabs and the sidebar into a
+// wall of empty rows, so they are skipped (the page says how many were
+// left out).
+function swRowsWithWorks(){
+  return _swRows.filter(r => r.items.length > 0);
+}
+
 // ── PAGE ──
 async function renderSubmittedWorksPage(){
   const listEl = document.getElementById('sw-list');
@@ -195,14 +204,26 @@ function renderSubmittedWorksBody(){
   }
 
   // ── section tabs — the sections of the program that is open ──
-  const sectionRows = _swRows.filter(r => !_swProgramFilter || r.program === _swProgramFilter);
+  const programRows  = _swRows.filter(r => !_swProgramFilter || r.program === _swProgramFilter);
+  const sectionRows  = programRows.filter(r => r.items.length > 0);
+  const hiddenRows   = programRows.length - sectionRows.length;
   const secTabsEl = document.getElementById('sw-section-tabs');
   if(secTabsEl){
     secTabsEl.innerHTML = sectionRows.length
       ? sectionRows.map(r =>
           `<button class="filter-tab${_swSectionFilter===r.key?' active':''}" onclick="swFilterSection(${r.idx}, this)" title="${esc(r.meta || r.label)}">${esc(r.label)} (${r.items.length})</button>`
         ).join('')
-      : `<div style="font-size:12px;color:var(--text3);padding:6px 0;">No sections in this program yet.</div>`;
+      : `<div style="font-size:12px;color:var(--text3);padding:6px 0;">${_swProgramFilter ? 'No works in this program yet.' : 'No works have been sent in yet.'}</div>`;
+  }
+
+  // Sections left out because nothing was sent in — a one-line note so the
+  // professor still knows they exist.
+  const secNoteEl = document.getElementById('sw-section-note');
+  if(secNoteEl){
+    secNoteEl.textContent = hiddenRows
+      ? `${hiddenRows} section${hiddenRows===1?'':'s'} with nothing sent in yet — ask them to submit.`
+      : '';
+    secNoteEl.style.display = hiddenRows ? 'block' : 'none';
   }
 
   const inSection = swVisibleItems();
@@ -232,8 +253,9 @@ function renderSubmittedWorksBody(){
       const n = _swProgRows.find(r => r.key === _swProgramFilter);
       subEl.textContent = `${prog} — ${n ? n.items.length : 0} work${n && n.items.length===1?'':'s'} · pick a section below`;
     }else{
+      const withWorks = swRowsWithWorks().length;
       subEl.textContent = _swItems.length
-        ? `Every work your students sent in — ${_swItems.length} work${_swItems.length===1?'':'s'} across ${_swRows.length} section${_swRows.length===1?'':'s'}.`
+        ? `Every work your students sent in — ${_swItems.length} work${_swItems.length===1?'':'s'} across ${withWorks} section${withWorks===1?'':'s'}.`
         : 'Every work your students sent in, program by program and section by section.';
     }
   }
@@ -250,7 +272,9 @@ function renderSubmittedWorksBody(){
 }
 
 // ── SIDEBAR SECTION LIST ──
-// The same sections as the page, grouped under their program.
+// The same sections as the page, grouped under their program. Only the
+// sections that actually have works are listed — the sidebar is narrow,
+// and a long list of empty sections would overflow it.
 async function renderSubmittedWorksNav(){
   await loadSubmittedWorksSections();
   swSyncItems();
@@ -259,14 +283,15 @@ async function renderSubmittedWorksNav(){
   if(!el) return;
   _swRows = swSectionRows(_swItems);
 
-  if(!_swRows.length){
-    el.innerHTML = `<div class="snav-sub-empty">No sections yet</div>`;
+  const withWorks = swRowsWithWorks();
+  if(!withWorks.length){
+    el.innerHTML = `<div class="snav-sub-empty">Nothing sent in yet</div>`;
     return;
   }
 
   // Group the rows by program, keeping the program's own order.
   const byProgram = new Map();
-  _swRows.forEach(r => {
+  withWorks.forEach(r => {
     if(!byProgram.has(r.program)) byProgram.set(r.program, []);
     byProgram.get(r.program).push(r);
   });
@@ -284,7 +309,7 @@ async function renderSubmittedWorksNav(){
     ).join('');
   });
 
-  el.innerHTML = html || `<div class="snav-sub-empty">No sections yet</div>`;
+  el.innerHTML = html || `<div class="snav-sub-empty">Nothing sent in yet</div>`;
 }
 
 // ── NAV / FILTER ACTIONS ──
@@ -341,6 +366,15 @@ function swFilterStatus(status, btn){
 // Caret on the sidebar entry: open/close the per-section list.
 function toggleSubmittedWorksNav(){
   _swNavOpen = !_swNavOpen;
+  applySubmittedWorksNavState();
+}
+
+// The tree is only useful while the professor is on the Submitted Works
+// page — close it when they go somewhere else, so it never pushes the
+// sidebar around.
+function closeSubmittedWorksNav(){
+  if(!_swNavOpen) return;
+  _swNavOpen = false;
   applySubmittedWorksNavState();
 }
 

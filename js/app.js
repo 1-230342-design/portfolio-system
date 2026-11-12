@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v163';
+const APP_BUILD = 'v164';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -5260,6 +5260,8 @@ function pPage(page){
   if(page==='p-admin') renderAdminPage();
   // Defined in js/submitted-works.js — the per-section list of sent-in works
   if(page==='p-submitted-works' && typeof renderSubmittedWorksPage === 'function') renderSubmittedWorksPage();
+  // Leaving the Submitted Works page folds its section tree away again.
+  else if(typeof closeSubmittedWorksNav === 'function') closeSubmittedWorksNav();
   // Re-apply on every page switch: keeps the Super Admin nav and role label
   // correct even if the profile finished loading after the first render.
   applyProfessorPermissions();
@@ -5719,6 +5721,8 @@ async function viewStudentProfile(userId){
 
   document.querySelectorAll('#s-professor .main-content > div').forEach(d=>d.style.display='none');
   document.getElementById('p-student-detail').style.display='block';
+  // Leaving the Submitted Works page folds its section tree away again.
+  if(typeof closeSubmittedWorksNav === 'function') closeSubmittedWorksNav();
   document.querySelectorAll('#s-professor .snav-item').forEach(a=>{
     a.classList.toggle('active', a.getAttribute('onclick')&&a.getAttribute('onclick').includes("'p-students'"));
   });
