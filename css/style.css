@@ -31,6 +31,12 @@
      in light mode; flips to warm cream in dark mode. --dark itself is never
      remapped (it's also sidebar/toast/button BACKGROUNDS + text on gold). */
   --ink:#173626;
+  /* Scrollbars — the browser's default light chrome looks out of place on
+     the dark panels (the sidebar especially). One slim translucent bar,
+     themed to match whatever surface it sits on. */
+  --scroll-thumb:rgba(23,54,38,.30);
+  --scroll-thumb-hover:rgba(23,54,38,.48);
+  --scroll-track:rgba(23,54,38,.06);
 }
 /* ── DARK THEME ──
    Toggled by the floating #themeToggle button (see bottom of file + index.html).
@@ -53,6 +59,9 @@
   --gold-tint:rgba(201,162,39,.16);
   --shadow:0 3px 16px rgba(0,0,0,.45);
   --shadow2:0 14px 38px rgba(0,0,0,.55);
+  --scroll-thumb:rgba(255,255,255,.22);
+  --scroll-thumb-hover:rgba(255,255,255,.38);
+  --scroll-track:rgba(255,255,255,.05);
 }
 [data-theme="dark"] .modal-box,
 [data-theme="dark"] .skill-picker{background:#1f271d;}
@@ -486,6 +495,39 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--surface);color:
    APP SHELL (sidebar layout)
 ══════════════════════════════════ */
 .app-shell{display:flex;min-height:100vh;}
+
+/* SCROLLBARS
+   The browser's default scrollbar is a bright white block that ruins the
+   dark panels (the sidebar, the modals, the dark theme). One slim
+   translucent bar everywhere instead — the colour follows the theme. */
+*{ scrollbar-width:thin; scrollbar-color:var(--scroll-thumb) transparent; }
+::-webkit-scrollbar{ width:10px; height:10px; }
+::-webkit-scrollbar-track{ background:var(--scroll-track); }
+::-webkit-scrollbar-thumb{
+  background:var(--scroll-thumb);
+  border-radius:6px;
+  border:2px solid transparent;
+  background-clip:padding-box;
+}
+::-webkit-scrollbar-thumb:hover{
+  background:var(--scroll-thumb-hover);
+  background-clip:padding-box;
+}
+::-webkit-scrollbar-corner{ background:transparent; }
+
+/* The sidebar is always dark, in either theme — so its bar stays light. */
+.sidebar-nav{ scrollbar-color:rgba(255,255,255,.20) transparent; }
+.sidebar-nav::-webkit-scrollbar-track{ background:transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb{
+  background:rgba(255,255,255,.20);
+  border-radius:6px;
+  border:2px solid transparent;
+  background-clip:padding-box;
+}
+.sidebar-nav::-webkit-scrollbar-thumb:hover{
+  background:rgba(255,255,255,.38);
+  background-clip:padding-box;
+}
 
 /* SIDEBAR */
 .sidebar{
