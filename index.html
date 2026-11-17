@@ -229,7 +229,7 @@
     </div>
     <!-- MODE 2 — attach: shown when nothing is submitted yet, or right after an unsubmit. -->
     <div id="aw-attach-form">
-      <input type="file" id="aw-file-input" accept="image/*,.pdf,.psd,.blend,.mp4,.mov,.zip" style="display:none" onchange="handleAttachFileSelect(event)"/>
+      <input type="file" id="aw-file-input" accept="image/*,.pdf,.psd,.mp4" style="display:none" onchange="handleAttachFileSelect(event)"/>
       <div class="drop-zone" id="aw-drop-zone" style="padding:32px 16px;" onclick="document.getElementById('aw-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--ink)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleAttachDrop(event)">
         <div class="drop-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -237,7 +237,7 @@
         <div class="drop-text" id="aw-drop-text">Drop files here or click to upload</div>
         <!-- Accepted formats, stated up front. Keep in step with ACCEPT_HINT
              in js/app.js (which the rejection toast uses). -->
-        <div class="drop-hint">Images (JPG, PNG, GIF, WebP, SVG) · Video (MP4, MOV) · PDF · PSD · BLEND · ZIP</div>
+        <div class="drop-hint">Images (JPG, PNG, GIF, WebP, SVG) · Video (MP4) · PDF · PSD</div>
       </div>
       <label class="flabel">Title *</label>
       <input class="finput" id="aw-title" placeholder="Give your submission a title"/>
@@ -423,7 +423,7 @@
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
 <script src="js/loader.js?v=52"></script>
-<script src="js/app.js?v=172"></script>
+<script src="js/app.js?v=173"></script>
 <script src="js/assignments.js?v=76"></script>
 <script src="js/grade-archives.js?v=55"></script>
 <script src="js/submitted-works.js?v=4"></script>

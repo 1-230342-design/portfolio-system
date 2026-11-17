@@ -150,7 +150,7 @@
         <div class="upload-page-card">
           <div class="upload-page-title">Upload New Work</div>
           <div class="upload-page-sub">Save creative work to your personal portfolio — always yours to keep, download, and publish publicly. Graded classwork goes through <strong>Classwork</strong> assignments, where your professor sets the grading period.</div>
-          <input type="file" id="up-file-input" accept="image/*,.pdf,.psd,.blend,.mp4,.mov,.zip" style="display:none" onchange="handleUploadFileSelect(event)"/>
+          <input type="file" id="up-file-input" accept="image/*,.pdf,.psd,.mp4" style="display:none" onchange="handleUploadFileSelect(event)"/>
           <div class="drop-zone" id="up-drop-zone" onclick="document.getElementById('up-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--ink)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleUploadDrop(event)">
             <div class="drop-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -158,7 +158,7 @@
             <div class="drop-text" id="up-drop-text">Drop files here or click to upload</div>
             <!-- Accepted formats, stated up front. Keep in step with
                  ACCEPT_HINT in js/app.js (the rejection toast uses it). -->
-            <div class="drop-hint">Images (JPG, PNG, GIF, WebP, SVG) · Video (MP4, MOV) · PDF · PSD · BLEND · ZIP</div>
+            <div class="drop-hint">Images (JPG, PNG, GIF, WebP, SVG) · Video (MP4) · PDF · PSD</div>
           </div>
           <label class="flabel">Project Title *</label>
           <input class="finput" id="up-title" placeholder="e.g., Brand Identity Design"/>

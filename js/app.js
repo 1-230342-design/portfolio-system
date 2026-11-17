@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v170';
+const APP_BUILD = 'v171';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -455,9 +455,9 @@ function fileIsVideo(f){
 //  ACCEPT_EXT, ACCEPT_ATTR and the .drop-hint text in the two HTML
 //  files must stay in step if a format is ever added.
 // ══════════════════════════════════════════════════════
-const ACCEPT_EXT  = ['jpg','jpeg','png','gif','webp','svg','heic','heif','avif','bmp','tif','tiff','mp4','mov','pdf','psd','blend','zip'];
-const ACCEPT_HINT = 'Images (JPG, PNG, GIF, WebP, SVG) · Video (MP4, MOV) · PDF · PSD · BLEND · ZIP';
-const ACCEPT_ATTR = 'image/*,.pdf,.psd,.blend,.mp4,.mov,.zip';
+const ACCEPT_EXT  = ['jpg','jpeg','png','gif','webp','svg','heic','heif','avif','bmp','tif','tiff','mp4','pdf','psd'];
+const ACCEPT_HINT = 'Images (JPG, PNG, GIF, WebP, SVG) · Video (MP4) · PDF · PSD';
+const ACCEPT_ATTR = 'image/*,.pdf,.psd,.mp4';
 
 function fileExtOf(nameOrUrl){
   const m = /\.([a-z0-9]{2,5})(?:[?#]|$)/i.exec(String(nameOrUrl || ''));
@@ -470,7 +470,7 @@ function uploadFileProblem(file){
   const ext  = fileExtOf(file.name);
   const mime = String(file.type || '').toLowerCase();
   if(/^image\//.test(mime)) return null;                 // jpg/png/gif/webp/svg/heic/avif…
-  if(/^video\/(mp4|quicktime)$/.test(mime)) return null;  // mp4, mov
+  if(/^video\/mp4$/.test(mime)) return null;              // mp4 only (MOV is not accepted)
   if(ext && ACCEPT_EXT.includes(ext)) return null;        // pickers that report no MIME type
   const what = ext ? 'a .' + ext.toUpperCase() + ' file' : 'that file type';
   return `Sorry, ${what} isn’t accepted. Please upload ${ACCEPT_HINT}.`;
