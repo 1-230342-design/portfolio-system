@@ -257,13 +257,34 @@ async function unsubmitAssignment(){
   }
 }
 function handleAttachFileSelect(e){
-  attachRawFile = e.target.files && e.target.files[0];
+  const f = e.target.files && e.target.files[0];
+  // The picker's accept="" is only a hint — "All Files" bypasses it, so the
+  // real check happens here, before the file is remembered anywhere.
+  const problem = (f && typeof uploadFileProblem === 'function') ? uploadFileProblem(f) : null;
+  if(problem){
+    attachRawFile = null;
+    if(e.target) e.target.value = '';
+    const txt = document.getElementById('aw-drop-text');
+    if(txt) txt.textContent = 'Drop files here or click to upload';
+    showToast('⚠️ ' + problem);
+    return;
+  }
+  attachRawFile = f;
   if(attachRawFile) document.getElementById('aw-drop-text').textContent = `✅ ${attachRawFile.name} selected (${formatBytes(attachRawFile.size)})`;
 }
 function handleAttachDrop(e){
   e.preventDefault();
   document.getElementById('aw-drop-zone').style.borderColor = 'var(--border)';
-  attachRawFile = e.dataTransfer.files && e.dataTransfer.files[0];
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  const problem = (f && typeof uploadFileProblem === 'function') ? uploadFileProblem(f) : null;
+  if(problem){
+    attachRawFile = null;
+    const txt = document.getElementById('aw-drop-text');
+    if(txt) txt.textContent = 'Drop files here or click to upload';
+    showToast('⚠️ ' + problem);
+    return;
+  }
+  attachRawFile = f;
   if(attachRawFile) document.getElementById('aw-drop-text').textContent = `✅ ${attachRawFile.name} selected (${formatBytes(attachRawFile.size)})`;
 }
 
@@ -363,6 +384,17 @@ async function submitAttachedWork(){
   const desc  = document.getElementById('aw-desc').value.trim();
   if(!title){ showToast('⚠️ Please enter a title'); return; }
   if(!attachRawFile){ showToast('⚠️ Please select a file to attach'); return; }
+  {
+    // A file held in state from an older picker path still can't get through.
+    const problem = (typeof uploadFileProblem === 'function') ? uploadFileProblem(attachRawFile) : null;
+    if(problem){
+      attachRawFile = null;
+      const txt = document.getElementById('aw-drop-text');
+      if(txt) txt.textContent = 'Drop files here or click to upload';
+      showToast('⚠️ ' + problem);
+      return;
+    }
+  }
 
   try{
     // BLOCK-BEFORE-UPLOAD: fingerprint the file locally (dHash + AI embedding)

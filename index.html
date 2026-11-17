@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="images/favicon-artfolio.png"/>
 <link rel="apple-touch-icon" href="images/favicon-artfolio.png"/>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="css/style.css?v=52"/>
+<link rel="stylesheet" href="css/style.css?v=53"/>
 <!-- Pre-apply saved theme BEFORE first paint (no light-flash for dark users).
      Full toggle logic lives in toggleTheme()/syncThemeIcon() in js/app.js. -->
 <script>try{var t=localStorage.getItem('artfolio-theme');if(!t)t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -229,12 +229,15 @@
     </div>
     <!-- MODE 2 — attach: shown when nothing is submitted yet, or right after an unsubmit. -->
     <div id="aw-attach-form">
-      <input type="file" id="aw-file-input" accept="image/*,.pdf,.psd,.blend,.mp4,.zip" style="display:none" onchange="handleAttachFileSelect(event)"/>
+      <input type="file" id="aw-file-input" accept="image/*,.pdf,.psd,.blend,.mp4,.mov,.zip" style="display:none" onchange="handleAttachFileSelect(event)"/>
       <div class="drop-zone" id="aw-drop-zone" style="padding:32px 16px;" onclick="document.getElementById('aw-file-input').click()" ondragover="event.preventDefault();this.style.borderColor='var(--ink)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="handleAttachDrop(event)">
         <div class="drop-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         </div>
         <div class="drop-text" id="aw-drop-text">Drop files here or click to upload</div>
+        <!-- Accepted formats, stated up front. Keep in step with ACCEPT_HINT
+             in js/app.js (which the rejection toast uses). -->
+        <div class="drop-hint">Images (JPG, PNG, GIF, WebP, SVG) · Video (MP4, MOV) · PDF · PSD · BLEND · ZIP</div>
       </div>
       <label class="flabel">Title *</label>
       <input class="finput" id="aw-title" placeholder="Give your submission a title"/>
@@ -420,8 +423,8 @@
      the similarity block (a stale copy uploads first and never calls the RPC,
      which is exactly how 99% duplicates kept sailing through). -->
 <script src="js/loader.js?v=52"></script>
-<script src="js/app.js?v=171"></script>
-<script src="js/assignments.js?v=75"></script>
+<script src="js/app.js?v=172"></script>
+<script src="js/assignments.js?v=76"></script>
 <script src="js/grade-archives.js?v=55"></script>
 <script src="js/submitted-works.js?v=4"></script>
 <script src="js/qr.js?v=54"></script>

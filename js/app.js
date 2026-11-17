@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v169';
+const APP_BUILD = 'v170';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -422,14 +422,84 @@ function fmtDate(iso){ return iso ? new Date(iso).toLocaleDateString('en-US',{mo
 // their own formatter — e.g. "9/25/2026, 2:30 PM".
 function fmtDateTime(iso){ return iso ? new Date(iso).toLocaleString('en-US',{month:'numeric',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'}) : '—'; }
 function formatBytes(b){ if(b<1024)return b+' B'; if(b<1024*1024)return (b/1024).toFixed(1)+' KB'; return (b/1024/1024).toFixed(1)+' MB'; }
+// Extensions the browser cannot paint, even when Cloudinary files them under
+// /image/upload/ (it does that for PDFs and PSDs). Without this guard a PDF
+// or PSD is treated as a photo and renders as a broken <img>.
+const NON_VIEWABLE_EXT = ['pdf','psd','psb','blend','zip'];
+
 function fileIsImage(f){
   if(!f||!f.dataUrl) return false;
+  if(NON_VIEWABLE_EXT.includes(fileExtOf(f.dataUrl))) return false;
   return /\.(jpg|jpeg|png|gif|webp|svg)(\?|$)/i.test(f.dataUrl)||/\/image\/upload\//i.test(f.dataUrl)||(f.mimeType&&f.mimeType.startsWith('image/'));
 }
 function fileIsVideo(f){
   if(!f||!f.dataUrl) return false;
+  if(NON_VIEWABLE_EXT.includes(fileExtOf(f.dataUrl))) return false;
   return /\.(mp4|webm|ogg|ogv|mov|m4v)(\?|$)/i.test(f.dataUrl)||/\/video\/upload\//i.test(f.dataUrl)||(f.mimeType&&f.mimeType.startsWith('video/'));
 }
+// ══════════════════════════════════════════════════════
+//  ACCEPTED UPLOAD FORMATS — one list, used everywhere
+//
+//  Panel revision: "include the type of image/video to upload
+//  (pdf, img, etc)". The file pickers already allowed these formats
+//  but the interface never said so, and a PDF / ZIP / PSD reached the
+//  review panel as an empty box with no way to open it. So:
+//
+//    • the two HTML <input type=file> elements carry ACCEPT_ATTR for
+//      the operating system's file dialog
+//    • uploadFileProblem() blocks anything else BEFORE a byte is sent
+//    • each drop zone prints ACCEPT_HINT under the button
+//    • mediaKind() labels every work in every list and tells the
+//      review panel whether the browser can render it inline
+//
+//  ACCEPT_EXT, ACCEPT_ATTR and the .drop-hint text in the two HTML
+//  files must stay in step if a format is ever added.
+// ══════════════════════════════════════════════════════
+const ACCEPT_EXT  = ['jpg','jpeg','png','gif','webp','svg','heic','heif','avif','bmp','tif','tiff','mp4','mov','pdf','psd','blend','zip'];
+const ACCEPT_HINT = 'Images (JPG, PNG, GIF, WebP, SVG) · Video (MP4, MOV) · PDF · PSD · BLEND · ZIP';
+const ACCEPT_ATTR = 'image/*,.pdf,.psd,.blend,.mp4,.mov,.zip';
+
+function fileExtOf(nameOrUrl){
+  const m = /\.([a-z0-9]{2,5})(?:[?#]|$)/i.exec(String(nameOrUrl || ''));
+  return m ? m[1].toLowerCase() : '';
+}
+
+// Null when the file is allowed; otherwise a sentence the student can act on.
+function uploadFileProblem(file){
+  if(!file) return 'Please choose a file first.';
+  const ext  = fileExtOf(file.name);
+  const mime = String(file.type || '').toLowerCase();
+  if(/^image\//.test(mime)) return null;                 // jpg/png/gif/webp/svg/heic/avif…
+  if(/^video\/(mp4|quicktime)$/.test(mime)) return null;  // mp4, mov
+  if(ext && ACCEPT_EXT.includes(ext)) return null;        // pickers that report no MIME type
+  const what = ext ? 'a .' + ext.toUpperCase() + ' file' : 'that file type';
+  return `Sorry, ${what} isn’t accepted. Please upload ${ACCEPT_HINT}.`;
+}
+
+// What kind of work is this, and can the browser show it inline?
+// Extension is checked BEFORE the MIME type on purpose: Cloudinary files
+// PSDs under /image/upload/, so a PSD would otherwise be treated as a
+// photo and render as a broken <img>.
+function mediaKind(f){
+  const url  = (f && f.dataUrl) || '';
+  const mime = String((f && f.mimeType) || '').toLowerCase();
+  const ext  = fileExtOf(url) || fileExtOf(f && f.name);
+
+  if(ext === 'pdf')   return { key:'pdf',   label:'PDF',       short:'PDF',   icon:'📄', previewable:false };
+  if(ext === 'psd' || ext === 'psb')
+                      return { key:'psd',   label:'Photoshop', short:'PSD',   icon:'🎨', previewable:false };
+  if(ext === 'blend') return { key:'blend', label:'Blender',   short:'BLEND', icon:'🧊', previewable:false };
+  if(ext === 'zip')   return { key:'zip',   label:'Archive',   short:'ZIP',   icon:'🗂️', previewable:false };
+
+  if(/^video\//.test(mime) || /\/video\/upload\//.test(url) || ['mp4','mov','webm','m4v','ogv'].includes(ext))
+    return { key:'video', label:'Video', short:'VIDEO', icon:'🎬', previewable:true };
+  if(/^image\//.test(mime) || /\/image\/upload\//.test(url) || ['jpg','jpeg','png','gif','webp','svg','avif','heic','heif','bmp','tif','tiff'].includes(ext))
+    return { key:'image', label:'Image', short:'IMG', icon:'🖼️', previewable:true };
+
+  if(/pdf/.test(mime)) return { key:'pdf', label:'PDF', short:'PDF', icon:'📄', previewable:false };
+  return { key:'file', label:'File', short:'FILE', icon:'📎', previewable:false };
+}
+
 // Inline preview for the similarity panels. Images render as-is; videos show
 // their first frame (muted, metadata only) instead of a broken-image icon.
 function simPreviewHtml(url, type){
@@ -440,11 +510,13 @@ function simPreviewHtml(url, type){
   return '<span style="font-size:20px;">📄</span>';
 }
 // Full-bleed showcase media (Unsplash-style): image or muted first-frame
-// video filling the card edge to edge. Anything else → 🖼️ tile.
+// video filling the card edge to edge. Anything else → a tile that names
+// its own type, so a PDF never masquerades as a broken picture.
 function pfMediaHtml(p){
   if(p && p.file && fileIsVideo(p.file)) return `<video class="pf-media" src="${esc(p.file.dataUrl)}" preload="metadata" muted playsinline disablepictureinpicture style="pointer-events:none;" oncontextmenu="return false;"></video>`;
   if(p && p.file && fileIsImage(p.file)) return `<img class="pf-media" src="${esc(p.file.dataUrl)}" alt="${esc(p.title)}"/>`;
-  return `<div class="pf-media" style="display:flex;align-items:center;justify-content:center;font-size:44px;background:var(--surface2);">🖼️</div>`;
+  const kind = mediaKind(p && p.file);
+  return `<div class="pf-media" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:44px;background:var(--surface2);"><span style="line-height:1;">${kind.icon}</span><span style="font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--text3);">${esc(kind.short)}</span></div>`;
 }
 // Card thumbnail used by every list in the app: real images/videos render the
 // FULL work (contain) over a blurred, enlarged copy of itself as a per-work
@@ -473,7 +545,16 @@ function cardThumbHtml(p, frameCls, phCls, phStyle){
   }
   const phH = frameCls === 'sub-thumb-frame' ? 56 : baseH;
   const phW = frameCls === 'sub-thumb-frame' ? 'width:56px;flex-shrink:0;border-radius:8px;' : 'width:100%;';
-  return `<div class="${phCls}" style="display:flex;align-items:center;justify-content:center;${phW}height:${phH}px;background:#eef0ea;font-size:36px;">🖼️</div>`;
+  // Not renderable inline (PDF / PSD / BLEND / ZIP): show the format itself
+  // rather than a picture-frame glyph, so the list reads at a glance.
+  const kind = mediaKind(p && p.file);
+  const sub  = frameCls === 'sub-thumb-frame';
+  return `<div class="${phCls}" style="display:flex;align-items:center;justify-content:center;${phW}height:${phH}px;background:#eef0ea;">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1;">
+      <span style="font-size:${sub ? '18px' : '32px'};">${kind.icon}</span>
+      ${sub ? '' : `<span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text3);">${esc(kind.short)}</span>`}
+    </div>
+  </div>`;
 }
 function readFileAsDataUrl(file){
   return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(new Error('read failed')); r.readAsDataURL(file); });
@@ -5047,6 +5128,18 @@ function handleUploadDrop(e){
 }
 async function processUploadFile(file){
   if(!file) return;
+  // Reject unsupported formats before anything else happens — the picker's
+  // accept="" is only a hint, and "All Files" bypasses it entirely.
+  const problem = uploadFileProblem(file);
+  if(problem){
+    pendingRawFile = null; pendingUploadFile = null;
+    const el = document.getElementById('up-file-input');
+    if(el) el.value = '';
+    const txt = document.getElementById('up-drop-text');
+    if(txt) txt.textContent = 'Drop files here or click to upload';
+    showToast('⚠️ ' + problem);
+    return;
+  }
   pendingRawFile    = file;
   pendingUploadFile = { name:file.name, sizeBytes:file.size, mimeType:file.type, dataUrl:null };
   document.getElementById('up-drop-text').textContent = `✅ ${file.name} selected (${formatBytes(file.size)})`;
@@ -5086,6 +5179,12 @@ async function submitWork(){
   if(!title)     { showToast('⚠️ Please enter a project title'); return; }
   // subjectId is optional for multimedia-only systems — we proceed with null if no subjects are configured
   if(!pendingRawFile){ showToast('⚠️ Please select a file to upload'); return; }
+  // Second gate: a file held in state from before a reload, or a paste/drop
+  // path that skipped processUploadFile, still can't smuggle a bad type in.
+  {
+    const problem = uploadFileProblem(pendingRawFile);
+    if(problem){ pendingRawFile=null; pendingUploadFile=null; showToast('⚠️ ' + problem); return; }
+  }
   // Upload Work is personal-gallery ONLY. Students can no longer send
   // personal work to a professor or pick their own grading period —
   // that let them game rankings/archives and duplicated Classwork.
@@ -6959,15 +7058,22 @@ function submissionItemHtml(p){
   const metaParts = [esc(p.studentName)];
   if(p.section)          metaParts.push(esc(p.section));
   if(p.gradingPeriod)    metaParts.push(esc(p.gradingPeriod));
+  // File size alongside the type chip — a 40 MB ZIP and a 400 KB photo are
+  // very different things to grade, and the panel asked for the type to show.
+  if(p.file && p.file.sizeBytes) metaParts.push(formatBytes(p.file.sizeBytes));
   metaParts.push(fmtDate(p.submittedAt));
   // Stars already given — a reviewer can see at a glance which works they
   // have rated and which ones still need one.
   const ratingPill = p.rating
     ? ` <span class="sub-rating" title="Professor rating">★ ${p.rating}</span>`
     : '';
+  // The type of work, so a PDF or ZIP is never mistaken for a photo in a
+  // queue of thumbnails (panel revision: "include the type of image/video").
+  const kind = mediaKind(p.file);
+  const kindChip = `<span class="kind-chip kind-${esc(kind.key)}" title="${esc(kind.label)}">${esc(kind.short)}</span>`;
   return `<div class="submission-item">${clickableThumb}
     <div class="sub-info">
-      <div class="sub-title">${esc(p.title)} <span class="upload-status-badge ${badge}" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">${p.status}</span>${gradedPill}${ratingPill}</div>
+      <div class="sub-title">${esc(p.title)} ${kindChip} <span class="upload-status-badge ${badge}" style="position:static;font-size:11px;padding:2px 8px;border-radius:12px;vertical-align:middle">${p.status}</span>${gradedPill}${ratingPill}</div>
       <div class="sub-meta">by ${metaParts.join(' · ')}</div>
     </div>
     ${reviewBtn}
@@ -7028,13 +7134,32 @@ async function openReviewById(itemId){
   const img = document.getElementById('rev-img');
   const vid = document.getElementById('rev-video');
   const ph  = document.getElementById('rev-img-placeholder');
+  const fc  = document.getElementById('rev-file-card');
   vid.pause(); vid.removeAttribute('src'); vid.load();
+  if(fc) fc.style.display = 'none';
   if(fileIsImage(p.file)){
     img.src=p.file.dataUrl; img.style.display='block'; vid.style.display='none'; ph.style.display='none';
   } else if(fileIsVideo(p.file)){
     vid.src=p.file.dataUrl; vid.style.display='block'; img.style.display='none'; ph.style.display='none';
   } else {
-    img.style.display='none'; vid.style.display='none'; ph.style.display='flex'; ph.textContent='🖼️';
+    // PDF / PSD / BLEND / ZIP — the browser can't render these, so the panel
+    // used to show an empty box with a glyph and no way to reach the file.
+    // Name it, size it, and give the professor a real link to it.
+    img.style.display='none'; vid.style.display='none'; ph.style.display='none';
+    if(fc){
+      const kind = mediaKind(p.file);
+      const size = (p.file && p.file.sizeBytes) ? formatBytes(p.file.sizeBytes) : '';
+      const name = (p.file && p.file.name) || p.title || 'Submission';
+      const url  = (p.file && p.file.dataUrl) || '';
+      fc.style.display = 'flex';
+      fc.innerHTML = `
+        <div class="rev-file-icon">${kind.icon}</div>
+        <div class="rev-file-name">${esc(name)}</div>
+        <div class="rev-file-meta">${esc(kind.label)}${size ? ' · ' + esc(size) : ''}</div>
+        ${url
+          ? `<a class="btn-view-sm rev-file-open" href="${esc(url)}" target="_blank" rel="noopener">Open ${esc(kind.label)}</a>`
+          : `<div class="rev-file-meta">No file link is stored for this work.</div>`}`;
+    }
   }
 
   document.getElementById('rev-comment').value = p.comment||'';

@@ -220,6 +220,9 @@
               <img id="rev-img" src="" alt="" style="width:100%;max-height:520px;object-fit:contain;display:none;"/>
               <video id="rev-video" src="" controls style="max-width:100%;width:auto;max-height:70vh;margin:0 auto;display:none;background:#000;border-radius:10px;"></video>
               <div id="rev-img-placeholder" class="upload-thumb-placeholder" style="display:none;height:260px;"></div>
+              <!-- PDF / PSD / BLEND / ZIP can't render inline — filled in by
+                   openReviewById() with the file's name, type, size and a link. -->
+              <div id="rev-file-card" class="rev-file-card" style="display:none;"></div>
             </div>
             <div class="review-details-box">
               <div class="rd-label">Title</div>

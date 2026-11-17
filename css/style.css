@@ -1037,6 +1037,30 @@ video.upload-thumb,video.pwork-thumb,video.project-thumb,video.sub-thumb{backgro
 }
 .drop-icon svg{width:24px;height:24px;stroke:var(--text2);}
 .drop-text{font-size:14px;color:var(--text2);}
+/* Accepted formats under the upload button (panel revision 2). */
+.drop-hint{
+  font-size:11.5px;color:var(--text3);margin-top:8px;line-height:1.5;
+  max-width:38ch;margin-left:auto;margin-right:auto;
+}
+/* Formats the browser cannot render inline: named, sized, and openable
+   instead of an empty box (PDF / PSD / BLEND / ZIP). */
+.rev-file-card{
+  display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  width:100%;min-height:260px;padding:28px 20px;text-align:center;
+  background:var(--surface2);border-radius:12px;
+}
+.rev-file-icon{font-size:52px;line-height:1;}
+.rev-file-name{font-size:14px;font-weight:600;color:var(--ink);word-break:break-word;max-width:100%;}
+.rev-file-meta{font-size:12px;color:var(--text3);}
+.rev-file-open{margin-top:6px;text-decoration:none;}
+.kind-chip{
+  display:inline-block;font-size:10px;font-weight:700;letter-spacing:.06em;
+  padding:2px 7px;border-radius:6px;vertical-align:middle;
+  background:var(--surface2);color:var(--text3);border:1px solid var(--border);
+}
+.kind-chip.kind-pdf,.kind-chip.kind-psd,.kind-chip.kind-blend,.kind-chip.kind-zip{
+  background:var(--orange-bg);color:var(--orange);border-color:rgba(230,126,34,.35);
+}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .form-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px;}
 .btn-cancel{
