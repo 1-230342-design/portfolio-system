@@ -391,6 +391,23 @@
           Manage account roles and permissions. Multimedia Arts and Art Appreciation have full grading access automatically — use <strong>Full grading access</strong> to grant it to any other professor. Every change is checked in the database and written to the audit log.
         </div>
 
+        <!-- STORAGE — prove an alternate backend accepts the same media.
+             Demonstration only: the switch is per-browser and only affects
+             the test uploader below, never a real student submission. -->
+        <div class="storage-card" id="storage-card" style="display:none">
+          <div class="storage-card-top">
+            <div>
+              <div class="storage-card-title">Storage</div>
+              <div class="storage-card-sub">Test uploader only — real submissions keep using Cloudinary.</div>
+            </div>
+            <div class="filter-tabs" style="margin:0;" id="storage-tabs">
+              <button class="filter-tab" id="storage-tab-cloudinary" onclick="setStorageBackend('cloudinary')">Cloudinary</button>
+              <button class="filter-tab" id="storage-tab-b2" onclick="setStorageBackend('b2')">Backblaze B2</button>
+            </div>
+          </div>
+          <div id="storage-demo-body"></div>
+        </div>
+
         <div class="filter-tabs" id="admin-role-tabs" style="margin-bottom:16px;">
           <button class="filter-tab active" onclick="adminFilterRole('all', this)">All Accounts</button>
           <button class="filter-tab" onclick="adminFilterRole('student', this)">Students</button>
