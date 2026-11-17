@@ -130,7 +130,7 @@ async function renderAssignPanel(myProgram, enrolled){
   panel.innerHTML = `
     <div class="assignments-track" id="assign-track-tabs">
       <button class="filter-tab${_assignTrack === 'main' ? ' active' : ''}" onclick="setAssignTrack('main')">${esc(ownLabel)}</button>
-      <button class="filter-tab${_assignTrack === 'artapp' ? ' active' : ''}" onclick="setAssignTrack('artapp')">Art Appreciation Works</button>
+      <button class="filter-tab${_assignTrack === 'artapp' ? ' active' : ''}" onclick="setAssignTrack('artapp')">Art Appreciation</button>
     </div>`;
 }
 
@@ -205,9 +205,10 @@ async function renderAssignmentsPage(uid){
   }
 
   if(!visible.length){
+    const ownLabel = _assignTrack === 'artapp' ? 'Art Appreciation' : esc(departmentLabel(myProgram));
     el.innerHTML = isUnenrolled
       ? `<div class="empty-state"><p>You are not enrolled in any section, so new assignments don't appear here. Re-enroll (Edit Profile → Section) to receive classwork again.</p></div>`
-      : `<div class="empty-state"><p>No ${esc(departmentLabel(myProgram))} classwork posted yet. Check back once your professor posts an assignment.</p></div>`;
+      : `<div class="empty-state"><p>No ${ownLabel} classwork posted yet. Check back once your professor posts an assignment.</p></div>`;
     return;
   }
 
