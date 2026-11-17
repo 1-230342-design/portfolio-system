@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v175';
+const APP_BUILD = 'v176';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -5780,17 +5780,17 @@ function renderSectionStudentsList(students){
            <button class="btn-cancel" style="padding:6px 10px;margin-left:4px;" onclick="event.stopPropagation();decideSectionRequest('${req.id}', false)">✕ Decline</button>
          </div>`
       : '';
-    // Enrollment is professor-only now: full-access professors get a
+    // Enrollment is super-admin-only now: only the super admin gets the
     // section picker on EVERY student row — place an unenrolled student, or
-    // move someone to a different section. Reviewer-only accounts never see it.
-    const canManage = isFullProfessor();
+    // move someone to a different section. Regular professors never see it.
+    const canManage = isSuperAdmin();
     const enrollHtml = canManage
       ? `<select class="fselect" title="${s.section ? 'Move this student to another section' : 'Enroll this student in a section'}" onclick="event.stopPropagation()" onchange="enrollStudent('${s.user_id}', this.value, this)" style="width:auto;max-width:170px;margin:0;padding:8px 10px;font-size:12px;flex-shrink:0;">
            <option value="" ${s.section ? 'disabled' : 'selected disabled'}>${s.section ? '— Move to section —' : '➕ Enroll in…'}</option>
            ${_studentSections.map(sec=>`<option value="${esc(sec.name)}" ${s.section === sec.name ? 'selected' : ''}>${esc(sec.name)}</option>`).join('')}
          </select>`
       : '';
-    // Removing a student from their section is professor-only too.
+    // Removing a student from their section is super-admin-only too.
     const unenrollHtml = (canManage && s.section)
       ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Remove this student from the section" onclick="event.stopPropagation();unenrollStudent('${s.user_id}','${esc((s.full_name||'this student').replace(/'/g,"\\'"))}')">↩️ Unenroll</button>`
       : '';
@@ -5813,7 +5813,7 @@ function renderSectionStudentsList(students){
 // row: an unenrolled student gets placed, an enrolled one gets moved.
 async function enrollStudent(userId, sectionName, sel){
   if(!sectionName) return;
-  if(!isFullProfessor()){ showToast('⚠️ Only full-access professors can enroll students.'); if(sel) sel.value=''; return; }
+  if(!isSuperAdmin()){ showToast('🔒 Super admin access required to enroll students.'); if(sel) sel.value=''; return; }
   const student = _allStudentsCache.find(s=>s.user_id===userId);
   if(student && student.section === sectionName){ return; } // already there — nothing to save
   showToast(student && student.section ? '💾 Moving to ' + sectionName + '…' : '💾 Enrolling…');
@@ -5888,7 +5888,7 @@ function filterSectionStudents(q){
 // Students cannot do this themselves — Edit Profile has no unenroll control,
 // and supabase-lock-section.sql (optional) enforces it in the database too.
 async function unenrollStudent(userId, name){
-  if(!isFullProfessor()){ showToast('⚠️ Only full-access professors can change enrollment.'); return; }
+  if(!isSuperAdmin()){ showToast('🔒 Super admin access required to change enrollment.'); return; }
   if(!confirm(`Unenroll ${name} from this section? They'll stay signed up and keep all their work — only their Section is cleared. Already-saved grades keep the section they were graded under and won't change.`)) return;
   showToast('💾 Unenrolling…');
   try{
