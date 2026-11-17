@@ -123,7 +123,6 @@ function storageDemoResultHtml(){
     </div>
     ${preview}
     <div class="sd-url"><code>${esc(r.url || '—')}</code></div>
-    ${r.signed ? `<div class="sd-note" style="margin-top:6px;">Signed link — valid for about an hour, so the bucket stays private.</div>` : ''}
     <div class="sd-result-foot">
       <button class="sd-btn sd-btn-ghost" onclick="storageDemoReset()">Clear</button>
     </div>
@@ -161,7 +160,6 @@ async function handleStorageDemoFile(ev){
     _sdLast = {
       provider: backend,
       url:      out && out.url,
-      signed:   !!(out && out.signed),
       type:     file.type,
       name:     file.name,
       size:     file.size,
@@ -185,11 +183,12 @@ function sdErrorHtml(err, backend){
   if(backend === 'b2' && err && err.code === 'not-configured'){
     return `<div class="sd-setup">
       <div class="sd-setup-title">B2 isn’t wired up yet</div>
-      <div class="sd-setup-sub">Three one-time steps in the Supabase dashboard, then this button uploads straight to Backblaze:</div>
+      <div class="sd-setup-sub">Four one-time steps in the Supabase dashboard, then this button uploads straight to Backblaze:</div>
       <ol class="sd-setup-list">
         <li>Deploy the <code>b2-upload-url</code> Edge Function (it lives in <code>supabase/functions/b2-upload-url/</code>).</li>
         <li>Add Edge Function secrets <code>B2_KEY_ID</code> and <code>B2_APPLICATION_KEY</code>.</li>
-        <li>Allow this site in the bucket’s <strong>CORS Rules</strong>.</li>
+        <li>Allow this site in the demo bucket’s <strong>CORS Rules</strong>.</li>
+        <li>Set the demo bucket to <strong>Public</strong> so previews can render.</li>
       </ol>
     </div>`;
   }
@@ -256,22 +255,10 @@ function uploadToB2(file, onProgress){
         reject(new Error(data.message || ('B2 refused the upload (HTTP ' + xhr.status + ').')));
         return;
       }
-      // Public bucket → plain URL. Private bucket (the default, and safer)
-      // → a signed link that expires in about an hour, so previews render
-      // without exposing the bucket.
-      let url = null;
-      let signed = false;
-      if(target.publicBaseUrl){
-        url = String(target.publicBaseUrl).replace(/\/+$/, '') + '/' + target.fileName;
-      } else if(target.downloadUrl && target.downloadToken && target.bucketName){
-        url = String(target.downloadUrl).replace(/\/+$/, '')
-            + '/file/' + target.bucketName + '/' + target.fileName
-            + '?Authorization=' + encodeURIComponent(target.downloadToken);
-        signed = true;
-      }
+      const base = target.publicBaseUrl ? String(target.publicBaseUrl).replace(/\/+$/, '') : '';
+      const url  = base ? base + '/' + target.fileName : null;
       resolve({
         url,
-        signed,
         provider: 'b2',
         fileId:   data.fileId || null,
         bytes:    data.contentLength || file.size
