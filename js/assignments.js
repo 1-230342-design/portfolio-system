@@ -61,32 +61,64 @@ async function loadMyAssignmentPortfolios(uid){
 }
 
 // ── Art Appreciation enrollment (student multi-subject) ──
-// Multimedia students see a one-time "Enroll in Art Appreciation" CTA on
-// Classwork. Once enrolled (or auto-enrolled if Data Analytics), the page
-// splits into two tabs: their own program's works and the Art Appreciation
-// track. Both feeds use the exact same submission logic — only the list
-// filter changes.
-let _assignTrack = 'main'; // 'main' | 'artapp'
+// Multimedia students see an "Enroll in Art Appreciation" request CTA on
+// Classwork. Tap it and a PENDING REQUEST is filed for the Art Appreciation
+// professor to approve or decline. Until it's approved:
+//   • the CTA is replaced by a "Pending approval from your professor" chip
+//     with a Cancel button
+//   • once approved (or if auto-enrolled as a Data Analytics student), the
+//     page splits into two tabs: own program vs Art Appreciation.
+let _assignTrack  = 'main'; // 'main' | 'artapp'
+let _myArtAppReqs = [];     // cached — pending state drives the panel
+let _myArtAppReqsTs = 0;
 
 function setAssignTrack(track){
   _assignTrack = track;
   renderAssignmentsPage(currentUser && currentUser.id);
 }
 
-function renderAssignPanel(myProgram, enrolled){
+async function loadMyArtAppReqs(force){
+  // Re-fetch at most once per render cycle — multiple calls share the cache.
+  if(!force && _myArtAppReqsTs && (Date.now() - _myArtAppReqsTs) < 1500) return _myArtAppReqs;
+  try{
+    const { data, error } = await sb.rpc('my_art_app_requests');
+    _myArtAppReqs = error ? [] : (data || []);
+  }catch(e){ _myArtAppReqs = []; }
+  _myArtAppReqsTs = Date.now();
+  return _myArtAppReqs;
+}
+
+async function renderAssignPanel(myProgram, enrolled){
   const panel = document.getElementById('art-app-panel');
   if(!panel) return;
   const isMM     = myProgram === PROGRAM_MM;
   const ownLabel = isMM ? 'Multimedia Works' : 'Data Analytics Works';
   if(isMM && !enrolled){
+    // Unknown request state → show the CTA optimistically (it'll flip next render).
     panel.style.display = 'block';
+    const reqs = await loadMyArtAppReqs(true);
+    const pending = (reqs || []).find(r => r.status === 'pending');
+    if(pending){
+      panel.innerHTML = `
+        <div class="art-app-cta">
+          <div style="display:flex;gap:12px;align-items:flex-start;">
+            <div class="art-app-cta-icon">⏳</div>
+            <div>
+              <div class="art-app-cta-title">Enrollment request pending</div>
+              <div class="art-app-cta-sub">Your Art Appreciation professor will review your request. You'll be notified once it's decided.</div>
+            </div>
+          </div>
+          <button class="btn-cancel" style="margin:0;white-space:nowrap;padding:8px 14px;" onclick="cancelArtAppRequest('${esc(pending.id)}')">Cancel request</button>
+        </div>`;
+      return;
+    }
     panel.innerHTML = `
       <div class="art-app-cta">
         <div style="display:flex;gap:12px;align-items:flex-start;">
           <div class="art-app-cta-icon">📚</div>
           <div>
             <div class="art-app-cta-title">Art Appreciation — you're not enrolled yet</div>
-            <div class="art-app-cta-sub">A general subject you can take alongside Multimedia Arts. Enroll once — you'll see both tracks here, and the Art Appreciation professor will see you in class.</div>
+            <div class="art-app-cta-sub">A general subject you can take alongside Multimedia Arts. Tap Enroll and your Art Appreciation professor will decide — once approved, you'll see both tracks here.</div>
           </div>
         </div>
         <button class="btn-submit-work" style="margin:0;white-space:nowrap" onclick="enrollArtApp()">Enroll in Art App</button>
@@ -104,17 +136,29 @@ function renderAssignPanel(myProgram, enrolled){
 
 async function enrollArtApp(){
   if(!currentUser){ showToast('⚠️ Please sign in first'); return; }
-  // One-way flag: false → true only, server-side, own row only (see enroll_in_art_app() in supabase-art-app-enrollment.sql).
+  // Files a PENDING REQUEST — the Art Appreciation professor decides.
   try{
-    const { error } = await sb.rpc('enroll_in_art_app');
+    const { error } = await sb.rpc('request_art_app_enrollment');
     if(error) throw error;
-    currentProfile = { ...currentProfile, art_app_enrolled: true };
-    _assignTrack = 'artapp';
-    showToast('✅ You are enrolled in Art Appreciation — you now see both tracks on Classwork.');
+    _assignTrack = 'main';
+    showToast('📤 Enrollment request sent — wait for your professor’s approval.');
     renderAssignmentsPage(currentUser.id);
   }catch(err){
     console.error('enrollArtApp error:', err);
-    showToast('❌ Could not enroll: ' + (err.message || err));
+    showToast('❌ Could not send request: ' + (err.message || err));
+  }
+}
+
+async function cancelArtAppRequest(reqId){
+  if(!reqId) return;
+  try{
+    const { error } = await sb.rpc('cancel_art_app_request', { p_id: reqId });
+    if(error) throw error;
+    showToast('✅ Request cancelled.');
+    renderAssignmentsPage(currentUser.id);
+  }catch(err){
+    console.error('cancelArtAppRequest error:', err);
+    showToast('❌ Could not cancel: ' + (err.message || err));
   }
 }
 
@@ -138,7 +182,7 @@ async function renderAssignmentsPage(uid){
   const myProgram = await programForStudent(currentProfile);
   const enrolled  = !!(currentProfile && currentProfile.art_app_enrolled === true);
   if(!enrolled && _assignTrack !== 'main') _assignTrack = 'main';   // snap back to MM feed
-  renderAssignPanel(myProgram, enrolled);
+  await renderAssignPanel(myProgram, enrolled);
 
   let scoped;
   if(_assignTrack === 'artapp'){

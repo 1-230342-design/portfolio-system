@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v174';
+const APP_BUILD = 'v175';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -4408,6 +4408,17 @@ async function renderNotifications(uid){
         .filter(r => r.status === 'approved' || r.status === 'rejected' || r.status === 'pending')
         .map(r => ({ _transfer: true, req: r, when: r.decided_at || r.created_at }));
       tCards.sort((a, b) => new Date(b.when) - new Date(a.when));
+      // Art Appreciation enrollment decisions ride this same inbox too.
+      let aaCards = [];
+      try{
+        if(typeof loadMyArtAppReqs === 'function'){
+          await loadMyArtAppReqs(true);
+          aaCards = (typeof _myArtAppReqs !== 'undefined' ? _myArtAppReqs : [])
+            .filter(r => r.status === 'approved' || r.status === 'rejected' || r.status === 'pending')
+            .map(r => ({ _artapp: true, req: r, when: r.decided_at || r.created_at }));
+          aaCards.sort((a, b) => new Date(b.when) - new Date(a.when));
+        }
+      }catch(aaErr){ console.warn('[artapp] notifications merge skipped:', aaErr); }
       // NEW ACTIVITIES from professors ride the same inbox too — no new table:
       // any assignment the student hasn't submitted yet shows as a card,
       // newest first (capped), sharing the same unread badge + last-seen time.
@@ -4428,8 +4439,8 @@ async function renderNotifications(uid){
           }
         }
       }catch(aErr){ console.warn('[assign] notifications merge skipped:', aErr); }
-      // Merge by time, transfers first on ties (decisions feel newer).
-      const merged = [...notifs.map(n => ({ _w: n, when: notifTime(n) })), ...tCards, ...aCards]
+      // Merge by time, transfers + art-app requests first on ties.
+      const merged = [...notifs.map(n => ({ _w: n, when: notifTime(n) })), ...tCards, ...aaCards, ...aCards]
         .sort((a, b) => new Date(b.when) - new Date(a.when));
       renderNotifLists(uid, merged);
       return;
@@ -4457,6 +4468,23 @@ function renderNotifLists(uid, merged){
       ${unreadDot(when)}
       <div class="ni-header"><span class="ni-icon">${icon}</span><span class="ni-title">${title}</span></div>
       <div class="ni-body">${body}</div>
+      <div class="ni-time">${fmtDate(when)}</div>
+    </div>`;
+  };
+  const artAppCardHtml = r => {
+    const st = r.status;
+    const icon  = st === 'approved' ? '✅' : st === 'rejected' ? '❌' : '📤';
+    const cls   = st === 'approved' ? 'approved' : st === 'rejected' ? 'rejected' : 'pending';
+    const title = st === 'approved' ? 'Art Appreciation Approved'
+                : st === 'rejected' ? 'Art Appreciation Declined' : 'Art Appreciation Pending';
+    const when  = r.decided_at || r.created_at;
+    const body  = st === 'approved' ? 'You are now enrolled in Art Appreciation. Both tracks — your own program and Art Appreciation — appear on Classwork.'
+                : st === 'rejected' ? 'Your Art Appreciation enrollment request was declined.'
+                : 'Your enrollment request is awaiting the Art Appreciation professor’s approval.';
+    return `<div class="notif-item ${cls}" style="position:relative;">
+      ${unreadDot(when)}
+      <div class="ni-header"><span class="ni-icon">${icon}</span><span class="ni-title">${title}</span></div>
+      <div class="ni-body">${esc(body)}</div>
       <div class="ni-time">${fmtDate(when)}</div>
     </div>`;
   };
@@ -4501,7 +4529,10 @@ function renderNotifLists(uid, merged){
   const notifListEl = document.getElementById('s-notif-list');
   if(notifListEl){
     notifListEl.innerHTML = merged.length
-      ? merged.map(m => m._transfer ? transferCardHtml(m.req) : (m._assign ? assignCardHtml(m) : notifCardHtml(m._w, m.when))).join('')
+      ? merged.map(m => m._transfer ? transferCardHtml(m.req)
+                      : m._artapp ? artAppCardHtml(m.req)
+                      : (m._assign ? assignCardHtml(m)
+                      : notifCardHtml(m._w, m.when))).join('')
       : `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No notifications yet.</div>`;
   }
 
@@ -5435,6 +5466,10 @@ function pPage(page){
     showToast('🔒 Super admin access required.');
     page = 'p-dashboard';
   }
+  if(page === 'p-artapp-requests' && typeof isArtAppProfessor === 'function' && !isArtAppProfessor()){
+    showToast('🔒 Art Appreciation professor access only.');
+    page = 'p-dashboard';
+  }
   // Opening the Super Admin page folds the teaching menu away again.
   if(page === 'p-admin') _profNavOpen = false;
   if(typeof isFullProfessor === 'function' && !isFullProfessor()
@@ -5458,6 +5493,7 @@ function pPage(page){
       loadAndRenderRankings();
     }
   }
+  if(page==='p-artapp-requests' && typeof renderArtAppRequests === 'function') renderArtAppRequests();
   // Defined in js/assignments.js — guarded in case that file hasn't loaded yet
   if(page==='p-assignments' && typeof renderProfAssignmentsPage === 'function') renderProfAssignmentsPage();
   if(page==='p-archives' && typeof renderArchivesPage === 'function') renderArchivesPage();
@@ -6774,6 +6810,8 @@ function applyProfessorPermissions(){
   navShow('nav-p-assignments', full);
   navShow('nav-p-archives', full);
   navShow('nav-p-admin', superAdmin);
+  navShow('nav-p-artapp-requests', typeof isArtAppProfessor === 'function' && isArtAppProfessor());
+  if(typeof refreshArtAppBadge === 'function') refreshArtAppBadge();
   // Submitted Works is a read-only browse of everything the students sent
   // in, grouped per section — every professor gets it (reviewer-only
   // accounts can open a work to leave a rating/comment, same as from
@@ -7867,3 +7905,83 @@ document.addEventListener('artfolio:ready', ()=>{
   if(buildEl) buildEl.textContent = ' · ' + APP_BUILD;
   initSkillPickerOutsideCloser(); initInspectViewer(); initApp();
 });
+
+// ═══════════════════════════════════════════════════════════════════
+//  ART APPRECIATION REQUESTS — students ask to enroll in the general
+//  subject; the Art Appreciation professor (or super admin) approves
+//  or declines. Visible only to that role; everyone else never sees
+//  the sidebar entry or the page.
+// ═══════════════════════════════════════════════════════════════════
+function isArtAppProfessor(){
+  if(!isProfessorRole()) return false;
+  return !!(currentProfile && (
+    currentProfile.is_super_admin === true ||
+    domainNorm(currentProfile.department) === domainNorm(NEW_ARTAPP)
+  ));
+}
+
+async function renderArtAppRequests(){
+  const el = document.getElementById('p-artapp-requests-list');
+  if(!el) return;
+  el.innerHTML = (typeof loadingHtml === 'function')
+    ? loadingHtml('Loading requests…')
+    : '<div class="art-loader"><span class="adot"></span><span class="adot"></span><span class="adot"></span><span>Loading requests…</span></div>';
+  try{
+    const { data, error } = await sb.rpc('list_art_app_requests');
+    if(error) throw error;
+    const reqs = data || [];
+    const countEl = document.getElementById('part-req-count');
+    if(countEl) countEl.textContent = reqs.length ? '(' + reqs.length + ')' : '';
+    if(!reqs.length){
+      el.innerHTML = `<div class="empty-state"><p>No pending enrollment requests.</p></div>`;
+      return;
+    }
+    el.innerHTML = reqs.map(r=>{
+      const when = r.created_at ? fmtDateTime(r.created_at) : '';
+      return `<div class="student-row" style="align-items:flex-start;">
+        <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(r.student_name)};width:100%;height:100%;">${esc(studentInitial(r.student_name))}</div></div>
+        <div class="student-row-info">
+          <div class="student-row-name">${esc(r.student_name||'Student')}</div>
+          <div class="student-row-meta">${esc(r.student_number||'No ID')}${r.section ? ' &middot; ' + esc(r.section) : ''}${when ? ' &middot; ' + esc(when) : ''}</div>
+          <div class="student-row-meta" style="margin-top:4px;">📚 Wants to enroll in Art Appreciation</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;">
+          <button class="btn-view-sm" onclick="event.stopPropagation();decideArtAppRequest('${esc(r.id)}', true)">✓ Approve</button>
+          <button class="btn-cancel" style="padding:7px 12px;" onclick="event.stopPropagation();decideArtAppRequest('${esc(r.id)}', false)">✕ Decline</button>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(err){
+    console.error('renderArtAppRequests error:', err);
+    el.innerHTML = `<div class="empty-state"><p>Could not load requests: ${esc(err.message || err)}</p></div>`;
+  }
+}
+
+async function decideArtAppRequest(reqId, approve){
+  if(!isArtAppProfessor()){ showToast('🔒 Art Appreciation professor access only.'); return; }
+  if(!confirm((approve ? 'Approve' : 'Decline') + ' this enrollment request?')) return;
+  showToast(approve ? '✅ Approving…' : '⏳ Declining…');
+  try{
+    const { error } = await sb.rpc('decide_art_app_request', { p_id: reqId, p_approve: approve });
+    if(error) throw error;
+    showToast(approve ? '✅ Enrolled in Art Appreciation.' : '✅ Request declined.');
+    await renderArtAppRequests();
+    refreshArtAppBadge();
+  }catch(err){
+    console.error('decideArtAppRequest error:', err);
+    showToast('❌ Error: ' + (err.message || err));
+  }
+}
+
+// Nav badge — pending Art App enrollment requests, art-app professors only.
+async function refreshArtAppBadge(){
+  const badge = document.getElementById('part-badge');
+  if(!badge) return;
+  if(!isArtAppProfessor()){ badge.classList.remove('show'); return; }
+  try{
+    const { data, error } = await sb.rpc('list_art_app_requests');
+    const n = error ? 0 : (data || []).length;
+    if(n){ badge.textContent = n > 9 ? '9+' : n; badge.classList.add('show'); }
+    else badge.classList.remove('show');
+  }catch(e){ badge.classList.remove('show'); }
+}

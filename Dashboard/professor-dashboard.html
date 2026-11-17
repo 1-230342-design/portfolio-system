@@ -48,6 +48,14 @@
           Students
           <span class="nav-badge" id="pstud-badge"></span>
         </a>
+        <!-- ART APPRECIATION REQUESTS — visible only to Art Appreciation
+             professors (and super admins). Students ask to enroll; professor
+             approves/declines here. -->
+        <a class="snav-item" id="nav-p-artapp-requests" onclick="pPage('p-artapp-requests')" style="display:none;">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 10"/></svg>
+          Art App Requests
+          <span class="nav-badge" id="part-badge"></span>
+        </a>
         <!-- SUBMITTED WORKS — expands into one row per section, each with a
              live count of the works sent in by that section's students. -->
         <a class="snav-item" id="nav-p-submitted-works" onclick="pPage('p-submitted-works'); expandSubmittedWorksNav();">
@@ -161,6 +169,16 @@
           <div class="students-list" id="p-section-students-list"></div>
         </div>
 
+      </div>
+
+      <!-- ART APPRECIATION REQUESTS — MM students asking to enroll in the
+           general subject. Art Appreciation professors (and super admins)
+           see this page; everyone else never sees the sidebar entry or
+           the page. -->
+      <div id="p-artapp-requests" style="display:none">
+        <div class="page-title">Art App Requests <span id="part-req-count"></span></div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:18px;margin-top:-14px;">Multimedia students asking to enroll in Art Appreciation. Approve to enroll them, or decline.</div>
+        <div class="students-list" id="p-artapp-requests-list"></div>
       </div>
 
       <!-- STUDENT DETAIL (professor viewing one student's works) -->
