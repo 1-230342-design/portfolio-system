@@ -85,7 +85,8 @@ as $$
        and (
          department in (
            'BS Information Technology Major in Multimedia Arts',
-           'Art Appreciation'
+           'Art Appreciation',
+           'BS Information Technology (Art Appreciation prof)'
          )
          or can_grade = true
          or is_super_admin = true

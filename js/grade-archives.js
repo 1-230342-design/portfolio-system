@@ -78,7 +78,7 @@ async function deleteSection(id){
 function initSectionDeptSelect(){
   const sel = document.getElementById('new-section-dept');
   if(!sel) return;
-  const opts = [PROGRAM_MM, PROGRAM_DA, 'Art Appreciation'];
+  const opts = [PROGRAM_MM, PROGRAM_DA, 'Art Appreciation', NEW_ARTAPP];
   const own = currentProfile && currentProfile.department;
   if(own && !opts.includes(own)) opts.push(own);
   sel.innerHTML = opts.map(d=>`<option value="${esc(d)}">${esc(departmentLabel(d))}</option>`).join('');

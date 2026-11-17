@@ -3,9 +3,9 @@
    down to a single student.
 
    Three levels, one source of truth:
-     • PROGRAMS  — Multimedia Arts / Data Analytics side by side.
-       A reviewer is often asked to look at works outside their own
-       program, so this page is not limited to one program.
+     • PROGRAMS  — one program tab per program that actually has works.
+       A professor only sees their own domain (Art Appreciation — a
+       general subject — sees every program).
      • SECTIONS — every section on the roster, not only the ones
        that happen to have submissions: an empty section is exactly
        what a professor wants to know about.
@@ -60,7 +60,9 @@ async function loadSubmittedWorksSections(force){
       .select('id,name,school_year,semester,department')
       .order('name');
     if(error) throw error;
-    _swSections = (data || []).map(s => ({ ...s, department: s.department || PROGRAM_MM }));
+    // Domain separation: super admins and Art Appreciation professors see every
+    // section; every other professor sees only their own program's sections.
+    _swSections = (data || []).map(s => ({ ...s, department: s.department || PROGRAM_MM })).filter(sectionInScope);
   }catch(err){
     // The department column may not be deployed yet — fall back to the
     // original shape and treat every section as Multimedia Arts.
@@ -69,7 +71,7 @@ async function loadSubmittedWorksSections(force){
         .from('sections')
         .select('id,name,school_year,semester')
         .order('name');
-      _swSections = (data || []).map(s => ({ ...s, department: PROGRAM_MM }));
+      _swSections = (data || []).map(s => ({ ...s, department: PROGRAM_MM })).filter(sectionInScope);
     }catch(e2){
       console.error('loadSubmittedWorksSections error:', err);
       _swSections = [];
@@ -79,12 +81,14 @@ async function loadSubmittedWorksSections(force){
 }
 
 // ── STUDENT ROSTER ──
-// Every signed-up student, so a section can show its full roster —
-// not just the ones who happened to submit something.
+// Domain separation: Art Appreciation professors (a general subject) see every
+// student; every other professor sees only their own program's students. Super
+// admins see everyone.
 async function loadSubmittedWorksStudents(){
   if(_swStudents.length) return _swStudents;
   try{
-    _swStudents = await loadAllStudentProfiles();
+    const all = await loadAllStudentProfiles();
+    _swStudents = all.filter(studentInScope);
   }catch(err){
     console.error('loadSubmittedWorksStudents error:', err);
     _swStudents = [];

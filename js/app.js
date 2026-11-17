@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v171';
+const APP_BUILD = 'v172';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -259,10 +259,12 @@ const STUDENT_PROGRAMS = [
   { value: PROGRAM_MM, label: 'Multimedia Arts' },
   { value: PROGRAM_DA, label: 'Data Analytics' }
 ];
+const NEW_ARTAPP = 'BS Information Technology (Art Appreciation prof)';
 const DEPARTMENT_LABELS = {
   [PROGRAM_MM]: 'Multimedia Arts',
   [PROGRAM_DA]: 'Data Analytics',
-  'Art Appreciation': 'Art Appreciation'
+  'Art Appreciation': 'Art Appreciation',   // kept for rows saved before the rename
+  [NEW_ARTAPP]: 'Art Appreciation'
 };
 function departmentLabel(dept){
   if(!dept) return 'No program';
@@ -279,10 +281,14 @@ function departmentLabel(dept){
 // Every other professor department is "reviewer only": they can view
 // submissions, leave a star rating, and comment, but cannot grade or change
 // a submission's status.
+// NOTE: Multimedia Arts, Data Analytics AND Art Appreciation rows saved
+// under the old option name 'Art Appreciation' keep working because the
+// old string stays in this list — don't drop it.
 const FULL_ACCESS_DEPARTMENTS = [
   PROGRAM_MM,
   PROGRAM_DA,
-  'Art Appreciation'
+  'Art Appreciation',
+  NEW_ARTAPP
 ];
 const FULL_ACCESS_DEPARTMENT = FULL_ACCESS_DEPARTMENTS[0]; // legacy callers
 const PROFESSOR_DEPARTMENTS = [
@@ -291,9 +297,27 @@ const PROFESSOR_DEPARTMENTS = [
   'BS Hospitality Management',
   'BS Information Technology',
   PROGRAM_MM,
-  PROGRAM_DA,
-  'Art Appreciation'
+  NEW_ARTAPP
 ];
+
+// ── DOMAIN SEPARATION ──
+// Every professor works inside their own domain, keyed on department:
+//   • Multimedia Arts professor  → only Multimedia Arts sections/students/works
+//   • Art Appreciation professor → a GENERAL subject: sees every student and
+//     every section, but only works that belong to their own subject domain
+//   • Super admin                → everything
+// Legacy rows saved under the old 'Art Appreciation' string are treated as
+// the same domain as NEW_ARTAPP everywhere a domain is compared.
+const ARTAPP_LEGACY = 'Art Appreciation';
+function domainNorm(d){ return d === ARTAPP_LEGACY ? NEW_ARTAPP : d; }
+function domainEq(a, b){ return !!(a && b) && domainNorm(a) === domainNorm(b); }
+// The Art Appreciation domain is a general subject — everyone takes it, so
+// its professors teach every section and see every student on the roster.
+function isGeneralProfessor(){
+  return isProfessorRole() && currentProfile &&
+    !!currentProfile.department &&
+    domainNorm(currentProfile.department) === domainNorm(NEW_ARTAPP);
+}
 function isProfessorRole(){
   return !!(currentProfile && (currentProfile.role === 'professor' || currentProfile.role === 'admin'));
 }
@@ -321,15 +345,17 @@ function currentScopeDepartment(){
 }
 function sectionInScope(sec){
   const scope = currentScopeDepartment();
-  if(!scope) return true;
+  if(!scope) return true;                  // super admin sees every section
+  if(isGeneralProfessor()) return true;    // Art Appreciation teaches every program
   const dept = (sec && sec.department) || PROGRAM_MM;
-  return dept === scope;
+  return domainEq(dept, scope);            // own program only
 }
 function studentInScope(st){
   const scope = currentScopeDepartment();
-  if(!scope) return true;
+  if(!scope) return true;                 // super admin
+  if(isGeneralProfessor()) return true;  // Art Appreciation teaches every student
   const dept = (st && st.department) || PROGRAM_MM;
-  return dept === scope;
+  return domainEq(dept, scope);
 }
 
 // Section name → department map. Used to resolve a student's program when
@@ -458,6 +484,11 @@ function fileIsVideo(f){
 const ACCEPT_EXT  = ['jpg','jpeg','png','gif','webp','svg','heic','heif','avif','bmp','tif','tiff','mp4','pdf','psd'];
 const ACCEPT_HINT = 'Images (JPG, PNG, GIF, WebP, SVG) · Video (MP4) · PDF · PSD';
 const ACCEPT_ATTR = 'image/*,.pdf,.psd,.mp4';
+// Size caps, enforced BEFORE a byte is sent so a doomed upload never starts.
+// Both match Cloudinary's free-plan upload limits, so the browser and the CDN
+// reject the same files.
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;   // 10 MB
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;  // 100 MB
 
 function fileExtOf(nameOrUrl){
   const m = /\.([a-z0-9]{2,5})(?:[?#]|$)/i.exec(String(nameOrUrl || ''));
@@ -469,11 +500,22 @@ function uploadFileProblem(file){
   if(!file) return 'Please choose a file first.';
   const ext  = fileExtOf(file.name);
   const mime = String(file.type || '').toLowerCase();
-  if(/^image\//.test(mime)) return null;                 // jpg/png/gif/webp/svg/heic/avif…
-  if(/^video\/mp4$/.test(mime)) return null;              // mp4 only (MOV is not accepted)
-  if(ext && ACCEPT_EXT.includes(ext)) return null;        // pickers that report no MIME type
-  const what = ext ? 'a .' + ext.toUpperCase() + ' file' : 'that file type';
-  return `Sorry, ${what} isn’t accepted. Please upload ${ACCEPT_HINT}.`;
+  // Which accepted kind is it? Only images and videos carry a size cap —
+  // PDFs/PSDs are accepted but uncapped, as before.
+  let kind = null; // 'image' | 'video' | 'other' | null (rejected)
+  if(/^image\//.test(mime))                kind = 'image';   // jpg/png/gif/webp/svg/heic/avif…
+  else if(/^video\/mp4$/.test(mime))       kind = 'video';   // mp4 only (MOV is not accepted)
+  else if(ext && ACCEPT_EXT.includes(ext)) kind = ext === 'mp4' ? 'video' : (ext === 'pdf' || ext === 'psd' ? 'other' : 'image');
+  if(!kind){
+    const what = ext ? 'a .' + ext.toUpperCase() + ' file' : 'that file type';
+    return `Sorry, ${what} isn’t accepted. Please upload ${ACCEPT_HINT}.`;
+  }
+  if(kind === 'image' || kind === 'video'){
+    const cap = kind === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+    if(file.size > cap)
+      return `Sorry, ${kind}s must be ${Math.round(cap / 1024 / 1024)}MB or smaller — this one is ${formatBytes(file.size)}.`;
+  }
+  return null;
 }
 
 // What kind of work is this, and can the browser show it inline?
@@ -1409,12 +1451,31 @@ async function loadProjectsForStudent(userId){
 // upload progress). onProgress(0–100) fires as bytes leave the browser; callers
 // paint it onto their submit button so students see it's still working and
 // don't close the window mid-upload.
-function uploadToCloudinary(file, onProgress){
+//
+// SECURITY: uploads are SIGNED. The browser first asks our Edge Function
+// (sign-cloudinary-upload) for an HMAC signature — the function requires a
+// logged-in user and holds the API secret, so no secret ever ships to the
+// client, and the preset (set to "Signed" in the Cloudinary dashboard)
+// rejects any unsigned POST. Without a signature, nothing uploads.
+async function uploadToCloudinary(file, onProgress){
+  let sig;
+  try{
+    sig = await sb.functions.invoke('sign-cloudinary-upload');
+  }catch(fnErr){
+    throw new Error('Could not authorize the upload — please sign in again.');
+  }
+  const data = sig && sig.data;
+  if(!data || !data.signature || !data.timestamp || !data.apiKey)
+    throw new Error('Could not authorize the upload — please sign in again.');
+
   return new Promise((resolve, reject)=>{
     const fd = new FormData();
     fd.append('file', file);
     fd.append('upload_preset', CLOUDINARY_PRESET);
     fd.append('folder', 'artfolio');
+    fd.append('api_key', data.apiKey);
+    fd.append('timestamp', String(data.timestamp));
+    fd.append('signature', data.signature);
 
     showToast('☁️ Uploading to Cloudinary…');
     const xhr = new XMLHttpRequest();
@@ -2370,27 +2431,19 @@ async function updatePortfolioStatus(portfolioId, status, comment, professorId, 
 // Professor: load ALL portfolio items across all students
 async function loadAllItemsForProfessor(){
   // Get all portfolios with subject info (subjects embed works fine — direct FK)
-  const { data: portfolios, error: pe } = await sb
+  const { data: allPortfolios, error: pe } = await sb
     .from('portfolios')
     .select('id, student_id, grading_period, status, submitted_at, approved_at, subject_id, assignment_id, rating, creativity_score, technique_score, composition_score, final_grade, grade_remarks, graded_at, subjects(name,code)')
     .order('submitted_at', { ascending: false });
   if(pe){ console.error(pe); return []; }
 
-  if(!portfolios || portfolios.length === 0) return [];
-  const portIds = portfolios.map(p=>p.id);
-
-  // Get all items
-  const { data: items, error: ie } = await sb
-    .from('portfolio_items')
-    .select('id, portfolio_id, title, description, file_url, file_type, file_size_bytes, cloudinary_public_id, uploaded_at')
-    .in('portfolio_id', portIds)
-    .order('uploaded_at', { ascending: false });
-  if(ie){ console.error(ie); return []; }
+  if(!allPortfolios || allPortfolios.length === 0) return [];
+  let portfolios = allPortfolios;
 
   // Fetch student profiles separately — portfolios.student_id and user_profiles.user_id
   // both point at auth.users, but there's no direct FK between portfolios and
   // user_profiles, so PostgREST can't auto-embed them. We join manually instead.
-  const studentIds = [...new Set(portfolios.map(p=>p.student_id).filter(Boolean))];
+  const studentIds = [...new Set(allPortfolios.map(p=>p.student_id).filter(Boolean))];
   let profileMap = {};
   if(studentIds.length){
     let profRes = await sb
@@ -2408,6 +2461,55 @@ async function loadAllItemsForProfessor(){
     if(profRes.error) console.error('profile fetch error:', profRes.error);
     (profRes.data||[]).forEach(pr=>{ profileMap[pr.user_id] = pr; });
   }
+
+  // ── DOMAIN SEPARATION ──────────────────────────────────────────────
+  // A professor only sees works that belong to their own domain:
+  //   • a work ATTACHED TO AN ASSIGNMENT follows the assignment's domain —
+  //     an MM student's submission to an Art Appreciation assignment is an
+  //     Art Appreciation work, invisible to the Multimedia professor;
+  //   • an unattached/legacy work follows the student's program.
+  // Super admins see everything; Art Appreciation professors see their own
+  // subject domain (which is everyone's subject, so works span programs —
+  // but still never another professor's non-Art-Appreciation works).
+  const scope = currentScopeDepartment();
+  if(scope){
+    // Domain data missing/failed → fail OPEN (show everything) rather than show
+    // a blank queue to a professor who would then assume the app is broken.
+    let assignDeptOK = true;
+    const assignmentIds = [...new Set(allPortfolios.map(p=>p.assignment_id).filter(Boolean))];
+    let assignDept = {};
+    if(assignmentIds.length){
+      try{
+        const { data: aRows, error: aErr } = await sb
+          .from('assignments').select('id, department').in('id', assignmentIds);
+        if(aErr && /department/i.test(aErr.message || '')) assignDeptOK = false;   // column not deployed yet
+        else if(aErr){ console.warn('assignment domain lookup failed:', aErr); assignDeptOK = false; }
+        else (aRows || []).forEach(a => { assignDept[a.id] = a.department || PROGRAM_MM; });
+      }catch(aErr){
+        console.warn('assignment domain lookup failed:', aErr);
+        assignDeptOK = false;
+      }
+    }
+    const normScope = domainNorm(scope);
+    if(assignDeptOK){
+      portfolios = allPortfolios.filter(p=>{
+        const domain = p.assignment_id
+          ? (assignDept[p.assignment_id] || PROGRAM_MM)
+          : (((profileMap[p.student_id] && profileMap[p.student_id].department)) || PROGRAM_MM);
+        return domainNorm(domain) === normScope;
+      });
+      if(!portfolios.length) return [];
+    }
+  }
+  const portIds = portfolios.map(p=>p.id);
+
+  // Get all items
+  const { data: items, error: ie } = await sb
+    .from('portfolio_items')
+    .select('id, portfolio_id, title, description, file_url, file_type, file_size_bytes, cloudinary_public_id, uploaded_at')
+    .in('portfolio_id', portIds)
+    .order('uploaded_at', { ascending: false });
+  if(ie){ console.error(ie); return []; }
 
   // Latest feedback comment per portfolio — so the professor sees their own
   // prior comment when reopening a review, instead of it always showing blank.
@@ -5882,10 +5984,19 @@ async function loadOverallRankings(){
   if(studentIds.length){
     const { data: profiles, error: profErr } = await sb
       .from('user_profiles')
-      .select('user_id, full_name, student_id, section, year_level, avatar_url')
+      .select('user_id, full_name, student_id, section, year_level, avatar_url, department')
       .in('user_id', studentIds);
-    if(profErr) console.error('rankings profile fetch error:', profErr);
-    (profiles||[]).forEach(pr=>{ profileMap[pr.user_id] = pr; });
+    if(profErr){
+      console.warn('rankings profile fetch (with department) failed, retrying legacy shape:', profErr);
+      const { data: legacy, error: legacyErr } = await sb
+        .from('user_profiles')
+        .select('user_id, full_name, student_id, section, year_level, avatar_url')
+        .in('user_id', studentIds);
+      if(legacyErr) console.error('rankings profile fetch error:', legacyErr);
+      (legacy||[]).forEach(pr=>{ profileMap[pr.user_id] = { ...pr, department: PROGRAM_MM }; });
+    }else{
+      (profiles||[]).forEach(pr=>{ profileMap[pr.user_id] = { ...pr, department: pr.department || PROGRAM_MM }; });
+    }
   }
 
   // Period-mean semester average (matches Grade Archives Summary):
@@ -5893,6 +6004,9 @@ async function loadOverallRankings(){
   const byStudent = {};
   (data||[]).forEach(row=>{
     const sid = row.student_id;
+    // Domain separation: only students inside this professor's domain are
+    // ranked (Art Appreciation professors — a general subject — see everyone).
+    if(!studentInScope(profileMap[sid] || {})) return;
     if(!byStudent[sid]) byStudent[sid] = { userId: sid, profile: profileMap[sid] || {}, periods: {}, count: 0 };
     const period = row.grading_period || 'unperioded';
     (byStudent[sid].periods[period] = byStudent[sid].periods[period] || []).push(Number(row.final_grade));
@@ -6084,9 +6198,16 @@ async function _integrityFetchAssignments(ids){
   const out = [];
   const uniq = [...new Set((ids || []).filter(Boolean))];
   for(let i = 0; i < uniq.length; i += 120){
-    const { data, error } = await sb.from('assignments')
-      .select('id, title')
+    let { data, error } = await sb.from('assignments')
+      .select('id, title, department')
       .in('id', uniq.slice(i, i + 120));
+    if(error && /department/i.test(error.message || '')){
+      // department column not deployed yet — legacy: everything is MM
+      ({ data, error } = await sb.from('assignments')
+        .select('id, title')
+        .in('id', uniq.slice(i, i + 120)));
+      if(data) data = data.map(a => ({ ...a, department: '*' }));   // sentinel: column missing → fail open
+    }
     if(error){ console.error('integrity assignment lookup:', error); continue; }
     if(data) out.push(...data);
   }
@@ -6175,6 +6296,22 @@ async function loadIntegrityData(){
   attempts.forEach(a => assignIds.push(a.assignment_id));
   const assignments = await _integrityFetchAssignments(assignIds);
   const assignTitle = new Map(assignments.map(a => [a.id, a.title]));
+  const assignDept  = new Map(assignments.map(a => [a.id, a.department === '*' ? null : (a.department || PROGRAM_MM)]));
+
+  // ── DOMAIN SEPARATION: a reviewer only sees flags inside their own domain ──
+  // (Works follow their assignment's domain; non-assignment items follow the
+  // student's program. Super admins see everything.)
+  const normScope = (() => { const s = currentScopeDepartment(); return s ? domainNorm(s) : null; })();
+  const inScopeDomain = (assignmentId, prof) => {
+    if(!normScope) return true;                     // super admin
+    if(assignmentId && assignDept.has(assignmentId)){
+      const d = assignDept.get(assignmentId);
+      if(d === null) return true;                   // column missing → fail OPEN (don't blank the page)
+      return domainNorm(d) === normScope;
+    }
+    const domain = (prof && prof.department) || PROGRAM_MM;  // unattached / legacy → student's program
+    return domainNorm(domain) === normScope;
+  };
 
   const events = [];
 
@@ -6183,6 +6320,7 @@ async function loadIntegrityData(){
     const port = portById.get(item.portfolio_id);
     if(!port || port.status === 'draft') return; // drafts are private, never reviewed
     const prof  = profById.get(port.student_id);
+    if(!inScopeDomain(port.assignment_id, prof)) return; // domain separation
     const score = Number(item.ai_score);
     events.push({
       source: 'ai',
@@ -6218,6 +6356,7 @@ async function loadIntegrityData(){
     const port = portById.get(checked.portfolio_id);
     if(!port || port.status === 'draft') return;
     const prof    = profById.get(port.student_id);
+    if(!inScopeDomain(port.assignment_id, prof)) return; // domain separation
     const matched = log.matched_item_id ? itemById.get(log.matched_item_id) : null;
     const score   = Number(log.similarity_score);
     events.push({
@@ -6247,6 +6386,7 @@ async function loadIntegrityData(){
   // ── source 3: blocked attempts (the "tried and got stopped" signal) ──
   attempts.forEach(a => {
     const prof = profById.get(a.student_id);
+    if(!inScopeDomain(a.assignment_id, prof)) return; // domain separation
     events.push({
       source: 'attempt',
       attemptId: a.id,

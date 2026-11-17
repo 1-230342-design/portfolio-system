@@ -74,10 +74,11 @@ async function renderAssignmentsPage(uid){
   myPorts.forEach(p => { byAssignment[p.assignment_id] = p; });
   _myAssignmentPorts = byAssignment;
 
-  // Assignments belong to the program that created them. Legacy rows with
-  // no department stay visible to everyone (pre-multi-program data).
+  // Assignments belong to the program that created them. Art Appreciation is
+  // a GENERAL subject — its assignments are visible to every student, whatever
+  // their program. Legacy rows with no department stay visible to everyone.
   const myProgram = await programForStudent(currentProfile);
-  const scoped = assignments.filter(a => !a.department || a.department === myProgram);
+  const scoped = assignments.filter(a => !a.department || a.department === myProgram || domainNorm(a.department) === domainNorm(NEW_ARTAPP));
 
   // Unenrolled students (no section) stop receiving NEW assignments — but keep
   // every entry they already have, so existing submissions stay manageable
@@ -510,9 +511,11 @@ async function renderProfAssignmentsPage(){
   const [assignments, counts] = await Promise.all([loadAssignments(), loadAssignmentSubmissionCounts()]);
   _assignmentsCache = assignments;
 
-  // Professors only see their own program's assignments (super admins see all).
-  const scope = isSuperAdmin() ? null : (currentProfile && currentProfile.department);
-  const visible = scope ? assignments.filter(a => !a.department || a.department === scope) : assignments;
+  // Professors only see their own domain's assignments (super admins see all).
+  // Domain strings are normalised, so rows saved under the old 'Art Appreciation'
+  // name still match the renamed department.
+  const scope = currentScopeDepartment();
+  const visible = scope ? assignments.filter(a => !a.department || domainEq(a.department, scope)) : assignments;
   _assignmentsCache = visible;
 
   if(!visible.length){
@@ -569,8 +572,10 @@ function openCreateAssignmentModal(){
   document.getElementById('ca-period').value = '';
   const note = document.getElementById('ca-program-note');
   if(note){
-    const dept = (currentProfile && currentProfile.department) || 'BS Information Technology Major in Multimedia Arts';
-    note.textContent = `Posting to the ${departmentLabel(dept)} program — only ${departmentLabel(dept)} students will see this assignment.`;
+    const dept = (currentProfile && currentProfile.department) || PROGRAM_MM;
+    note.textContent = (domainNorm(dept) === domainNorm(NEW_ARTAPP))
+      ? `Posting to ${departmentLabel(dept)} — a general subject. EVERY student in every program will see this assignment.`
+      : `Posting to the ${departmentLabel(dept)} program — only ${departmentLabel(dept)} students will see this assignment.`;
   }
   document.getElementById('createAssignmentOverlay').classList.add('open');
 }
