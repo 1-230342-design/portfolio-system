@@ -194,6 +194,11 @@
           </div>
           <div class="portfolio-qr" id="psd-qr" style="display:none;" title="Student's contact QR"></div>
         </div>
+        <!-- Art Appreciation track control — shown only to art-app professors,
+             and only for students currently enrolled there. -->
+        <div id="psd-artapp-unenroll-wrap" style="display:none;margin-bottom:14px;">
+          <button id="psd-artapp-unenroll-btn" class="btn-cancel" style="margin:0;color:#8a5a16;border-color:rgba(201,162,39,.55);" onclick="artAppUnenrollStudent('', '')">📚 Unenroll from Art Appreciation</button>
+        </div>
         <div class="section-title" style="margin-bottom:14px;">Submitted Works</div>
         <div class="projects-grid" id="psd-works"></div>
       </div>

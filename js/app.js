@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v177';
+const APP_BUILD = 'v178';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -353,7 +353,7 @@ function sectionInScope(sec){
 function studentInScope(st){
   const scope = currentScopeDepartment();
   if(!scope) return true;                 // super admin
-  if(isGeneralProfessor()) return true;  // Art Appreciation teaches every student
+  if(isGeneralProfessor()) return !!st && st.art_app_enrolled === true; // Art Appreciation professor sees only enrolled students
   const dept = (st && st.department) || PROGRAM_MM;
   return domainEq(dept, scope);
 }
@@ -5803,14 +5803,9 @@ function renderSectionStudentsList(students){
          </select>`
       : '';
     const safeName = esc((s.full_name||'this student').replace(/'/g,"\\'"));
-    // Unenroll from the student's OWN-domain section track — same program only.
+    // MM/DA own-domain section unenrollment — only for that student's own program.
     const unenrollHtml = (canSectionManage(s) && s.section)
       ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Remove this student from the section (their own program)" onclick="event.stopPropagation();unenrollStudent('${s.user_id}','${safeName}')">↩️ Unenroll</button>`
-      : '';
-    // Art Appreciation track — art-app professors only, flips art_app_enrolled,
-    // leaves the student's own MM/DA section untouched.
-    const artAppUnenrollHtml = (canManageArtApp() && s.art_app_enrolled)
-      ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:#8a5a16;border-color:rgba(201,162,39,.55);flex-shrink:0;" title="Remove this student from the Art Appreciation track (keeps their own section)" onclick="event.stopPropagation();artAppUnenrollStudent('${s.user_id}','${safeName}')">📚 Unenroll from Art App</button>`
       : '';
     return `<div class="student-row" onclick="viewStudentProfile('${s.user_id}')">
       <div class="student-ava">${avatarFaceHtml(s.full_name, s.avatar_url)}</div>
@@ -5822,7 +5817,6 @@ function renderSectionStudentsList(students){
       <button class="btn-view-sm" onclick="event.stopPropagation();viewStudentProfile('${s.user_id}')">👁 View</button>
       ${enrollHtml}
       ${unenrollHtml}
-      ${artAppUnenrollHtml}
     </div>`;
   }).join('');
 }
@@ -5932,6 +5926,12 @@ async function unenrollStudent(userId, name){
 // own (MM/DA) section, grades, and work are all untouched.
 async function artAppUnenrollStudent(userId, name){
   if(!canManageArtApp()){ showToast('🔒 Only Art Appreciation professors can do this.'); return; }
+  if(!userId || !name){
+    const btn = document.getElementById('psd-artapp-unenroll-btn');
+    userId = btn && btn.getAttribute('data-user-id');
+    name   = btn && btn.getAttribute('data-name');
+  }
+  if(!userId) return;
   if(!confirm(`Unenroll ${name} from Art Appreciation? They keep their own section and all their work — only the Art Appreciation track is removed.`)) return;
   showToast('💾 Unenrolling from Art Appreciation…');
   try{
@@ -5944,6 +5944,9 @@ async function artAppUnenrollStudent(userId, name){
       const section = _studentSections.find(s=>s.id===currentSectionId);
       _currentSectionStudents = section ? _allStudentsCache.filter(s=>s.section===section.name) : [];
     }
+    // Close the detail view back to the roster list
+    document.getElementById('p-student-detail').style.display = 'none';
+    document.getElementById('p-students-in-section').style.display = 'block';
     renderSectionStudentsList(_currentSectionStudents);
   }catch(err){
     console.error('artAppUnenrollStudent error:', err);
@@ -5957,6 +5960,18 @@ async function viewStudentProfile(userId){
   if(!student){ showToast('⚠️ Student not found'); return; }
 
   document.getElementById('psd-name').textContent = student.full_name || 'Student';
+  // Art Appreciation professor — show the unenroll button only to them
+  // and only when this student is actually in their track.
+  const artAppWrap = document.getElementById('psd-artapp-unenroll-wrap');
+  if(artAppWrap){
+    const showIt = canManageArtApp() && student.art_app_enrolled === true;
+    artAppWrap.style.display = showIt ? 'block' : 'none';
+    const btn = document.getElementById('psd-artapp-unenroll-btn');
+    if(btn && showIt){
+      btn.setAttribute('data-user-id', userId);
+      btn.setAttribute('data-name', student.full_name || 'Student');
+    }
+  }
   document.getElementById('psd-meta').innerHTML = [
     esc(student.student_id||'No student ID'),
     ([student.section, student.year_level].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ') || 'Section · Year Level')
@@ -6386,6 +6401,11 @@ async function loadIntegrityData(){
   const normScope = (() => { const s = currentScopeDepartment(); return s ? domainNorm(s) : null; })();
   const inScopeDomain = (assignmentId, prof) => {
     if(!normScope) return true;                     // super admin
+    if(prof) {
+      // Art Appreciation professor only sees enrolled students
+      const ge = typeof isGeneralProfessor === 'function' && isGeneralProfessor();
+      if(ge && !(prof.art_app_enrolled === true)) return false;
+    }
     if(assignmentId && assignDept.has(assignmentId)){
       const d = assignDept.get(assignmentId);
       if(d === null) return true;                   // column missing → fail OPEN (don't blank the page)
