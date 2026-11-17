@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v180';
+const APP_BUILD = 'v181';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -5800,9 +5800,11 @@ function renderSectionStudentsList(students){
            <button class="btn-cancel" style="padding:6px 10px;margin-left:4px;" onclick="event.stopPropagation();decideSectionRequest('${req.id}', false)">✕ Decline</button>
          </div>`
       : '';
-    // Section picker (move/place a student) — super admins only.
-    const canManage = isSuperAdmin();
-    const enrollHtml = canManage
+    // Section picker — own-domain full professors (and super admins) can place
+    // or move a student; MM prof sees MM sections, DA sees DA sections,
+    // super admin sees all. Legacy rows (department null) are MM.
+    const canEnroll = isSuperAdmin() || (isFullProfessor() && canSectionManage(s));
+    const enrollHtml = canEnroll
       ? `<select class="fselect" title="${s.section ? 'Move this student to another section' : 'Enroll this student in a section'}" onclick="event.stopPropagation()" onchange="enrollStudent('${s.user_id}', this.value, this)" style="width:auto;max-width:170px;margin:0;padding:8px 10px;font-size:12px;flex-shrink:0;">
            <option value="" ${s.section ? 'disabled' : 'selected disabled'}>${s.section ? '— Move to section —' : '➕ Enroll in…'}</option>
            ${_studentSections.map(sec=>`<option value="${esc(sec.name)}" ${s.section === sec.name ? 'selected' : ''}>${esc(sec.name)}</option>`).join('')}
@@ -5832,8 +5834,12 @@ function renderSectionStudentsList(students){
 // row: an unenrolled student gets placed, an enrolled one gets moved.
 async function enrollStudent(userId, sectionName, sel){
   if(!sectionName) return;
-  if(!isSuperAdmin()){ showToast('🔒 Super admin access required to enroll students.'); if(sel) sel.value=''; return; }
   const student = _allStudentsCache.find(s=>s.user_id===userId);
+  if(!isSuperAdmin() && !(isFullProfessor() && canSectionManage(student || {}))){
+    showToast('🔒 You can only enroll students into your own program sections.');
+    if(sel) sel.value='';
+    return;
+  }
   if(student && student.section === sectionName){ return; } // already there — nothing to save
   showToast(student && student.section ? '💾 Moving to ' + sectionName + '…' : '💾 Enrolling…');
   try{

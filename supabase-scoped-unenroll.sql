@@ -84,15 +84,18 @@ begin
 end;
 $$;
 
--- ── Tighten direct row updates to super admins only ──
--- The section_requests / art_app_requests / enroll_* flows all go through
+-- ── Tighten direct row updates to own-domain full professors + super admins ──
+-- Super admins can update anyone; regular full-access professors can only
+-- update students in their own domain (department = caller's department).
+-- The section_requests / art_app_requests / unenroll_* flows all go through
 -- security-definer RPCs, so narrowing the blanket policy costs nothing.
 drop policy if exists "full access updates student enrollment" on public.user_profiles;
-create policy "super admin updates student enrollment"
+drop policy if exists "super admin updates student enrollment" on public.user_profiles;
+create policy "domain full professor updates student enrollment"
   on public.user_profiles
   for update to authenticated
-  using (public.is_super_admin() and role = 'student')
-  with check (public.is_super_admin() and role = 'student');
+  using (public._is_mm_da_professor_for(user_id) and role = 'student')
+  with check (public._is_mm_da_professor_for(user_id) and role = 'student');
 
 grant execute on function _is_mm_da_professor_for(uuid) to authenticated;
 grant execute on function unenroll_student(uuid) to authenticated;
