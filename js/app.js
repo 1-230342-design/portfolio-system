@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v167';
+const APP_BUILD = 'v166';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -5258,8 +5258,6 @@ function pPage(page){
   if(page==='p-assignments' && typeof renderProfAssignmentsPage === 'function') renderProfAssignmentsPage();
   if(page==='p-archives' && typeof renderArchivesPage === 'function') renderArchivesPage();
   if(page==='p-admin') renderAdminPage();
-  // Storage card lives on the Super Admin page — defined in js/storage-demo.js
-  if(page==='p-admin' && typeof renderStorageCard === 'function') renderStorageCard();
   // Defined in js/submitted-works.js — the per-section list of sent-in works
   if(page==='p-submitted-works' && typeof renderSubmittedWorksPage === 'function') renderSubmittedWorksPage();
   // Leaving the Submitted Works page folds its section tree away again.
