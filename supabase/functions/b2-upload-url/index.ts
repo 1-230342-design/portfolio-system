@@ -16,17 +16,18 @@
 //
 //  SECRETS — Supabase Dashboard → Edge Functions → Secrets
 //    B2_KEY_ID                  application key ID
-//    B2_APPLICATION_KEY         application key
+//    B2_APPLICATION_KEY         application key (the secret, shown once)
 //    B2_BUCKET_ID               only needed if the key isn't bucket-scoped
-//    B2_PUBLIC_BASE_URL         optional, e.g.
-//                               https://f005.backblazeb2.com/file/artfolio-demo
+//    B2_PUBLIC_BASE_URL         optional, only for a PUBLIC bucket, e.g.
+//                               https://f005.backblazeb2.com/file/artfolio
 //
 //  BUCKET REQUIREMENTS (Backblaze dashboard)
 //    1. CORS Rules — allow the site origin(s), methods POST, headers
 //       Authorization, Content-Type, X-Bz-File-Name, X-Bz-Content-Sha1.
 //       Without this the browser upload fails with a CORS error.
-//    2. Public read, if you want <img>/<video> previews to render.
-//       A private bucket returns a URL that 401s in the preview.
+//    2. Nothing else. The bucket can stay PRIVATE: this function also mints
+//       a short-lived download token (needs the 'shareFiles' capability) so
+//       the preview renders without making the bucket public.
 //
 //  DEPLOY: supabase functions deploy b2-upload-url
 // ═══════════════════════════════════════════════════════════════════
@@ -137,13 +138,41 @@ serve(async (req) => {
     const rand  = Math.random().toString(36).slice(2, 8);
     const fileName = `demo/${stamp}-${rand}`;
 
-    const publicBase = Deno.env.get('B2_PUBLIC_BASE_URL')
-      || (downloadUrl && bucketName ? `${downloadUrl}/file/${bucketName}` : null);
+    // Only an explicit env value counts as a public base. Deriving one from
+    // the API's download host would hand the browser a plain URL even for a
+    // PRIVATE bucket — which 401s in an <img>/<video> and hides the signed
+    // link that actually works.
+    const publicBase = Deno.env.get('B2_PUBLIC_BASE_URL') || null;
+
+    // Private buckets would 401 in an <img>/<video>. Mint a short-lived
+    // download token instead of asking the owner to make the bucket public.
+    // Requires the 'shareFiles' capability; if the key lacks it we simply
+    // return no token and the card says the file is private.
+    let downloadToken: string | null = null;
+    try {
+      const dlRes = await fetch(`${apiUrl}/b2api/v3/b2_get_download_authorization`, {
+        method: 'POST',
+        headers: { Authorization: token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bucketId,
+          fileNamePrefix: 'demo/',
+          validDurationInSeconds: 3600,
+        }),
+      });
+      const dlJson: any = await dlRes.json();
+      if (dlRes.ok) downloadToken = dlJson.authorizationToken || null;
+      else console.warn('[b2-upload-url] download authorization failed:', dlJson);
+    } catch (e) {
+      console.warn('[b2-upload-url] download authorization error:', e);
+    }
 
     return json({
       uploadUrl:   upJson.uploadUrl,
       uploadToken: upJson.authorizationToken,
       fileName,
+      bucketName:  bucketName || null,
+      downloadUrl: downloadUrl || null,
+      downloadToken,
       publicBaseUrl: publicBase,
     });
   } catch (e) {
