@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v176';
+const APP_BUILD = 'v177';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -5525,18 +5525,18 @@ let currentSectionId       = null;  // section currently open in the "students i
 async function loadAllStudentProfiles(){
   const { data, error } = await sb
     .from('user_profiles')
-    .select('user_id, full_name, student_id, section, year_level, department, social_link, show_social_on_qr, avatar_url')
+    .select('user_id, full_name, student_id, section, year_level, department, social_link, show_social_on_qr, avatar_url, art_app_enrolled')
     .eq('role', 'student')
     .order('full_name');
   if(error){
     // department column not deployed yet — fall back to the old shape.
     const { data: basic } = await sb
       .from('user_profiles')
-      .select('user_id, full_name, student_id, section, year_level, social_link, show_social_on_qr, avatar_url')
+      .select('user_id, full_name, student_id, section, year_level, department, social_link, show_social_on_qr, avatar_url, art_app_enrolled')
       .eq('role', 'student')
       .order('full_name');
     if(!basic) console.error('loadAllStudentProfiles error:', error);
-    return (basic || []).map(s=>({ ...s, department: PROGRAM_MM }));
+    return (basic || []).map(s=>({ ...s, department: PROGRAM_MM, art_app_enrolled: false }));
   }
   return (data || []).map(s=>({ ...s, department: s.department || PROGRAM_MM }));
 }
@@ -5761,6 +5761,22 @@ async function openUnenrolledStudents(){
   renderSectionStudentsList(_currentSectionStudents);
 }
 
+// ── Scoped enrollment permissions ──
+// A full professor can only unenroll students from their OWN domain
+// (department-matches or legacy MM default). Super admins do everything.
+// Art Appreciation professors unenroll from the Art App subject only —
+// they never touch a student's own (MM / DA) section.
+function canSectionManage(student){
+  if(isSuperAdmin()) return true;
+  if(!isFullProfessor()) return false;
+  const mine  = domainNorm((currentProfile && currentProfile.department) || PROGRAM_MM);
+  const theirs = domainNorm((student && student.department) || PROGRAM_MM);
+  return mine === theirs;
+}
+function canManageArtApp(){
+  return typeof isArtAppProfessor === 'function' && isArtAppProfessor();
+}
+
 // ── STEP 2: STUDENTS IN A SECTION ──
 function renderSectionStudentsList(students){
   const el = document.getElementById('p-section-students-list');
@@ -5772,17 +5788,13 @@ function renderSectionStudentsList(students){
   el.innerHTML = students.map(s=>{
     const meta = [s.student_id||'No ID', s.year_level||'Year Level'].join(' · ');
     const req = _pendingTransferMap[s.user_id];
-    // A pending request lives ON the row: destination + Approve/Decline right
-    // beside the student, where the professor is already looking.
     const reqHtml = req
       ? `<div class="student-row-meta" style="margin-top:4px;">🔔 Requests <strong style="color:var(--ink);">${esc(req.to_section)}</strong>
            <button class="btn-view-sm" style="margin-left:6px;" onclick="event.stopPropagation();decideSectionRequest('${req.id}', true)">✓ Approve</button>
            <button class="btn-cancel" style="padding:6px 10px;margin-left:4px;" onclick="event.stopPropagation();decideSectionRequest('${req.id}', false)">✕ Decline</button>
          </div>`
       : '';
-    // Enrollment is super-admin-only now: only the super admin gets the
-    // section picker on EVERY student row — place an unenrolled student, or
-    // move someone to a different section. Regular professors never see it.
+    // Section picker (move/place a student) — super admins only.
     const canManage = isSuperAdmin();
     const enrollHtml = canManage
       ? `<select class="fselect" title="${s.section ? 'Move this student to another section' : 'Enroll this student in a section'}" onclick="event.stopPropagation()" onchange="enrollStudent('${s.user_id}', this.value, this)" style="width:auto;max-width:170px;margin:0;padding:8px 10px;font-size:12px;flex-shrink:0;">
@@ -5790,9 +5802,15 @@ function renderSectionStudentsList(students){
            ${_studentSections.map(sec=>`<option value="${esc(sec.name)}" ${s.section === sec.name ? 'selected' : ''}>${esc(sec.name)}</option>`).join('')}
          </select>`
       : '';
-    // Removing a student from their section is super-admin-only too.
-    const unenrollHtml = (canManage && s.section)
-      ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Remove this student from the section" onclick="event.stopPropagation();unenrollStudent('${s.user_id}','${esc((s.full_name||'this student').replace(/'/g,"\\'"))}')">↩️ Unenroll</button>`
+    const safeName = esc((s.full_name||'this student').replace(/'/g,"\\'"));
+    // Unenroll from the student's OWN-domain section track — same program only.
+    const unenrollHtml = (canSectionManage(s) && s.section)
+      ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:var(--red);border-color:rgba(244,67,54,.4);flex-shrink:0;" title="Remove this student from the section (their own program)" onclick="event.stopPropagation();unenrollStudent('${s.user_id}','${safeName}')">↩️ Unenroll</button>`
+      : '';
+    // Art Appreciation track — art-app professors only, flips art_app_enrolled,
+    // leaves the student's own MM/DA section untouched.
+    const artAppUnenrollHtml = (canManageArtApp() && s.art_app_enrolled)
+      ? `<button class="btn-cancel" style="padding:8px 12px;margin-left:8px;color:#8a5a16;border-color:rgba(201,162,39,.55);flex-shrink:0;" title="Remove this student from the Art Appreciation track (keeps their own section)" onclick="event.stopPropagation();artAppUnenrollStudent('${s.user_id}','${safeName}')">📚 Unenroll from Art App</button>`
       : '';
     return `<div class="student-row" onclick="viewStudentProfile('${s.user_id}')">
       <div class="student-ava">${avatarFaceHtml(s.full_name, s.avatar_url)}</div>
@@ -5804,6 +5822,7 @@ function renderSectionStudentsList(students){
       <button class="btn-view-sm" onclick="event.stopPropagation();viewStudentProfile('${s.user_id}')">👁 View</button>
       ${enrollHtml}
       ${unenrollHtml}
+      ${artAppUnenrollHtml}
     </div>`;
   }).join('');
 }
@@ -5888,15 +5907,16 @@ function filterSectionStudents(q){
 // Students cannot do this themselves — Edit Profile has no unenroll control,
 // and supabase-lock-section.sql (optional) enforces it in the database too.
 async function unenrollStudent(userId, name){
-  if(!isSuperAdmin()){ showToast('🔒 Super admin access required to change enrollment.'); return; }
-  if(!confirm(`Unenroll ${name} from this section? They'll stay signed up and keep all their work — only their Section is cleared. Already-saved grades keep the section they were graded under and won't change.`)) return;
+  if(!canSectionManage(_allStudentsCache.find(s=>s.user_id===userId) || {})){
+    showToast('⚠️ You can only unenroll students from your own program.');
+    return;
+  }
+  if(!confirm(`Unenroll ${name} from this section? They'll stay signed up and keep all their work — only their Section is cleared. The Art Appreciation track is unaffected. Already-saved grades keep the section they were graded under and won't change.`)) return;
   showToast('💾 Unenrolling…');
   try{
-    const { data: updatedRows, error } = await sb.from('user_profiles').update({ section: null }).eq('user_id', userId).select();
+    // Security-definer RPC enforces who can unenroll whom at the database level.
+    const { error } = await sb.rpc('unenroll_student', { p_student_id: userId });
     if(error) throw error;
-    if(!updatedRows || updatedRows.length === 0){
-      throw new Error('Nothing was updated — this is usually a Supabase RLS permissions issue. Check that an UPDATE policy exists on user_profiles allowing professors to update section.');
-    }
     showToast('✅ Student unenrolled from section.');
     const section = _studentSections.find(s=>s.id===currentSectionId);
     _allStudentsCache = await loadAllStudentProfiles();
@@ -5904,6 +5924,29 @@ async function unenrollStudent(userId, name){
     renderSectionStudentsList(_currentSectionStudents);
   }catch(err){
     console.error('unenrollStudent error:', err);
+    showToast('❌ Error: '+err.message);
+  }
+}
+
+// Art Appreciation unenrollment — flips art_app_enrolled only. The student's
+// own (MM/DA) section, grades, and work are all untouched.
+async function artAppUnenrollStudent(userId, name){
+  if(!canManageArtApp()){ showToast('🔒 Only Art Appreciation professors can do this.'); return; }
+  if(!confirm(`Unenroll ${name} from Art Appreciation? They keep their own section and all their work — only the Art Appreciation track is removed.`)) return;
+  showToast('💾 Unenrolling from Art Appreciation…');
+  try{
+    const { error } = await sb.rpc('unenroll_art_app', { p_student_id: userId });
+    if(error) throw error;
+    showToast('✅ Removed from the Art Appreciation track.');
+    _allStudentsCache = await loadAllStudentProfiles();
+    if(_inUnenrolledView) _currentSectionStudents = _allStudentsCache.filter(s=>!s.section);
+    else {
+      const section = _studentSections.find(s=>s.id===currentSectionId);
+      _currentSectionStudents = section ? _allStudentsCache.filter(s=>s.section===section.name) : [];
+    }
+    renderSectionStudentsList(_currentSectionStudents);
+  }catch(err){
+    console.error('artAppUnenrollStudent error:', err);
     showToast('❌ Error: '+err.message);
   }
 }
