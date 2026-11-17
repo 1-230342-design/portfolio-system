@@ -6,8 +6,8 @@
 //  WHY: the browser used to POST straight to Cloudinary with only the
 //  public upload-preset name — meaning ANYONE could upload to our
 //  account (quota burn, storage bloat, abusive content under our name).
-//  This function requires a logged-in user and returns a one-time
-//  HMAC-SHA1 upload signature; the browser sends it alongside the POST.
+//  This function requires a logged-in user and returns a one-time SHA-1
+//  upload signature; the browser sends it alongside the POST.
 //  Combined with the upload preset being set to "Signed" in the
 //  Cloudinary dashboard, unsigned abuse posts are rejected by Cloudinary.
 //
@@ -41,15 +41,15 @@ function json(body: unknown, status = 200) {
   });
 }
 
-// Cloudinary's upload-signature algorithm: HMAC-SHA1 (hex) over the
-// alphabetically-sorted "name=value" pairs, joined by "&".
-async function hmacSha1Hex(secret: string, msg: string) {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(msg));
-  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+// Cloudinary's upload signature is NOT an HMAC: it is a plain SHA‑1 hash of
+// (alphabetically-sorted "name=value" pairs joined by "&") with the API secret
+// appended directly at the end — no delimiter (e.g. "timestamp=1234" + "abcd").
+async function sha1Hex(input: string) {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-1', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 serve(async (req) => {
@@ -87,7 +87,8 @@ serve(async (req) => {
       upload_preset: preset,
     };
     const toSign = Object.keys(params).sort().map(k => `${k}=${params[k]}`).join('&');
-    const signature = await hmacSha1Hex(secret, toSign);
+    // Plain SHA-1 of (string + api_secret) — Cloudinary's documented algorithm.
+    const signature = await sha1Hex(toSign + secret);
 
     return json({ apiKey, signature, timestamp });
   } catch (err) {

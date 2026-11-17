@@ -60,6 +60,64 @@ async function loadMyAssignmentPortfolios(uid){
   }
 }
 
+// ── Art Appreciation enrollment (student multi-subject) ──
+// Multimedia students see a one-time "Enroll in Art Appreciation" CTA on
+// Classwork. Once enrolled (or auto-enrolled if Data Analytics), the page
+// splits into two tabs: their own program's works and the Art Appreciation
+// track. Both feeds use the exact same submission logic — only the list
+// filter changes.
+let _assignTrack = 'main'; // 'main' | 'artapp'
+
+function setAssignTrack(track){
+  _assignTrack = track;
+  renderAssignmentsPage(currentUser && currentUser.id);
+}
+
+function renderAssignPanel(myProgram, enrolled){
+  const panel = document.getElementById('art-app-panel');
+  if(!panel) return;
+  const isMM     = myProgram === PROGRAM_MM;
+  const ownLabel = isMM ? 'Multimedia Works' : 'Data Analytics Works';
+  if(isMM && !enrolled){
+    panel.style.display = 'block';
+    panel.innerHTML = `
+      <div class="art-app-cta">
+        <div style="display:flex;gap:12px;align-items:flex-start;">
+          <div class="art-app-cta-icon">📚</div>
+          <div>
+            <div class="art-app-cta-title">Art Appreciation — you're not enrolled yet</div>
+            <div class="art-app-cta-sub">A general subject you can take alongside Multimedia Arts. Enroll once — you'll see both tracks here, and the Art Appreciation professor will see you in class.</div>
+          </div>
+        </div>
+        <button class="btn-submit-work" style="margin:0;white-space:nowrap" onclick="enrollArtApp()">Enroll in Art App</button>
+      </div>`;
+    return;
+  }
+  // Enrolled (any program): two track tabs, same page below.
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div class="assignments-track" id="assign-track-tabs">
+      <button class="filter-tab${_assignTrack === 'main' ? ' active' : ''}" onclick="setAssignTrack('main')">${esc(ownLabel)}</button>
+      <button class="filter-tab${_assignTrack === 'artapp' ? ' active' : ''}" onclick="setAssignTrack('artapp')">Art Appreciation Works</button>
+    </div>`;
+}
+
+async function enrollArtApp(){
+  if(!currentUser){ showToast('⚠️ Please sign in first'); return; }
+  // One-way flag: false → true only, server-side, own row only (see enroll_in_art_app() in supabase-art-app-enrollment.sql).
+  try{
+    const { error } = await sb.rpc('enroll_in_art_app');
+    if(error) throw error;
+    currentProfile = { ...currentProfile, art_app_enrolled: true };
+    _assignTrack = 'artapp';
+    showToast('✅ You are enrolled in Art Appreciation — you now see both tracks on Classwork.');
+    renderAssignmentsPage(currentUser.id);
+  }catch(err){
+    console.error('enrollArtApp error:', err);
+    showToast('❌ Could not enroll: ' + (err.message || err));
+  }
+}
+
 async function renderAssignmentsPage(uid){
   const el = document.getElementById('sa-list');
   if(!el || !uid) return; // fragment not in the DOM yet, or not a student session
@@ -74,11 +132,20 @@ async function renderAssignmentsPage(uid){
   myPorts.forEach(p => { byAssignment[p.assignment_id] = p; });
   _myAssignmentPorts = byAssignment;
 
-  // Assignments belong to the program that created them. Art Appreciation is
-  // a GENERAL subject — its assignments are visible to every student, whatever
-  // their program. Legacy rows with no department stay visible to everyone.
+  // The student's own program. Both tracks feeds come from the same list:
+  //   • main   = own-program assignments (legacy null department included)
+  //   • artapp = the general Art Appreciation subject — visible to all
   const myProgram = await programForStudent(currentProfile);
-  const scoped = assignments.filter(a => !a.department || a.department === myProgram || domainNorm(a.department) === domainNorm(NEW_ARTAPP));
+  const enrolled  = !!(currentProfile && currentProfile.art_app_enrolled === true);
+  if(!enrolled && _assignTrack !== 'main') _assignTrack = 'main';   // snap back to MM feed
+  renderAssignPanel(myProgram, enrolled);
+
+  let scoped;
+  if(_assignTrack === 'artapp'){
+    scoped = assignments.filter(a => a.department && domainNorm(a.department) === domainNorm(NEW_ARTAPP));
+  }else{
+    scoped = assignments.filter(a => !a.department || domainEq(a.department, myProgram));
+  }
 
   // Unenrolled students (no section) stop receiving NEW assignments — but keep
   // every entry they already have, so existing submissions stay manageable

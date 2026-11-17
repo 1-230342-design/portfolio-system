@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v172';
+const APP_BUILD = 'v174';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -4057,6 +4057,9 @@ async function verifyStudentOtp(){
     section:    pending.section,
     year_level: pending.year_level,
     department: pending.department || null,
+    // Data Analytics students are enrolled in Art Appreciation automatically;
+    // Multimedia students opt in via the Classwork banner.
+    art_app_enrolled: pending.department === PROGRAM_DA,
     email:      pending.email
   }]);
   sessionStorage.removeItem('pendingSignup');
