@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v178';
+const APP_BUILD = 'v179';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -5466,6 +5466,12 @@ function pPage(page){
     showToast('🔒 Super admin access required.');
     page = 'p-dashboard';
   }
+  // Submitted Works is reviewer-only / view-only professors only — full-access
+  // professors use Artworks for Review; super admins use admin flows.
+  if(page === 'p-submitted-works' && typeof isFullProfessor === 'function' && isFullProfessor()){
+    showToast('🔒 Full-access professors use Artworks for Review. This page is for view-only professors.');
+    page = 'p-dashboard';
+  }
   if(page === 'p-artapp-requests' && typeof isArtAppProfessor === 'function' && !isArtAppProfessor()){
     showToast('🔒 Art Appreciation professor access only.');
     page = 'p-dashboard';
@@ -6875,11 +6881,11 @@ function applyProfessorPermissions(){
   navShow('nav-p-admin', superAdmin);
   navShow('nav-p-artapp-requests', typeof isArtAppProfessor === 'function' && isArtAppProfessor());
   if(typeof refreshArtAppBadge === 'function') refreshArtAppBadge();
-  // Submitted Works is a read-only browse of everything the students sent
-  // in, grouped per section — every professor gets it (reviewer-only
-  // accounts can open a work to leave a rating/comment, same as from
-  // Students → works → Review Panel).
-  navShow('nav-p-submitted-works', true);
+  // Submitted Works is reviewer-only / view-only professors only — it's
+  // the low-effort browsing path for non-grading professors. Full-access
+  // professors use Artworks for Review; super admins use admin flows.
+  navShow('nav-p-submitted-works', !full);
+
 
   // Two-mode sidebar. Super admins start with just two entries; clicking
   // "Professor View" reveals the teaching menu. Normal professors always
