@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v181';
+const APP_BUILD = 'v182';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -2944,23 +2944,25 @@ function renderBrowseSections(students, sectionNames){
     counts[key] = (counts[key] || 0) + 1;
   });
 
-  // Roster order (alphabetical), then any student sections missing from the
-  // roster, then the "No Section" catch-all last. Empty sections are hidden:
-  // the public directory only shows places that actually have published work.
+  // Show EVERY official section + any student section not on the roster —
+  // including zeros, so visitors see the full academy even before anyone in
+  // a section has published a work. Public students still show up first.
   const roster = [...new Set(sectionNames || [])].sort((a, b)=>a.localeCompare(b));
   const extras = Object.keys(counts).filter(k=>k !== 'No Section' && !roster.includes(k)).sort((a, b)=>a.localeCompare(b));
-  const names = [...roster, ...extras].filter(n=>counts[n]);
+  const names = [...roster, ...extras];
   if(counts['No Section']) names.push('No Section');
 
-  if(!names.length){
-    resultsEl.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No students have published works yet.</div>`;
+  // No student has published anything — replace the section grid with a
+  // single friendly empty state.
+  if(!(_publicSearchData || []).length){
+    resultsEl.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No students have submitted their work publicly yet.</div>`;
     return;
   }
 
   resultsEl.innerHTML = names.map(name=>{
     const count = counts[name] || 0;
     const safeName = esc(name).replace(/'/g,"\\'");
-    const sub = count ? `${count} student${count===1?'':'s'}` : 'No students yet — be the first to enroll';
+    const sub = count ? `${count} student${count===1?'':'s'}` : 'No public works yet';
     return `<div class="section-group" onclick="openPublicSection('${safeName}')">
       <div class="section-group-info">
         <div class="section-name">${esc(name)}</div>
@@ -3262,7 +3264,7 @@ function openPublicSection(name, skipPush){
       </div>
       <button class="btn-view-sm" onclick="event.stopPropagation();openPublicProfile('${s.user_id}')">👁 View Portfolio</button>
     </div>`;
-  }).join('') : `<div class="empty-state"><p>There's no student enrolled in this section yet.</p></div>`;
+  }).join('') : `<div class="empty-state"><p>No publicly visible students in this section yet.</p></div>`;
   // Push so Chrome Back steps back to the sections list instead of exiting.
   if(!skipPush){
     _pubSecPushed = true;
