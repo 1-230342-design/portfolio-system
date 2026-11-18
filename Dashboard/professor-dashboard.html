@@ -64,13 +64,6 @@
           Art App Requests
           <span class="nav-badge" id="part-badge"></span>
         </a>
-        <!-- PASSWORD RESET REQUESTS — super admins only. Students ask for a new
-             password instead of changing it themselves; admin approves + sets it. -->
-        <a class="snav-item" id="nav-p-password-requests" onclick="pPage('p-password-requests')" style="display:none;">
-          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><circle cx="12" cy="16" r="1"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          Password Requests
-          <span class="nav-badge" id="pwreq-badge"></span>
-        </a>
         <!-- SUBMITTED WORKS — expands into one row per section, each with a
              live count of the works sent in by that section's students. -->
         <a class="snav-item" id="nav-p-submitted-works" onclick="pPage('p-submitted-works'); expandSubmittedWorksNav();">
@@ -99,6 +92,15 @@
         <a class="snav-item" id="nav-p-admin-enroll" onclick="pPage('p-admin-enroll')" style="display:none;">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
           Enroll Accounts
+        </a>
+        <!-- PASSWORD RESET REQUESTS — super-admin only. Students ask for a new
+             password; admin approves + sets. Lives in the super admin block (not
+             in Professor View) so super admins see pending requests without
+             toggling Professor View. -->
+        <a class="snav-item" id="nav-p-password-requests" onclick="pPage('p-password-requests')" style="display:none;">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><circle cx="12" cy="16" r="1"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Password Requests
+          <span class="nav-badge" id="pwreq-badge"></span>
         </a>
       </nav>
       <div class="sidebar-logout">
