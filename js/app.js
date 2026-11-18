@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v184';
+const APP_BUILD = 'v185';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -7282,7 +7282,7 @@ async function refreshProfViews(){
   setCount('pf-count-approved', countsApproved);
   setCount('pf-count-rejected', countsRejected);
 
-  renderSubmissionSectionTabs();
+  await renderSubmissionSectionTabs();
   renderSubmissionsList();
 
   // Keep the "Submitted Works" sidebar list in step with the counts here
@@ -7314,26 +7314,57 @@ function profFilterTab(el, status){
 // professor's seat appears as a chip with count; tap to filter. Only sections
 // that actually have submissions for the current seat are shown.
 let profSectionFilter = null;       // null = ALL sections
-function renderSubmissionSectionTabs(){
+async function ensureSubmissionSections(){
+  if(_studentSections && _studentSections.length) return _studentSections;
+  try{
+    const { data, error } = await sb.from('sections')
+      .select('id,name,school_year,semester,department')
+      .order('name');
+    if(error) throw error;
+    _studentSections = (data || []).map(s => ({ ...s, department: s.department || PROGRAM_MM })).filter(sectionInScope);
+  }catch(err){
+    try{
+      const { data } = await sb.from('sections').select('id,name,school_year,semester').order('name');
+      _studentSections = (data || []).map(s => ({ ...s, department: PROGRAM_MM })).filter(sectionInScope);
+    }catch(e2){ _studentSections = []; }
+  }
+  return _studentSections;
+}
+async function renderSubmissionSectionTabs(){
+  // Re-entrant: load roster if it's empty, then render.
+  await ensureSubmissionSections();
   const host = document.getElementById('pf-section-tabs');
   if(!host) return;
   const all = _profItems.filter(p=>p.status!=='draft');
-  if(!all.length){ host.style.display = 'none'; host.innerHTML = ''; return; }
+  const seatNames = new Set((_studentSections||[]).map(s=>s.name));
   // counts per section
-  const counts = {};
+  const counts  = {};
+  const pending = {};
   all.forEach(i=>{
     const s = (i.section || '').trim() || 'No Section';
-    counts[s] = (counts[s] || 0) + 1;
+    counts[s]  = (counts[s]  || 0) + 1;
+    if(i.status === 'submitted') pending[s] = (pending[s] || 0) + 1;
   });
-  const names = Object.keys(counts).sort((a,b)=>{
-    if(a === 'No Section') return 1;
-    if(b === 'No Section') return -1;
-    return a.localeCompare(b);
-  });
+  // Sections from seat roster (including zeros) plus any off-roster orphan sections,
+  // then 'No Section' catch-all if anything lands there.
+  const roster = [...seatNames].sort((a, b) => a.localeCompare(b));
+  const extras = Object.keys(counts)
+    .filter(k => k !== 'No Section' && !seatNames.has(k))
+    .sort((a, b) => a.localeCompare(b));
+  const names = [...roster, ...extras];
+  if(counts['No Section']) names.push('No Section');
+  if(!names.length){ host.style.display = 'none'; host.innerHTML = ''; return; }
   host.style.display = 'flex';
   const active = (name) => (profSectionFilter === null && name === null) || profSectionFilter === name ? ' active' : '';
-  const btn = (name,label=name) => `<button class="filter-tab${active(name)}" onclick="profSectionTab(this, ${name ? `'${esc(name).replace(/'/g,"\\'")}'` : 'null'})">${esc(label||name)} (${counts[label||name]})</button>`;
-  host.innerHTML = btn(null, 'All') + names.map(n=>btn(n, n)).join('');
+  const chip = (name, label) => {
+    const safeName = name ? esc(name).replace(/'/g, "\\'") : null;
+    const total = counts[label] || 0;
+    const pend  = pending[label] || 0;
+    const dot   = pend > 0 ? '<span class="sec-dot" title="' + pend + ' pending submission(s)"></span>' : '';
+    const value  = safeName ? "'" + safeName + "'" : 'null';
+    return `<button class="filter-tab${active(name)}" onclick="profSectionTab(this, ${value})">${esc(label)} (${total})${dot}</button>`;
+  };
+  host.innerHTML = chip(null, 'All') + names.map(n=>chip(n, n)).join('');
 }
 function profSectionTab(el, name){
   profSectionFilter = name || null;
