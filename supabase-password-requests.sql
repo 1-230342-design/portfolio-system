@@ -1,5 +1,8 @@
 -- ═══════════════════════════════════════════════════════════════════
 --  Artfolio — Password reset requests (student asks, super admin decides)
+--  Students supply the password they would like; super admin approves or
+--  overrides. The preferred password is held ONLY while the request is
+--  pending — it is cleared on approve / reject / cancel / decision.
 -- ═══════════════════════════════════════════════════════════════════
 
 create table if not exists password_reset_requests (
@@ -7,6 +10,7 @@ create table if not exists password_reset_requests (
   student_id   uuid not null,
   status       text not null default 'pending'
                check (status in ('pending', 'approved', 'rejected', 'cancelled')),
+  preferred_password  text,                -- transient: visible to super admin only while status='pending'
   created_at   timestamptz not null default now(),
   decided_at   timestamptz,
   decided_by   uuid,
@@ -15,15 +19,12 @@ create table if not exists password_reset_requests (
 
 create index if not exists password_reset_requests_student_idx on password_reset_requests (student_id);
 create index if not exists password_reset_requests_status_idx  on password_reset_requests (status);
-
 alter table password_reset_requests enable row level security;
 -- Intentionally zero policies: functions only.
+-- Note: no RLS policies — access is exclusively via SECURITY DEFINER RPCs.
 
--- ── Helper: is the caller a super admin? ──
 create or replace function public._is_pw_admin()
-returns boolean
-language sql security definer set search_path = public
-as $$
+returns boolean language sql security definer set search_path = public as $$
   select exists (
     select 1 from public.user_profiles
      where user_id = auth.uid()
@@ -34,18 +35,14 @@ $$;
 
 -- ── Student files a password reset request ──
 drop function if exists request_password_reset();
+drop function if exists request_password_reset(text);
 
-create or replace function request_password_reset()
-returns uuid
-language plpgsql security definer set search_path = public
-as $$
+create or replace function request_password_reset(p_preferred_pw text default null)
+returns uuid language plpgsql security definer set search_path = public as $$
 declare
   v_id uuid;
 begin
-  if auth.uid() is null then
-    raise exception 'Please sign in first.';
-  end if;
-  -- Only students may ask
+  if auth.uid() is null then raise exception 'Please sign in first.'; end if;
   if not exists (select 1 from public.user_profiles
                   where user_id = auth.uid() and role = 'student') then
     raise exception 'Only student accounts can request a password reset.';
@@ -54,7 +51,11 @@ begin
               where student_id = auth.uid() and status = 'pending') then
     raise exception 'You already have a pending password reset request.';
   end if;
-  insert into password_reset_requests (student_id) values (auth.uid())
+  if p_preferred_pw is not null and length(p_preferred_pw) < 6 then
+    raise exception 'Preferred password must be at least 6 characters.';
+  end if;
+  insert into password_reset_requests (student_id, preferred_password)
+    values (auth.uid(), p_preferred_pw)
   returning id into v_id;
   return v_id;
 end
@@ -62,7 +63,6 @@ $$;
 
 -- ── Student's own requests ──
 drop function if exists my_password_reset_requests();
-
 create or replace function my_password_reset_requests()
 returns table(
   id          uuid,
@@ -70,9 +70,7 @@ returns table(
   created_at  timestamptz,
   decided_at  timestamptz,
   note        text
-)
-language sql security definer set search_path = public
-as $$
+) language sql security definer set search_path = public as $$
   select id, status, created_at, decided_at, note
     from password_reset_requests
    where student_id = auth.uid()
@@ -82,7 +80,6 @@ $$;
 
 -- ── Super admin inbox: PENDING ONLY ──
 drop function if exists list_password_reset_requests();
-
 create or replace function list_password_reset_requests()
 returns table(
   id             uuid,
@@ -90,10 +87,9 @@ returns table(
   student_name   text,
   student_number text,
   section        text,
-  created_at     timestamptz
-)
-language plpgsql security definer set search_path = public
-as $$
+  created_at     timestamptz,
+  preferred_password text          -- only while pending; admin gate enforces that
+) language plpgsql security definer set search_path = public as $$
 begin
   if not public._is_pw_admin() then
     raise exception 'Only super admins can view password reset requests.';
@@ -103,7 +99,8 @@ begin
            coalesce(p.full_name, 'Student'),
            coalesce(p.student_id, ''),
            coalesce(p.section, ''),
-           r.created_at
+           r.created_at,
+           r.preferred_password
       from password_reset_requests r
       left join user_profiles p on p.user_id = r.student_id
      where r.status = 'pending'
@@ -112,8 +109,7 @@ begin
 end
 $$;
 
--- ── Super admin decides: APPROVE (sets new password) / DECLINE ──
--- On approval, sets the encrypted password in auth.users with pgcrypto.
+-- ── Super admin decides: APPROVE (uses student's preferred, or admin override) / DECLINE ──
 drop function if exists decide_password_reset_request(uuid, boolean, text);
 
 create or replace function decide_password_reset_request(
@@ -121,11 +117,10 @@ create or replace function decide_password_reset_request(
   p_approve   boolean,
   p_new_pw    text default null
 )
-returns text
-language plpgsql security definer set search_path = public
-as $$
+returns text language plpgsql security definer set search_path = public as $$
 declare
-  r password_reset_requests%rowtype;
+  r  password_reset_requests%rowtype;
+  pw text;
 begin
   if not public._is_pw_admin() then
     raise exception 'Only super admins can decide password reset requests.';
@@ -135,20 +130,23 @@ begin
   if r.status <> 'pending' then raise exception 'Already decided.'; end if;
 
   if p_approve then
-    if p_new_pw is null or length(p_new_pw) < 6 then
-      raise exception 'New password must be at least 6 characters.';
+    pw := coalesce(p_new_pw, r.preferred_password);
+    if pw is null or length(pw) < 6 then
+      raise exception 'Student did not specify a password; please enter one.';
     end if;
     update auth.users
-       set encrypted_password = crypt(p_new_pw, gen_salt('bf')),
+       set encrypted_password = crypt(pw, gen_salt('bf')),
            updated_at          = now()
      where id = r.student_id;
     update password_reset_requests
-       set status = 'approved', decided_at = now(), decided_by = auth.uid()
+       set status = 'approved', decided_at = now(), decided_by = auth.uid(),
+           preferred_password = null   -- wipe after use
      where id = p_id;
     return 'approved';
   else
     update password_reset_requests
-       set status = 'rejected', decided_at = now(), decided_by = auth.uid()
+       set status = 'rejected', decided_at = now(), decided_by = auth.uid(),
+           preferred_password = null   -- wipe on decline too
      where id = p_id;
     return 'rejected';
   end if;
@@ -157,11 +155,10 @@ $$;
 
 -- ── Student cancels own pending request ──
 create or replace function cancel_password_reset_request(p_id uuid)
-returns void
-language sql security definer set search_path = public
-as $$
+returns void language sql security definer set search_path = public as $$
   update password_reset_requests
-     set status = 'cancelled'
+     set status = 'cancelled',
+         preferred_password = null
    where id = p_id
      and student_id = auth.uid()
      and status = 'pending';
@@ -169,7 +166,7 @@ $$;
 
 -- ── grants ──
 grant execute on function _is_pw_admin() to authenticated;
-grant execute on function request_password_reset() to authenticated;
+grant execute on function request_password_reset(text) to authenticated;
 grant execute on function my_password_reset_requests() to authenticated;
 grant execute on function list_password_reset_requests() to authenticated;
 grant execute on function decide_password_reset_request(uuid, boolean, text) to authenticated;

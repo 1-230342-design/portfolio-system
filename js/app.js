@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v196';
+const APP_BUILD = 'v197';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -4167,17 +4167,34 @@ async function resendCode(kind){
 // the super admin verifies, enters the new password, saves — student sees
 // the result in Notifications.
 let _myPwRequests = [];
-async function requestPasswordReset(){
+let _myPwFormOpen = false;
+async function cpTogglePwRequest(){
+  if(!currentUser){ showToast('⚠️ Please sign in first.'); return; }
+  const el = document.getElementById('ep-pw-request');
+  if(!el) return;
+  if(el.style.display !== 'none' && el.style.display !== ''){ el.style.display = 'none'; return; }
+  // Reset the inputs and show
+  const inp1 = document.getElementById('cp-preferred-pw');
+  const inp2 = document.getElementById('cp-preferred-pw2');
+  if(inp1) inp1.value = ''; if(inp2) inp2.value = '';
+  el.style.display = 'block';
+  await refreshMyPwStatus();
+}
+async function submitPasswordRequest(){
   if(!currentUser || !currentProfile){ showToast('⚠️ Please sign in first.'); return; }
-  if(!confirm('This will be sent to the super admin for approval. Continue?')) return;
-  showToast('⏳ Submitting request…');
+  const p1 = (document.getElementById('cp-preferred-pw')||{}).value || '';
+  const p2 = (document.getElementById('cp-preferred-pw2')||{}).value || '';
+  if(p1.length < 6){ showToast('⚠️ Preferred password must be at least 6 characters'); return; }
+  if(p1 !== p2)  { showToast('⚠️ Passwords do not match.'); return; }
+  showToast('⏳ Sending request to super admin…');
   try{
-    const { data, error } = await sb.rpc('request_password_reset');
+    const { data, error } = await sb.rpc('request_password_reset', { p_preferred_pw: p1 });
     if(error) throw error;
-    showToast('✅ Password-change request sent. The super admin will review it.');
+    showToast('✅ Sent — the super admin will review your preferred password.');
+    document.getElementById('ep-pw-request').style.display = 'none';
     await refreshMyPwStatus();
   }catch(err){
-    console.error('requestPasswordReset:', err);
+    console.error('submitPasswordRequest:', err);
     showToast('❌ ' + (err.message || err));
   }
 }
@@ -8334,15 +8351,17 @@ async function renderPasswordRequests(){
     }
     el.innerHTML = reqs.map(r=>{
       const when = r.created_at ? fmtDateTime(r.created_at) : '';
-      return `<div class="student-row">
+      const plain = r.preferred_password || '';
+      return `<div class="student-row" style="align-items:flex-start;">
         <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(r.student_name)};width:100%;height:100%;">${esc(studentInitial(r.student_name))}</div></div>
-        <div class="student-row-info">
+        <div class="student-row-info" style="min-width:0;">
           <div class="student-row-name">${esc(r.student_name||'Student')}</div>
           <div class="student-row-meta">${esc(r.student_number||'No ID')}${r.section ? ' &middot; ' + esc(r.section) : ''} &middot; ${esc(when)}</div>
-          <div class="student-row-meta" style="margin-top:4px;">🔑 Asks for a password reset</div>
+          <div class="student-row-meta" style="margin-top:4px;">🔑 Preferred password: <code style="background:var(--surface2);padding:1px 6px;border-radius:4px;">${esc(plain || '(none — admin picks)')}</code></div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
-          <button class="btn-view-sm" onclick="event.stopPropagation();decidePasswordRequest('${esc(r.id)}', true)">✓ Approve &amp; set PW</button>
+          <button class="btn-view-sm" onclick="event.stopPropagation();decidePasswordRequest('${esc(r.id)}', true, 'preferred')">✓ Approve (their preferred)</button>
+          <button class="btn-view-sm" onclick="event.stopPropagation();decidePasswordRequest('${esc(r.id)}', true, 'admin')">✓ Approve (override)</button>
           <button class="btn-cancel" style="padding:7px 12px;" onclick="event.stopPropagation();decidePasswordRequest('${esc(r.id)}', false)">✕ Decline</button>
         </div>
       </div>`;
@@ -8352,15 +8371,18 @@ async function renderPasswordRequests(){
     el.innerHTML = `<div class="empty-state"><p>Could not load requests: ${esc(err.message || err)}</p></div>`;
   }
 }
-async function decidePasswordRequest(reqId, approve){
+async function decidePasswordRequest(reqId, approve, mode){
   if(!isSuperAdmin()){ showToast('🔒 Super admin access only.'); return; }
   let pw = null;
   if(approve){
-    const suggested = 'MULTIMEDIA123';
-    const input = prompt(`New password for this student (default: ${suggested}):`, suggested);
-    if(input === null){ showToast('Cancelled.'); return; }
-    if(input.length < 6){ showToast('❌ Password must be at least 6 characters.'); return; }
-    pw = input;
+    if(mode === 'admin'){
+      const suggested = 'MULTIMEDIA123';
+      const input = prompt(`New password for this student (default: ${suggested}):`, suggested);
+      if(input === null){ showToast('Cancelled.'); return; }
+      if(input.length < 6){ showToast('❌ Password must be at least 6 characters.'); return; }
+      pw = input;
+    }
+    // mode === 'preferred' → let the database pick the student's preferred_password
   } else {
     if(!confirm('Decline this password reset request?')) return;
   }

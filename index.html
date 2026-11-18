@@ -356,7 +356,17 @@
 
     <button class="btn-full" style="margin-top:24px;" onclick="saveProfileEdits()">Save Changes</button>
 
-    <button class="btn-full" type="button" onclick="requestPasswordReset()" style="margin-top:14px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);font-size:13px;font-weight:600;">🔑 Request password change</button>
+    <button class="btn-full" type="button" onclick="cpTogglePwRequest()" style="margin-top:14px;background:var(--surface2);color:var(--text2);border:1px solid var(--border);font-size:13px;font-weight:600;">🔑 Request password change</button>
+
+    <div id="ep-pw-request" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--surface2);border:1px solid var(--border);">
+      <div class="section-title" style="margin-bottom:8px;font-size:14px;color:var(--ink);">Request password change</div>
+      <div class="auth-card-sub" style="font-size:11px;color:var(--text3);margin-bottom:8px;">Enter the password you would like. The super admin will review and approve (or override) it before it is applied.</div>
+      <label class="flabel">Preferred new password</label>
+      <input class="finput" type="password" id="cp-preferred-pw" autocomplete="new-password" placeholder="At least 6 characters"/>
+      <label class="flabel">Confirm preferred password</label>
+      <input class="finput" type="password" id="cp-preferred-pw2" autocomplete="new-password" placeholder="Repeat it"/>
+      <button class="btn-full" type="button" onclick="submitPasswordRequest()" style="margin:10px 0 0;">Submit to super admin</button>
+    </div>
 
     <div id="ep-pw-status" style="display:none;margin-top:12px;padding:12px 14px;border-radius:12px;font-size:13px;line-height:1.5;"></div>
   </div>
