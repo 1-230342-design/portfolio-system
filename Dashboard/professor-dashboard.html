@@ -85,6 +85,10 @@
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
           Super Admin
         </a>
+        <a class="snav-item" id="nav-p-admin-storage" onclick="pPage('p-admin-storage')" style="display:none;">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          Storage
+        </a>
       </nav>
       <div class="sidebar-logout">
         <button onclick="playLogoutWipe(()=>go('s-landing'))">
@@ -444,6 +448,49 @@
         <div class="section-title" style="margin:28px 0 6px;">Audit Log</div>
         <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">Newest privilege changes first — role, department, full access, and super admin.</div>
         <div class="students-list" id="admin-audit-list"></div>
+      </div>
+
+      <!-- STORAGE — super-admin only: totals by section, per-student breakdown,
+           selected wipe of works, auto-expire of outputs. -->
+      <div id="p-admin-storage" style="display:none">
+        <div class="page-title">Storage</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:18px;margin-top:-14px;">How much each section and each student is using. You can wipe specific sections or students — or auto-expire all outputs from one date onward.</div>
+
+        <!-- Section totals -->
+        <div class="section-title" style="margin-bottom:8px;">Usage by section</div>
+        <div class="students-list" id="admin-storage-totals"></div>
+
+        <div class="section-title" style="margin:26px 0 8px;" id="admin-storage-report-head">Per-student breakdown<span id="admin-storage-current-section" style="font-weight:500;font-size:12px;color:var(--text3);margin-left:8px;"></span></div>
+        <div class="students-search" style="margin-bottom:14px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="admin-storage-search" placeholder="Search student name or ID" oninput="renderAdminStorageReport()"/>
+        </div>
+        <div class="students-list" id="admin-storage-report"></div>
+
+        <!-- Wipe selected -->
+        <div class="section-title" style="margin:28px 0 8px;">Wipe selected works</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:14px;">Creates a list of accounts; their uploaded works are destroyed from Cloudinary and rows are deleted from the database. Passwords and accounts stay intact.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+          <select class="fselect" id="admin-wipe-section" style="width:auto;margin:0;padding:8px 10px;font-size:12px;">
+            <option value="">— Select section to add —</option>
+          </select>
+          <button class="btn-view-sm" onclick="adminWipeAddSection()">Add section</button>
+          <input class="finput" id="admin-wipe-search" placeholder="Search student to add" onkeydown="if(event.key==='Enter') adminWipeAddBySearch()" style="max-width:240px;margin:0;"/>
+          <button class="btn-view-sm" onclick="adminWipeAddBySearch()">Add by search</button>
+        </div>
+        <div class="students-list" id="admin-wipe-target-list"></div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;"><button class="btn-cancel" style="color:var(--red);border-color:rgba(244,67,54,.4)" onclick="adminWipeExecute()">🗑️ Wipe selected works</button></div>
+
+        <!-- Auto-expire outputs -->
+        <div class="section-title" style="margin:32px 0 8px;">Automatic termination of output date</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:14px;">Works uploaded on or before this date stop appearing in public portfolios, rankings and search results. Files in the archive are kept; only the public-facing exposure is removed.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <label style="font-size:12px;color:var(--text3);">Output date to stop exposing:
+            <input type="date" class="finput" id="admin-expire-date" style="margin:0; max-width:180px;"/>
+          </label>
+          <button class="btn-view-sm" onclick="adminExpireApply()">Apply now</button>
+        </div>
+        <div id="admin-expire-status" style="font-size:12px;color:var(--text3);margin-top:12px;min-height:20px;"></div>
       </div>
 
     </main>

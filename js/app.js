@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v186';
+const APP_BUILD = 'v187';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -5541,6 +5541,7 @@ function pPage(page){
   if(page==='p-assignments' && typeof renderProfAssignmentsPage === 'function') renderProfAssignmentsPage();
   if(page==='p-archives' && typeof renderArchivesPage === 'function') renderArchivesPage();
   if(page==='p-admin') renderAdminPage();
+  if(page==='p-admin-storage' && typeof renderAdminStoragePage === 'function') renderAdminStoragePage();
   // Defined in js/submitted-works.js — the per-section list of sent-in works
   if(page==='p-submitted-works' && typeof renderSubmittedWorksPage === 'function') renderSubmittedWorksPage();
   // Leaving the Submitted Works page folds its section tree away again.
@@ -6922,6 +6923,7 @@ function applyProfessorPermissions(){
   navShow('nav-p-assignments', full);
   navShow('nav-p-archives', full);
   navShow('nav-p-admin', superAdmin);
+  navShow('nav-p-admin-storage', superAdmin);
   navShow('nav-p-artapp-requests', typeof isArtAppProfessor === 'function' && isArtAppProfessor());
   if(typeof refreshArtAppBadge === 'function') refreshArtAppBadge();
   // Submitted Works is reviewer-only / view-only professors only — it's
@@ -7091,6 +7093,8 @@ function renderAdminUsers(){
           </label>
         </div>
         <button class="btn-view-sm" onclick="adminSaveUser('${u.user_id}', this)">💾 Save</button>
+        <button class="btn-view-sm" onclick="adminResetUserPassword('${esc(u.user_id)}')">📧 Reset PW</button>
+        <button class="btn-view-sm" onclick="adminTempUserPassword('${esc(u.user_id)}')">🔑 Temp PW</button>
         ${isSelf ? '' : `<button class="btn-view-sm" style="border-color:var(--red);color:var(--red);" onclick="adminRemoveUser('${u.user_id}', this)">🗑 Remove</button>`}
       </div>
     </div>`;
@@ -8170,4 +8174,205 @@ async function refreshArtAppBadge(){
     if(n){ badge.textContent = n > 9 ? '9+' : n; badge.classList.add('show'); }
     else badge.classList.remove('show');
   }catch(e){ badge.classList.remove('show'); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SUPER ADMIN — STORAGE PANEL & PASSWORD REVIVAL
+// ═══════════════════════════════════════════════════════════════════
+let _adminStorageRows = [];
+let _adminStorageSection = '';
+const _adminWipeTargets  = new Map(); // key = student user_id, value = display label
+async function loadAdminSectionOptions(){
+  try{
+    const { data } = await sb.from('sections').select('name,department').order('name');
+    const nativeOrder = (data || [])
+      .filter(s => s && s.name)
+      .map(s => s.name);
+    const sel = document.getElementById('admin-wipe-section');
+    if(sel){
+      sel.innerHTML = `<option value="">— Select section to add —</option>`
+        + nativeOrder.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+    }
+  }catch(err){ console.error('loadAdminSectionOptions failed:', err); }
+}
+async function adminStorageTotals(){
+  const tEl = document.getElementById('admin-storage-totals');
+  if(!tEl) return;
+  tEl.innerHTML = `<div class="art-loader"><span class="adot"></span><span class="adot"></span><span>Loading totals…</span></div>`;
+  try{
+    const { data, error } = await sb.rpc('admin_storage_totals');
+    if(error) throw error;
+    const rows = data || [];
+    if(!rows.length){ tEl.innerHTML = `<div class="empty-state"><p>No storage used yet.</p></div>`; return; }
+    tEl.innerHTML = rows.map(r => {
+      const mb = formatBytes(Number(r.total_bytes || 0));
+      return `<div class="student-row" style="align-items:center;gap:10px;cursor:pointer;" onclick="adminStoragePickSection('${esc(r.section).replace(/'/g,"\\'")}')">
+          <div class="student-ava"><div class="avatar-initial" style="background:var(--dark);width:100%;height:100%;color:#fff">📂</div></div>
+          <div class="student-row-info">
+            <div class="student-row-name">${esc(r.section)}</div>
+            <div class="student-row-meta">${r.students || 0} student${(r.students||0)===1?'':'s'} · ${r.files || 0} file${(r.files||0)===1?'':'s'}</div>
+          </div>
+          <div style="font-size:18px;font-weight:700;color:var(--ink);">${mb}</div>
+          <button class="btn-view-sm" style="flex-shrink:0;" onclick="event.stopPropagation();adminStoragePickSection('${esc(r.section).replace(/'/g,"\\'")}')">Open →</button>
+        </div>`;
+    }).join('');
+  }catch(err){ console.error('adminStorageTotals:', err); tEl.innerHTML = `<div class="empty-state"><p>${esc(err.message || err)}</p></div>`; }
+}
+async function adminStoragePickSection(section){
+  _adminStorageSection = section;
+  const head = document.getElementById('admin-storage-current-section');
+  if(head) head.textContent = `— ${section}`;
+  renderAdminStorageReport(true);
+}
+async function renderAdminStorageReport(force){
+  const el = document.getElementById('admin-storage-report');
+  if(!el) return;
+  if(force || !_adminStorageRows.length){
+    el.innerHTML = `<div class="art-loader"><span class="adot"></span><span class="adot"></span><span>Loading report…</span></div>`;
+    try{
+      const { data, error } = await sb.rpc('admin_storage_report');
+      if(error) throw error;
+      _adminStorageRows = data || [];
+    }catch(err){ el.innerHTML = `<div class="empty-state"><p>${esc(err.message || err)}</p></div>`; return; }
+  }
+  const q = ((document.getElementById('admin-storage-search') || {}).value || '').trim().toLowerCase();
+  let rows = _adminStorageRows;
+  if(_adminStorageSection) rows = rows.filter(r => r.section === _adminStorageSection);
+  if(q) rows = rows.filter(r => [r.student_name, r.student_number, r.student_id].some(v => v && String(v).toLowerCase().includes(q)));
+  if(!rows.length){
+    el.innerHTML = `<div class="empty-state"><p>No students match${q || _adminStorageSection ? ' that filter' : ''}.</p></div>`;
+    return;
+  }
+  el.innerHTML = rows.map(r => {
+    const mb = formatBytes(Number(r.total_bytes || 0));
+    const checked = _adminWipeTargets.has(r.student_id) ? 'checked' : '';
+    return `<div class="student-row" style="align-items:center;gap:10px;">
+        <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(r.student_name)};width:100%;height:100%;">${esc(studentInitial(r.student_name))}</div></div>
+        <div class="student-row-info" style="flex:1;min-width:0;">
+          <div class="student-row-name">${esc(r.student_name)}</div>
+          <div class="student-row-meta">${esc(r.student_number)} &middot; ${esc(r.section)}</div>
+          <div class="student-row-meta">${r.files} file${(r.files||0)===1?'':'s'} &middot; <strong style="color:var(--ink)">${mb}</strong></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer;flex-shrink:0;">
+          <input type="checkbox" class="admin-wipe-check" data-id="${esc(r.student_id)}" ${checked} style="width:16px;height:16px;accent-color:var(--red);" onchange="adminWipeToggle(this)"/>
+          Wipe
+        </label>
+      </div>`;
+  }).join('');
+}
+function adminWipeToggle(box){
+  const id = box.getAttribute('data-id');
+  const row = box.closest('.student-row');
+  const name = row ? row.querySelector('.student-row-name') : null;
+  const label = name ? name.textContent.trim() : id;
+  if(box.checked) _adminWipeTargets.set(id, label);
+  else            _adminWipeTargets.delete(id);
+  renderWipeTargets();
+}
+function adminWipeAddSection(){
+  const sel = document.getElementById('admin-wipe-section');
+  const val = sel && sel.value;
+  if(!val){ showToast('Pick a section first.'); return; }
+  // Find all students in that section (from the report data) and select them.
+  const rows = _adminStorageRows.filter(r => r.section === val);
+  rows.forEach(r => _adminWipeTargets.set(r.student_id, r.student_name));
+  showToast(`✅ ${rows.length} student${rows.length===1?'':'s'} added to the wipe list.`);
+  renderAdminStorageReport();
+  renderWipeTargets();
+}
+async function adminWipeAddBySearch(){
+  const input = document.getElementById('admin-wipe-search');
+  const q = (input && input.value || '').trim().toLowerCase();
+  if(!q){ showToast('Type a name or ID first.'); return; }
+  if(!_adminStorageRows.length){ await renderAdminStorageReport(true); }
+  const rows = _adminStorageRows.filter(r => [r.student_name, r.student_number, r.student_id].some(v => v && String(v).toLowerCase().includes(q)));
+  rows.forEach(r => _adminWipeTargets.set(r.student_id, r.student_name));
+  showToast(`✅ ${rows.length} student${rows.length===1?'':'s'} added to the wipe list.`);
+  input.value = '';
+  renderAdminStorageReport();
+  renderWipeTargets();
+}
+function renderWipeTargets(){
+  const el = document.getElementById('admin-wipe-target-list');
+  if(!el) return;
+  if(!_adminWipeTargets.size){
+    el.innerHTML = `<div style="font-size:13px;color:var(--text3);padding:14px 2px;">No students selected yet.</div>`;
+    return;
+  }
+  el.innerHTML = Array.from(_adminWipeTargets.entries()).map(([id, label]) => `
+    <div class="student-row" style="align-items:center;gap:10px;">
+      <div class="student-ava"><div class="avatar-initial" style="background:var(--red-bg);width:100%;height:100%;color:var(--red);border:1px solid var(--red);">🗑</div></div>
+      <div class="student-row-info"><div class="student-row-name">${esc(label)}</div><div class="student-row-meta">${esc(id)}</div></div>
+      <button class="btn-view-sm" style="flex-shrink:0;" onclick="_adminWipeTargets.delete('${esc(id)}');renderWipeTargets();renderAdminStorageReport();">Remove</button>
+    </div>`).join('');
+}
+async function adminWipeExecute(){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin only.'); return; }
+  if(!_adminWipeTargets.size){ showToast('Select at least one student/section first.'); return; }
+  const list = Array.from(_adminWipeTargets.values()).join(', ');
+  if(!confirm(`Wipe every work owned by:\n\n${list}\n\nThis deletes all their uploaded works from Cloudinary and removes the rows in the database. This cannot be undone. Continue?`)) return;
+  const typed = prompt('Type WIPE to confirm you understand this cannot be undone:');
+  if((typed || '').trim().toUpperCase() !== 'WIPE'){ showToast('Cancelled.'); return; }
+  showToast('💾 Wiping works…');
+  try{
+    const userIds = Array.from(_adminWipeTargets.keys());
+    const { data, error } = await sb.functions.invoke('admin-wipe-storage', { body: { userIds, scope: 'uploads' } });
+    if(error) throw error;
+    showToast(`✅ Wiped ${data?.destroyed ?? 0} asset(s) across ${data?.students ?? userIds.length} student(s).`);
+    _adminWipeTargets.clear();
+    await renderAdminStorageReport(true);
+    await adminStorageTotals();
+    renderWipeTargets();
+  }catch(err){
+    console.error('adminWipeExecute:', err);
+    showToast('❌ Error: ' + (err.message || err));
+  }
+}
+async function adminExpireApply(){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin only.'); return; }
+  const input = document.getElementById('admin-expire-date');
+  const before = input && input.value;
+  if(!before){ showToast('Pick an output date to stop exposing first.'); return; }
+  if(!confirm(`This will hide every work uploaded on or before ${before} from public portfolios / rankings / search. The works themselves stay in the archive. Continue?`)) return;
+  showToast('💾 Applying auto-termination…');
+  try{
+    const { data, error } = await sb.functions.invoke('admin-expire-works', { body: { before: new Date(before).toISOString() } });
+    if(error) throw error;
+    document.getElementById('admin-expire-status').innerHTML = esc(`Hidden ${data?.updated ?? 0} works uploaded before ${data?.before || before}.`);
+    showToast('✅ Output termination applied.');
+  }catch(err){
+    console.error('adminExpireApply:', err);
+    showToast('❌ Error: ' + (err.message || err));
+  }
+}
+async function adminResetUserPassword(userId){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin only.'); return; }
+  try{
+    const { data: prof } = await sb.from('user_profiles').select('email, full_name').eq('user_id', userId).maybeSingle();
+    if(!prof?.email){ showToast('No email on file for that account.'); return; }
+    if(!confirm(`Send a password reset email to ${prof.full_name} (${prof.email})?`)) return;
+    const { error } = await sb.auth.resetPasswordForEmail(prof.email, { redirectTo: location.origin + '/#login' });
+    if(error) throw error;
+    showToast('📧 Reset email sent to ' + prof.email);
+  }catch(err){ showToast('❌ ' + (err.message || err)); }
+}
+async function adminTempUserPassword(userId){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin only.'); return; }
+  try{
+    const { data: prof } = await sb.from('user_profiles').select('full_name, email').eq('user_id', userId).maybeSingle();
+    if(!prof){ showToast('Account not found.'); return; }
+    const suggested = 'Temp-' + Math.random().toString(36).slice(2, 10);
+    const pw = prompt(`Temporary password for ${prof.full_name || prof.email}:\n(Click OK to use ${suggested} or type your own)`, suggested);
+    if(!pw || pw.length < 6){ showToast('Cancelled or password too short (min 6).'); return; }
+    const { data, error } = await sb.functions.invoke('admin-temp-password', { body: { userId, password: pw } });
+    if(error) throw error;
+    showToast(`✅ Password set to: ${pw}\nTell the student — they can change it in the app later.`);
+  }catch(err){ showToast('❌ ' + (err.message || err)); }
+}
+
+// Route helper — renders the storage page when it is shown.
+function renderAdminStoragePage(){
+  if(typeof loadAdminSectionOptions === 'function') loadAdminSectionOptions();
+  if(typeof adminStorageTotals === 'function') adminStorageTotals();
+  if(typeof renderAdminStorageReport === 'function') renderAdminStorageReport(true);
 }
