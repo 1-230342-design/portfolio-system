@@ -64,6 +64,13 @@
           Art App Requests
           <span class="nav-badge" id="part-badge"></span>
         </a>
+        <!-- PASSWORD RESET REQUESTS — super admins only. Students ask for a new
+             password instead of changing it themselves; admin approves + sets it. -->
+        <a class="snav-item" id="nav-p-password-requests" onclick="pPage('p-password-requests')" style="display:none;">
+          <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><circle cx="12" cy="16" r="1"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Password Requests
+          <span class="nav-badge" id="pwreq-badge"></span>
+        </a>
         <!-- SUBMITTED WORKS — expands into one row per section, each with a
              live count of the works sent in by that section's students. -->
         <a class="snav-item" id="nav-p-submitted-works" onclick="pPage('p-submitted-works'); expandSubmittedWorksNav();">
@@ -196,6 +203,14 @@
         <div class="page-title">Art App Requests <span id="part-req-count"></span></div>
         <div style="font-size:13px;color:var(--text3);margin-bottom:18px;margin-top:-14px;">Multimedia students asking to enroll in Art Appreciation. Approve to enroll them, or decline.</div>
         <div class="students-list" id="p-artapp-requests-list"></div>
+      </div>
+
+      <!-- PASSWORD RESET REQUESTS — super-admin only. Students request a
+           new password instead of changing it themselves. Approve to set one. -->
+      <div id="p-password-requests" style="display:none">
+        <div class="page-title">Password Requests <span id="pwreq-req-count"></span></div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:18px;margin-top:-14px;">Students requesting a new password. Approve to set one for them (you pick the password), or decline.</div>
+        <div class="students-list" id="p-password-requests-list"></div>
       </div>
 
       <!-- STUDENT DETAIL (professor viewing one student's works) -->

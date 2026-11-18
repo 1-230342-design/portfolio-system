@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v195';
+const APP_BUILD = 'v196';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -1156,6 +1156,7 @@ function openEditProfile(){
   renderAvatarPreview();
   document.getElementById('editProfileOverlay').classList.add('open');
   renderTransferNote(); // fire-and-forget: pending transfer status under Section
+  if(typeof refreshMyPwStatus === 'function') refreshMyPwStatus();  // pending password-change status
 }
 
 // Face for list rows: uploaded photo when the student set one, initial letter otherwise.
@@ -4160,61 +4161,67 @@ async function resendCode(kind){
 }
 
 // ── CHANGE MY PASSWORD (OTP via EmailJS) ──
-// Sends an 8-digit code to the student's own @asiatech.edu.ph inbox using the
-// ── CHANGE MY PASSWORD ──
-// Inline in Edit Profile: verify with the current password, then set the
-// new one. No emails, no codes — relies on the institutional account the
-// student already has, same as how the app is used in other screens.
-function cpToggleChangePassword(){
-  const el = document.getElementById('ep-changepass');
-  if(!el) return;
-  const opening = el.style.display === 'none';
-  if(opening){
-    document.getElementById('cp-status').textContent = '';
-    document.getElementById('cp-currentpass').value = '';
-    document.getElementById('cp-newpass').value = '';
-    document.getElementById('cp-newpass2').value = '';
-    el.style.display = 'block';
-  } else {
-    el.style.display = 'none';
-  }
-}
-async function submitChangePassword(){
+// ── REQUEST PASSWORD CHANGE (must be approved by a super admin) ──
+// Students used to be able to set their own password directly; per the
+// panelist's instruction, every password change is now an admin approval:
+// the super admin verifies, enters the new password, saves — student sees
+// the result in Notifications.
+let _myPwRequests = [];
+async function requestPasswordReset(){
   if(!currentUser || !currentProfile){ showToast('⚠️ Please sign in first.'); return; }
-  const raw      = (document.getElementById('cp-currentpass') || {}).value || '';
-  const newPass  = (document.getElementById('cp-newpass')     || {}).value || '';
-  const confirm  = (document.getElementById('cp-newpass2')    || {}).value || '';
-  const statusEl = document.getElementById('cp-status');
-  if(!raw)               { if(statusEl) statusEl.textContent = 'Please type your current password.'; return; }
-  if(newPass.length < 6) { if(statusEl) statusEl.textContent = 'New password must be at least 6 characters.'; return; }
-  if(newPass !== confirm){ if(statusEl) statusEl.textContent = 'Passwords do not match.'; return; }
-  if(newPass === raw)    { if(statusEl) statusEl.textContent = 'That is the same password — pick a different one.'; return; }
-  // Re-authenticate with current password to confirm it's the real owner,
-  // not a stolen session.
-  const email = currentUser.email || currentProfile.email;
-  if(!email){ if(statusEl) statusEl.textContent = '⚠️ No email on file for this account.'; return; }
-  if(statusEl) statusEl.textContent = 'Verifying current password…';
-  let authErr;
-  try {
-    const { error } = await sb.auth.signInWithPassword({ email, password: raw });
-    if(error) authErr = error;
-  } catch(e){ authErr = e; }
-  if(authErr){ if(statusEl) statusEl.textContent = '❌ Current password is incorrect.'; showToast('❌ Current password is incorrect.'); return; }
-  if(statusEl) statusEl.textContent = 'Updating password…';
+  if(!confirm('This will be sent to the super admin for approval. Continue?')) return;
+  showToast('⏳ Submitting request…');
   try{
-    const { error } = await sb.auth.updateUser({ password: newPass });
+    const { data, error } = await sb.rpc('request_password_reset');
     if(error) throw error;
-    if(statusEl) statusEl.textContent = '✅ Password updated.';
-    showToast('✅ Password updated.');
-    document.getElementById('cp-currentpass').value = '';
-    document.getElementById('cp-newpass').value = '';
-    document.getElementById('cp-newpass2').value = '';
-    document.getElementById('ep-changepass').style.display = 'none';
+    showToast('✅ Password-change request sent. The super admin will review it.');
+    await refreshMyPwStatus();
   }catch(err){
-    console.error('submitChangePassword:', err);
-    if(statusEl) statusEl.textContent = '❌ ' + (err.message || err);
+    console.error('requestPasswordReset:', err);
     showToast('❌ ' + (err.message || err));
   }
+}
+async function cancelPasswordResetRequest(reqId){
+  if(!reqId) return;
+  showToast('⏳ Cancelling…');
+  try{
+    const { error } = await sb.rpc('cancel_password_reset_request', { p_id: reqId });
+    if(error) throw error;
+    showToast('✅ Request cancelled.');
+    await refreshMyPwStatus();
+  }catch(err){
+    console.error('cancelPasswordResetRequest:', err);
+    showToast('❌ ' + (err.message || err));
+  }
+}
+async function refreshMyPwStatus(){
+  const statusEl = document.getElementById('ep-pw-status');
+  if(!statusEl) return;
+  if(!currentUser){ statusEl.style.display = 'none'; return; }
+  try{
+    const { data, error } = await sb.rpc('my_password_reset_requests');
+    _myPwRequests = error ? [] : (data || []);
+  }catch(e){ _myPwRequests = []; }
+  const pending = (_myPwRequests || []).find(r => r.status === 'pending');
+  const decided = (_myPwRequests || []).find(r => r.status === 'approved' || r.status === 'rejected');
+  if(pending){
+    statusEl.style.display = 'block';
+    statusEl.style.background = 'rgba(201,162,39,.12)'; statusEl.style.color = 'var(--ink)';
+    statusEl.innerHTML = `⏳ Password change request sent on <strong>${fmtDateTime(pending.created_at)}</strong>. The super admin will decide and reset for you. <button class="btn-cancel" style="margin:6px 0 0;padding:5px 10px;" onclick="cancelPasswordResetRequest('${esc(pending.id)}')">Cancel request</button>`;
+    return;
+  }
+  if(decided){
+    const approved = decided.status === 'approved';
+    statusEl.style.display = 'block';
+    statusEl.style.background = approved ? 'rgba(45,125,90,.12)' : 'rgba(244,67,54,.12)';
+    statusEl.style.color = 'var(--ink)';
+    statusEl.innerHTML = approved
+      ? `✅ Password reset approved by the super admin on <strong>${fmtDateTime(decided.decided_at)}</strong>. The new password was set on the agreed terms. Please sign in using it.`
+      : `❌ Password reset request declined on <strong>${fmtDateTime(decided.decided_at)}</strong>. Contact the super admin for details.`;
+    return;
+  }
+  statusEl.style.display = 'none';
+  statusEl.innerHTML = '';
 }
 
 // ── FORGOT PASSWORD ──
@@ -4516,6 +4523,17 @@ async function renderNotifications(uid){
           aaCards.sort((a, b) => new Date(b.when) - new Date(a.when));
         }
       }catch(aaErr){ console.warn('[artapp] notifications merge skipped:', aaErr); }
+      // Password reset decisions ride this same inbox too.
+      let pwCards = [];
+      try{
+        if(typeof refreshMyPwStatus === 'function'){
+          await refreshMyPwStatus();
+          pwCards = (_myPwRequests || [])
+            .filter(r => r.status === 'approved' || r.status === 'rejected' || r.status === 'pending')
+            .map(r => ({ _pwreq: true, req: r, when: r.decided_at || r.created_at }));
+          pwCards.sort((a, b) => new Date(b.when) - new Date(a.when));
+        }
+      }catch(pwErr){ console.warn('[pwreq] notifications merge skipped:', pwErr); }
       // NEW ACTIVITIES from professors ride the same inbox too — no new table:
       // any assignment the student hasn't submitted yet shows as a card,
       // newest first (capped), sharing the same unread badge + last-seen time.
@@ -4537,7 +4555,7 @@ async function renderNotifications(uid){
         }
       }catch(aErr){ console.warn('[assign] notifications merge skipped:', aErr); }
       // Merge by time, transfers + art-app requests first on ties.
-      const merged = [...notifs.map(n => ({ _w: n, when: notifTime(n) })), ...tCards, ...aaCards, ...aCards]
+      const merged = [...notifs.map(n => ({ _w: n, when: notifTime(n) })), ...tCards, ...aaCards, ...aCards, ...pwCards]
         .sort((a, b) => new Date(b.when) - new Date(a.when));
       renderNotifLists(uid, merged);
       return;
@@ -4623,11 +4641,30 @@ function renderNotifLists(uid, merged){
       <div class="ni-time">${fmtDate(m.when)}</div>
     </div>`;
   };
+  const pwReqCardHtml = r => {
+    const st   = r.status;
+    const icon = st === 'approved' ? '✅' : st === 'rejected' ? '❌' : '🔑';
+    const cls  = st === 'approved' ? 'approved' : st === 'rejected' ? 'rejected' : 'pending';
+    const title = st === 'approved' ? 'Password Reset Approved'
+                : st === 'rejected' ? 'Password Reset Declined' : 'Password Reset Pending';
+    const when  = r.decided_at || r.created_at;
+    const body = st === 'approved' ? 'Your password has been reset by the super admin. Check with them for the new password.'
+               : st === 'rejected' ? 'Your password reset request was declined. Contact the super admin for details.'
+               : 'Your password reset request is awaiting the super admin\'s approval.';
+    return `<div class="notif-item ${cls}" style="position:relative;">
+      ${unreadDot(when)}
+      <div class="ni-header"><span class="ni-icon">${icon}</span><span class="ni-title">${title}</span></div>
+      <div class="ni-body">${esc(body)}</div>
+      <div class="ni-time">${fmtDate(when)}</div>
+    </div>`;
+  };
+
   const notifListEl = document.getElementById('s-notif-list');
   if(notifListEl){
     notifListEl.innerHTML = merged.length
       ? merged.map(m => m._transfer ? transferCardHtml(m.req)
                       : m._artapp ? artAppCardHtml(m.req)
+                      : m._pwreq ? pwReqCardHtml(m.req)
                       : (m._assign ? assignCardHtml(m)
                       : notifCardHtml(m._w, m.when))).join('')
       : `<div style="font-size:13px;color:var(--text3);padding:20px 0;">No notifications yet.</div>`;
@@ -5563,6 +5600,10 @@ function pPage(page){
     showToast('🔒 Super admin access required.');
     page = 'p-dashboard';
   }
+  if(page === 'p-password-requests' && typeof isSuperAdmin === 'function' && !isSuperAdmin()){
+    showToast('🔒 Super admin access required.');
+    page = 'p-dashboard';
+  }
   // Submitted Works is reviewer-only / view-only professors only — full-access
   // professors use Artworks for Review; super admins use admin flows.
   if(page === 'p-submitted-works' && typeof isFullProfessor === 'function' && isFullProfessor()){
@@ -5603,6 +5644,7 @@ function pPage(page){
   if(page==='p-admin') renderAdminPage();
   if(page==='p-admin-storage' && typeof renderAdminStoragePage === 'function') renderAdminStoragePage();
   if(page==='p-admin-enroll' && typeof renderAdminEnrollPage === 'function') renderAdminEnrollPage();
+  if(page==='p-password-requests' && typeof renderPasswordRequests === 'function') renderPasswordRequests();
   // Defined in js/submitted-works.js — the per-section list of sent-in works
   if(page==='p-submitted-works' && typeof renderSubmittedWorksPage === 'function') renderSubmittedWorksPage();
   // Leaving the Submitted Works page folds its section tree away again.
@@ -6986,6 +7028,8 @@ function applyProfessorPermissions(){
   navShow('nav-p-admin', superAdmin);
   navShow('nav-p-admin-storage', superAdmin);
   navShow('nav-p-admin-enroll', superAdmin);
+  navShow('nav-p-password-requests', superAdmin);
+  if(typeof refreshPasswordRequestsBadge === 'function') refreshPasswordRequestsBadge();
   navShow('nav-p-artapp-requests', typeof isArtAppProfessor === 'function' && isArtAppProfessor());
   if(typeof refreshArtAppBadge === 'function') refreshArtAppBadge();
   // Submitted Works is reviewer-only / view-only professors only — it's
@@ -8260,6 +8304,89 @@ async function refreshArtAppBadge(){
   if(!isArtAppProfessor()){ badge.classList.remove('show'); return; }
   try{
     const { data, error } = await sb.rpc('list_art_app_requests');
+    const n = error ? 0 : (data || []).length;
+    if(n){ badge.textContent = n > 9 ? '9+' : n; badge.classList.add('show'); }
+    else badge.classList.remove('show');
+  }catch(e){ badge.classList.remove('show'); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PASSWORD RESET REQUESTS — super-admin only. Students request a new
+//  password instead of setting it themselves; the super admin verifies,
+//  approves, sets a new password, all recorded in the same notifications
+//  inbox pattern as Art App / Section requests.
+// ═══════════════════════════════════════════════════════════════════
+async function renderPasswordRequests(){
+  const el = document.getElementById('p-password-requests-list');
+  if(!el) return;
+  el.innerHTML = (typeof loadingHtml === 'function')
+    ? loadingHtml('Loading requests…')
+    : '<div class="art-loader"><span class="adot"></span><span class="adot"></span><span>Loading requests…</span></div>';
+  try{
+    const { data, error } = await sb.rpc('list_password_reset_requests');
+    if(error) throw error;
+    const reqs = data || [];
+    const countEl = document.getElementById('pwreq-req-count');
+    if(countEl) countEl.textContent = reqs.length ? '(' + reqs.length + ')' : '';
+    if(!reqs.length){
+      el.innerHTML = `<div class="empty-state"><p>No pending password reset requests.</p></div>`;
+      return;
+    }
+    el.innerHTML = reqs.map(r=>{
+      const when = r.created_at ? fmtDateTime(r.created_at) : '';
+      return `<div class="student-row">
+        <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(r.student_name)};width:100%;height:100%;">${esc(studentInitial(r.student_name))}</div></div>
+        <div class="student-row-info">
+          <div class="student-row-name">${esc(r.student_name||'Student')}</div>
+          <div class="student-row-meta">${esc(r.student_number||'No ID')}${r.section ? ' &middot; ' + esc(r.section) : ''} &middot; ${esc(when)}</div>
+          <div class="student-row-meta" style="margin-top:4px;">🔑 Asks for a password reset</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;align-items:center;flex-wrap:wrap;justify-content:flex-end;">
+          <button class="btn-view-sm" onclick="event.stopPropagation();decidePasswordRequest('${esc(r.id)}', true)">✓ Approve &amp; set PW</button>
+          <button class="btn-cancel" style="padding:7px 12px;" onclick="event.stopPropagation();decidePasswordRequest('${esc(r.id)}', false)">✕ Decline</button>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(err){
+    console.error('renderPasswordRequests error:', err);
+    el.innerHTML = `<div class="empty-state"><p>Could not load requests: ${esc(err.message || err)}</p></div>`;
+  }
+}
+async function decidePasswordRequest(reqId, approve){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin access only.'); return; }
+  let pw = null;
+  if(approve){
+    const suggested = 'MULTIMEDIA123';
+    const input = prompt(`New password for this student (default: ${suggested}):`, suggested);
+    if(input === null){ showToast('Cancelled.'); return; }
+    if(input.length < 6){ showToast('❌ Password must be at least 6 characters.'); return; }
+    pw = input;
+  } else {
+    if(!confirm('Decline this password reset request?')) return;
+  }
+  showToast(approve ? '✅ Approving…' : '⏳ Declining…');
+  try{
+    const { data, error } = await sb.rpc('decide_password_reset_request', {
+      p_id:      reqId,
+      p_approve: approve,
+      p_new_pw:  pw,
+    });
+    if(error) throw error;
+    showToast(approve ? '✅ Password set and student notified.' : '✅ Request declined.');
+    await renderPasswordRequests();
+    if(typeof refreshPasswordRequestsBadge === 'function') refreshPasswordRequestsBadge();
+  }catch(err){
+    console.error('decidePasswordRequest error:', err);
+    showToast('❌ ' + (err.message || err));
+  }
+}
+// Nav badge — pending password reset requests, super admins only.
+async function refreshPasswordRequestsBadge(){
+  const badge = document.getElementById('pwreq-badge');
+  if(!badge) return;
+  if(!isSuperAdmin()){ badge.classList.remove('show'); return; }
+  try{
+    const { data, error } = await sb.rpc('list_password_reset_requests');
     const n = error ? 0 : (data || []).length;
     if(n){ badge.textContent = n > 9 ? '9+' : n; badge.classList.add('show'); }
     else badge.classList.remove('show');
