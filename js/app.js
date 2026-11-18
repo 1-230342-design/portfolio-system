@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v198';
+const APP_BUILD = 'v199';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -7238,6 +7238,9 @@ async function adminToggleActive(userId, btn){
     const newVal  = !current;
     const { error } = await sb.rpc('admin_set_account_active', { p_user_id: userId, p_active: newVal });
     if(error) throw error;
+    // Keep the local cache in sync so the re-render shows the new state immediately.
+    _adminUsers = _adminUsers.map(u => u.user_id === userId ? { ...u, is_active: newVal } : u);
+    if(row) row.dataset.isActive = String(newVal);
     showToast(newVal ? '✅ Account re-activated.' : '🚫 Account deactivated — they can no longer log in.');
     renderAdminUsers();
   }catch(err){
