@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v194';
+const APP_BUILD = 'v195';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -7163,7 +7163,7 @@ function renderAdminUsers(){
         <button class="btn-view-sm" onclick="adminSaveUser('${u.user_id}', this)">💾 Save</button>
         ${!isSelf && isProf ? statusBtn : ''}
         <button class="btn-view-sm" onclick="adminResetUserPassword('${u.user_id}')">📧 Reset PW</button>
-        <button class="btn-view-sm" onclick="adminTempUserPassword('${u.user_id}')">🔑 Temp PW</button>
+        <button class="btn-view-sm" onclick="adminSetUserPassword('${u.user_id}')">🔑 Set PW</button>
       </div>
     </div>`;
   }).join('');
@@ -8446,17 +8446,21 @@ async function adminResetUserPassword(userId){
     showToast('📧 Reset email sent to ' + prof.email);
   }catch(err){ showToast('❌ ' + (err.message || err)); }
 }
-async function adminTempUserPassword(userId){
+async function adminSetUserPassword(userId){
   if(!isSuperAdmin()){ showToast('🔒 Super admin only.'); return; }
   try{
     const { data: prof } = await sb.from('user_profiles').select('full_name, email').eq('user_id', userId).maybeSingle();
     if(!prof){ showToast('Account not found.'); return; }
-    const suggested = 'Temp-' + Math.random().toString(36).slice(2, 10);
-    const pw = prompt(`Temporary password for ${prof.full_name || prof.email}:\n(Click OK to use ${suggested} or type your own)`, suggested);
-    if(!pw || pw.length < 6){ showToast('Cancelled or password too short (min 6).'); return; }
+    // Default the prompt to the shared bootstrap password — super admin hits OK
+    // or types any other password they prefer. Either way the admin knows it
+    // because they typed it themselves.
+    const suggested = 'MULTIMEDIA123';
+    const pw = prompt(`New password for ${prof.full_name || prof.email}:\nDefault is "${suggested}". OK accepts it, Cancel aborts.`, suggested);
+    if(!pw){ showToast('Cancelled.'); return; }
+    if(pw.length < 6){ showToast('Password too short (min 6 characters).'); return; }
     const { data, error } = await sb.functions.invoke('admin-temp-password', { body: { userId, password: pw } });
     if(error) throw error;
-    showToast(`✅ Password set to: ${pw}\nTell the student — they can change it in the app later.`);
+    showToast(`✅ Password set to: ${pw}\nTell the student — they can change it in Edit Profile afterwards.`);
   }catch(err){ showToast('❌ ' + (err.message || err)); }
 }
 
