@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v185';
+const APP_BUILD = 'v186';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -335,6 +335,17 @@ function isFullProfessor(){
     || currentProfile.is_super_admin === true
   ));
 }
+// Reviewer-only (not full access, not Art App seat, not super admin) — they work
+// as extra eyes on submissions across programs, without changing anything.
+// They have no domain to scope against, so the UI does NOT domain-filter them,
+// and RLS grants them SELECT-only on items/portfolios/feedback.
+function isReviewerOnly(){
+  if(!isProfessorRole()) return false;
+  if(isSuperAdmin()) return false;
+  if(isGeneralProfessor()) return false;
+  if(isFullProfessor()) return false;
+  return true;
+}
 
 // ── PROGRAM SCOPING ──
 // Professors only see sections/students/assignments that belong to their
@@ -362,9 +373,11 @@ function initSuperAdminViewPicker(){
 
 function currentScopeDepartment(){
   if(isSuperAdmin() && _profViewAsDomain) return _profViewAsDomain; // super admin picks a professor seat to sit in
+  if(typeof isReviewerOnly === 'function' && isReviewerOnly()) return null; // reviewer-only: no domain filter
   return (currentProfile && currentProfile.department) || null;
 }
 function sectionInScope(sec){
+  if(typeof isReviewerOnly === 'function' && isReviewerOnly()) return true; // extra eyes, every section
   const scope = currentScopeDepartment();
   if(!scope) return true;                  // super admin sees every section
   if(isGeneralProfessor()) return true;    // Art Appreciation teaches every program
@@ -372,6 +385,7 @@ function sectionInScope(sec){
   return domainEq(dept, scope);            // own program only
 }
 function studentInScope(st){
+  if(typeof isReviewerOnly === 'function' && isReviewerOnly()) return true;  // extra eyes, every student
   const scope = currentScopeDepartment();
   if(!scope) return true;                 // super admin
   if(isGeneralProfessor()) return !!st && st.art_app_enrolled === true; // Art Appreciation professor sees only enrolled students
