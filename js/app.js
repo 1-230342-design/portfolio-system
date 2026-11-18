@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v183';
+const APP_BUILD = 'v184';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -7270,13 +7270,19 @@ async function refreshProfViews(){
     document.getElementById('p-dash-recent').innerHTML     = all.slice(0,4).map(submissionItemHtml).join('') || `<div class="empty-state"><p>No submissions yet.</p></div>`;
   }
 
-  // Update filter tab counts
+  // Update filter tab counts (respect the current section filter, if any)
+  const counts = profSectionFilter ? all.filter(p => (p.section||'') === profSectionFilter) : all;
+  const countsAll = counts.length;
+  const countsPending  = counts.filter(p=>p.status==='submitted').length;
+  const countsApproved = counts.filter(p=>p.status==='approved').length;
+  const countsRejected = counts.filter(p=>p.status==='rejected').length;
   const setCount = (id,n)=>{ const el=document.getElementById(id); if(el) el.textContent = '('+n+')'; };
-  setCount('pf-count-all', all.length);
-  setCount('pf-count-submitted', pending.length);
-  setCount('pf-count-approved', approved.length);
-  setCount('pf-count-rejected', rejected.length);
+  setCount('pf-count-all', countsAll);
+  setCount('pf-count-submitted', countsPending);
+  setCount('pf-count-approved', countsApproved);
+  setCount('pf-count-rejected', countsRejected);
 
+  renderSubmissionSectionTabs();
   renderSubmissionsList();
 
   // Keep the "Submitted Works" sidebar list in step with the counts here
@@ -7292,7 +7298,8 @@ function renderSubmissionsList(){
   const subList = document.getElementById('psub-list');
   if(!subList) return;
   const all = _profItems.filter(p=>p.status!=='draft'); // drafts are never in review
-  const filtered = profFilterStatus==='all' ? all : all.filter(p=>p.status===profFilterStatus);
+  const scoped = profSectionFilter ? all.filter(p=>(p.section||'') === profSectionFilter) : all;
+  const filtered = profFilterStatus==='all' ? scoped : scoped.filter(p=>p.status===profFilterStatus);
   subList.innerHTML = filtered.length ? filtered.map(submissionItemHtml).join('') : `<div class="empty-state"><p>No submissions in this category yet.</p></div>`;
 }
 
@@ -7301,6 +7308,39 @@ function profFilterTab(el, status){
   document.querySelectorAll('#p-submissions .filter-tab').forEach(b=>b.classList.remove('active'));
   el.classList.add('active');
   renderSubmissionsList();
+}
+
+// Section drill-down: every section with pending review work for this
+// professor's seat appears as a chip with count; tap to filter. Only sections
+// that actually have submissions for the current seat are shown.
+let profSectionFilter = null;       // null = ALL sections
+function renderSubmissionSectionTabs(){
+  const host = document.getElementById('pf-section-tabs');
+  if(!host) return;
+  const all = _profItems.filter(p=>p.status!=='draft');
+  if(!all.length){ host.style.display = 'none'; host.innerHTML = ''; return; }
+  // counts per section
+  const counts = {};
+  all.forEach(i=>{
+    const s = (i.section || '').trim() || 'No Section';
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  const names = Object.keys(counts).sort((a,b)=>{
+    if(a === 'No Section') return 1;
+    if(b === 'No Section') return -1;
+    return a.localeCompare(b);
+  });
+  host.style.display = 'flex';
+  const active = (name) => (profSectionFilter === null && name === null) || profSectionFilter === name ? ' active' : '';
+  const btn = (name,label=name) => `<button class="filter-tab${active(name)}" onclick="profSectionTab(this, ${name ? `'${esc(name).replace(/'/g,"\\'")}'` : 'null'})">${esc(label||name)} (${counts[label||name]})</button>`;
+  host.innerHTML = btn(null, 'All') + names.map(n=>btn(n, n)).join('');
+}
+function profSectionTab(el, name){
+  profSectionFilter = name || null;
+  document.querySelectorAll('#pf-section-tabs .filter-tab').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
+  renderSubmissionsList();
+  refreshProfViews(); // recompute counts per section selection
 }
 
 function submissionItemHtml(p){
