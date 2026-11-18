@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v190';
+const APP_BUILD = 'v191';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -8409,17 +8409,130 @@ function renderAdminStoragePage(){
   if(typeof renderAdminStorageReport === 'function') renderAdminStorageReport(true);
 }
 
-// ── ENROLL ACCOUNTS (super-admin only, no public sign-up) ──
+// ── FILE UPLOAD — parse .xls/.xlsx roster and pre-fill bulk-create queue ──
+let _adminEnrollParsed = []; // [{ full_name, student_id, section, department }]
+
+// Rebuild the preview DOM from _adminEnrollParsed
+function repaintEnrollPreview(){
+  const listEl = document.getElementById('admin-enroll-preview-list');
+  const countEl = document.getElementById('admin-enroll-preview-count');
+  const wrap   = document.getElementById('admin-enroll-preview');
+  const btn    = document.getElementById('admin-enroll-file-import');
+  const fmt = n => n.toLocaleString();
+  if(listEl){
+    listEl.innerHTML = _adminEnrollParsed.map((p, i) => `
+      <div class="student-row" style="align-items:center;gap:10px;">
+        <div class="student-ava"><div class="avatar-initial" style="background:${avatarColor(p.full_name)};width:100%;height:100%;">${esc(studentInitial(p.full_name))}</div></div>
+        <div class="student-row-info" style="min-width:0;flex:1;">
+          <div class="student-row-name">${esc(p.full_name)}</div>
+          <div class="student-row-meta">${esc(p.student_id)} &middot; ${esc(p.section)}</div>
+        </div>
+        <button class="btn-cancel" style="padding:6px 12px;margin:0;" onclick="_adminEnrollParsed.splice(${i},1); repaintEnrollPreview();">Remove</button>
+      </div>`).join('');
+  }
+  if(countEl) countEl.textContent = _adminEnrollParsed.length
+    ? `${fmt(_adminEnrollParsed.length)} student(s) ready. Default: Multimedia Arts. Press 💾 Import students to enroll them.`
+    : 'No students remaining.';
+  if(wrap)   wrap.style.display = _adminEnrollParsed.length ? 'block' : 'none';
+  if(btn)  { btn.disabled = !_adminEnrollParsed.length; btn.style.opacity = _adminEnrollParsed.length ? '1' : '.45'; btn.style.cursor = _adminEnrollParsed.length ? 'pointer' : 'not-allowed'; }
+}
+
+function renderAdminEnrollPage(){
+  
+}
+
+async function adminEnrollReadFile(input){
+  const file = input && input.files && input.files[0];
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){ showToast('❌ Could not load SheetJS — check your network.'); return; }
+  showToast('📖 Reading ' + file.name + '…');
+  const sectionFromName = (file.name.replace(/\.(xls|xlsx)$/i,'').replace(/\s*\(\d+\)\s*$/i,'').split(/ - /).pop() || 'Unknown').trim();
+  const data = await file.arrayBuffer();
+  let workbook;
+  try { workbook = XLSX.read(data, { type: 'array' }); }
+  catch(err) { showToast('❌ Could not read file: ' + (err.message || err)); return; }
+  const sheetName = workbook.SheetNames[0];
+  if(!sheetName){ showToast('❌ No sheets found in file.'); return; }
+  const ws  = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  if(!rows || !rows.length){ showToast('❌ That file appears empty.'); return; }
+
+  // Locate header row ("Student Name" cell) and columns
+  let hdrIdx = -1, col = { name: -1, sex: -1, id: -1, program: -1, section: -1 };
+  for(let i=0; i<rows.length; i++){
+    const row = rows[i] || [];
+    for(let j=0; j<row.length; j++){
+      if(String(row[j] || '').trim().toLowerCase() === 'student name'){ hdrIdx = i; col.name = j; break; }
+    }
+    if(hdrIdx >= 0) break;
+  }
+  if(hdrIdx < 0){ showToast('❌ Could not find the header row — expected a cell labelled "Student Name".'); return; }
+  for(let j=0; j<rows[hdrIdx].length; j++){
+    const v = String(rows[hdrIdx][j] || '').trim().toLowerCase();
+    if(v === 'sex')                col.sex     = j;
+    else if(v === 'student number') col.id      = j;
+    else if(v === 'program code')  col.program = j;
+    else if(v === 'section name' || v === 'section') col.section = j;
+  }
+  if(col.id < 0){ showToast('❌ Could not locate the "Student Number" column.'); return; }
+
+  // SheetJS is loaded in index.html before this one
+  const parsed = [];
+  for(let i = hdrIdx + 1; i < rows.length; i++){
+    const r = rows[i] || [];
+    const idRaw = String(r[col.id] || '').trim();
+    if(!idRaw) continue;          // skip truly blank tail rows
+    if(/^[Mf]$/i.test(idRaw)) continue;
+    const idMatch = idRaw.match(/([12]-\d{5,8}[TF]?\b)/); if(!idMatch) continue;
+    const id  = idMatch[1];
+    const nm  = String(r[col.name] || '').trim().replace(/\s+/g, ' ').replace(/^\d+\s*/, '');
+    if(!nm) continue;
+    const rowSection = col.section >= 0 ? String(r[col.section] || '').trim() : sectionFromName;
+    parsed.push({ full_name: nm, student_id: id, section: rowSection || sectionFromName, department: PROGRAM_MM });
+  }
+  if(!parsed.length){ showToast('❌ No student rows could be parsed.'); return; }
+
+  _adminEnrollParsed = parsed;
+  repaintEnrollPreview();
+  showToast(`✅ ${parsed.length.toLocaleString()} student(s) parsed — preview ready.`);
+}
+async function adminEnrollImportFile(){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin only.'); return; }
+  if(!_adminEnrollParsed.length){ showToast('No rows parsed yet — pick a file first.'); return; }
+  const btn = document.getElementById('admin-enroll-file-import');
+  if(btn){ btn.disabled = true; btn.style.opacity = '.5'; btn.style.cursor = 'wait'; btn.textContent = 'Importing…'; }
+  const CHUNK = 50;
+  let created = 0, skipped = 0;
+  const errors = [];
+  for(let i = 0; i < _adminEnrollParsed.length; i += CHUNK){
+    const slice = _adminEnrollParsed.slice(i, i + CHUNK);
+    try{
+      const { data, error } = await sb.functions.invoke('admin-create-accounts', { body: { accounts: slice.map(a => ({ ...a, role: 'student' })) } });
+      if(error){ errors.push({ batch: i, msg: error.message }); continue; }
+      created += (data && data.created && data.created.length) || 0;
+      skipped += (data && data.errors && data.errors.length)  || 0;
+      if(data && data.errors) errors.push(...data.errors.map(e => ({ id: e.student_id || '?', msg: e.error || 'failed' })));
+    }catch(err){
+      errors.push({ batch: i, msg: String(err?.message || err) });
+    }
+  }
+  if(btn){ btn.textContent = '💾 Import students'; btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+  const statusEl = document.getElementById('admin-enroll-status');
+  if(statusEl) statusEl.innerHTML = esc(`✅ ${created} created${skipped ? ` · ❌ ${skipped} failed` : ''}` + (errors.length ? `<br><pre style="white-space:pre-wrap;font-size:11px;max-height:200px;overflow:auto;">${esc(errors.slice(0,10).map(e => (e.id ? e.id + ': ' : '') + (e.msg || '')).join('\n'))}</pre>` : ''));
+  showToast(`✅ ${created} student(s) enrolled${skipped ? ` · ❌ ${skipped} failed` : ''}`);
+  _adminEnrollParsed = [];
+  repaintEnrollPreview();
+}
 const DEPT_ALIASES = {
-  'mm':          'BS Information Technology Major in Multimedia Arts',
-  'multimedia':  'BS Information Technology Major in Multimedia Arts',
-  ' multimedia arts': 'BS Information Technology Major in Multimedia Arts',
-  'da':          'BS Information Technology Major in Data Analytics',
-  'data analytics': 'BS Information Technology Major in Data Analytics',
-  'aa':          'BS Information Technology (Art Appreciation prof)',
-  'art appreciation': 'BS Information Technology (Art Appreciation prof)',
-  'art app':     'BS Information Technology (Art Appreciation prof)',
-  '':            null,
+  'mm':'BS Information Technology Major in Multimedia Arts',
+  'multimedia':'BS Information Technology Major in Multimedia Arts',
+  ' multimedia arts':'BS Information Technology Major in Multimedia Arts',
+  'da':'BS Information Technology Major in Data Analytics',
+  'data analytics':'BS Information Technology Major in Data Analytics',
+  'aa':'BS Information Technology (Art Appreciation prof)',
+  'art appreciation':'BS Information Technology (Art Appreciation prof)',
+  'art app':'BS Information Technology (Art Appreciation prof)',
+  '':null,
 };
 function resolveDepartmentInput(raw){
   if(!raw) return null;

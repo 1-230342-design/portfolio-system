@@ -1,3 +1,9 @@
 # Local-only files — never deploy. MM FILES holds real class lists (student
 # names + numbers); publishing them would violate the Data Privacy Act.
 MM FILES/
+# Real roster data — privacy sensitive, never deploy
+artfolio data/
+roster-parse.ps1
+roster-paste.txt
+x-dumper.ps1
+x-parse*.ps1
