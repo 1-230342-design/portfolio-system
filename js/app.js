@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v189';
+const APP_BUILD = 'v190';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -8419,11 +8419,6 @@ const DEPT_ALIASES = {
   'aa':          'BS Information Technology (Art Appreciation prof)',
   'art appreciation': 'BS Information Technology (Art Appreciation prof)',
   'art app':     'BS Information Technology (Art Appreciation prof)',
-  'bs it':       'BS Information Technology',
-  'bsita':       'BS Information Technology',
-  'tourism':     'BS Tourism Management',
-  'hospitality': 'BS Hospitality Management',
-  'accountancy': 'BS Accountancy',
   '':            null,
 };
 function resolveDepartmentInput(raw){

@@ -525,10 +525,6 @@
               <option value="BS Information Technology Major in Multimedia Arts">Multimedia Arts</option>
               <option value="BS Information Technology Major in Data Analytics">Data Analytics</option>
               <option value="BS Information Technology (Art Appreciation prof)">Art Appreciation</option>
-              <option value="BS Accountancy">BS Accountancy</option>
-              <option value="BS Hospitality Management">BS Hospitality Management</option>
-              <option value="BS Tourism Management">BS Tourism Management</option>
-              <option value="BS Information Technology">BS Information Technology</option>
             </select>
           </label>
           <button class="btn-view-sm" onclick="adminEnrollSingle()">＋ Add</button>
@@ -536,7 +532,7 @@
 
         <!-- Bulk paste -->
         <div class="section-title" style="margin:22px 0 8px;">Bulk paste from roster</div>
-        <div style="font-size:13px;color:var(--text3);margin-bottom:10px;">One line per account. Format: <code>ID|Full Name|Section|Department</code> — e.g. <code>1-230371|Juan Dela Cruz|2BSIT MM1|BS Information Technology Major in Multimedia Arts</code>. Sections can be left blank. Department can be one of the listed exact strings (or <code>MM</code>/<code>DA</code>/<code>AA</code> shortcuts).</div>
+        <div style="font-size:13px;color:var(--text3);margin-bottom:10px;">One line per account. Format: <code>ID|Full Name|Section|Department</code> — e.g. <code>1-230371|Juan Dela Cruz|2BSIT MM1|MM</code>. Sections can be left blank. Department can be one of: <code>MM</code>/<code>Multimedia</code>, <code>DA</code>/<code>Data Analytics</code>, <code>AA</code>/<code>Art Appreciation</code> shortcuts, or the full exact string.</div>
         <textarea id="admin-enroll-bulk" class="finput" rows="10" placeholder="1-230371|Juan Dela Cruz|2BSIT MM1|MM&#10;1-230372|Maria Santos|3BSIT MM2|MM&#10;p-1001|Mark Mabalot||BS Information Technology Major in Multimedia Arts" style="font-family:Consolas,monospace;font-size:12px;"></textarea>
         <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;">Default role
