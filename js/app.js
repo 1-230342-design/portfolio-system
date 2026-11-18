@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v187';
+const APP_BUILD = 'v188';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -3951,6 +3951,12 @@ async function doLoginProf(){
   const profile = await getProfile(data.user.id);
   if(!profile){ showToast('❌ Profile not found. Please contact your administrator to set up your account.'); return; }
   if(profile.role !== 'professor' && profile.role !== 'admin'){ showToast('❌ This is not a professor account. Please use the student login instead.'); return; }
+  // Block inactive professor accounts at the door (prevents reattempting stale creds).
+  if(typeof profile.is_active !== 'undefined' && profile.is_active === false){
+    showToast('⛔ Your account has been deactivated by an administrator. Contact the super admin.');
+    sb.auth.signOut().catch(()=>{});
+    return;
+  }
   currentUser    = data.user;
   currentProfile = profile;
   document.getElementById('p-sidebar-name').textContent = profile.full_name||'';
@@ -7002,7 +7008,7 @@ async function renderAdminPage(){
   try{
     const { data, error } = await sb
       .from('user_profiles')
-      .select('user_id, full_name, email, role, department, section, year_level, student_id, is_super_admin, can_grade')
+      .select('user_id, full_name, email, role, department, section, year_level, student_id, is_super_admin, can_grade, is_active')
       .order('full_name');
     if(error) throw error;
     _adminUsers = data || [];
@@ -7067,18 +7073,24 @@ function renderAdminUsers(){
     const isSelf = !!(currentUser && u.user_id === currentUser.id);
     const isProf = u.role === 'professor' || u.role === 'admin';
     const meta = [u.email, u.student_id, u.section, u.department].filter(Boolean).join(' · ') || 'No details';
-    return `<div class="student-row admin-user-row" style="align-items:flex-start;gap:12px;flex-wrap:wrap;">
+    const activeFlag = (typeof u.is_active === 'undefined') ? true : !!u.is_active;
+    const roleCell = isProf
+      ? `<select class="fselect admin-role" ${isSelf?'disabled':''} onchange="adminRoleChanged(this)" style="width:auto;min-width:120px;margin:0;padding:8px 10px;font-size:12px;">
+           <option value="professor" ${u.role==='professor'?'selected':''}>Professor</option>
+           <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
+         </select>`
+      : `<span class="sa-view-chip active" style="cursor:default;flex:0 0 auto;">Student</span>`;
+    const statusBtn = isProf
+      ? `<button class="btn-view-sm" style="${activeFlag?'border-color:var(--green);color:var(--green);':'border-color:var(--red);color:var(--red);'}" onclick="adminToggleActive('${esc(u.user_id)}', this)">${activeFlag?'✅ Active':'🚫 Inactive'}</button>`
+      : '';
+    return `<div class="student-row admin-user-row" data-is-active="${activeFlag}" style="align-items:flex-start;gap:12px;flex-wrap:wrap;">
       <div class="student-ava">${avatarFaceHtml(u.full_name, null)}</div>
       <div class="student-row-info" style="min-width:180px;">
         <div class="student-row-name">${esc(u.full_name || 'Unnamed')}${isSelf ? ' <span style="font-size:10px;font-weight:700;color:var(--orange);">(YOU)</span>' : ''}</div>
         <div class="student-row-meta">${esc(meta)}</div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;flex:1;">
-        <select class="fselect admin-role" ${isSelf?'disabled':''} onchange="adminRoleChanged(this)" style="width:auto;min-width:120px;margin:0;padding:8px 10px;font-size:12px;">
-          <option value="student" ${u.role==='student'?'selected':''}>Student</option>
-          <option value="professor" ${u.role==='professor'?'selected':''}>Professor</option>
-          <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
-        </select>
+        ${roleCell}
         <div class="admin-prof-fields" style="display:${isProf?'flex':'none'};flex-wrap:wrap;gap:8px;align-items:center;">
           <select class="fselect admin-dept" style="width:auto;max-width:230px;margin:0;padding:8px 10px;font-size:12px;">
             ${adminDeptOptions(u.department)}
@@ -7093,12 +7105,28 @@ function renderAdminUsers(){
           </label>
         </div>
         <button class="btn-view-sm" onclick="adminSaveUser('${u.user_id}', this)">💾 Save</button>
-        <button class="btn-view-sm" onclick="adminResetUserPassword('${esc(u.user_id)}')">📧 Reset PW</button>
-        <button class="btn-view-sm" onclick="adminTempUserPassword('${esc(u.user_id)}')">🔑 Temp PW</button>
-        ${isSelf ? '' : `<button class="btn-view-sm" style="border-color:var(--red);color:var(--red);" onclick="adminRemoveUser('${u.user_id}', this)">🗑 Remove</button>`}
+        ${!isSelf && isProf ? statusBtn : ''}
+        <button class="btn-view-sm" onclick="adminResetUserPassword('${u.user_id}')">📧 Reset PW</button>
+        <button class="btn-view-sm" onclick="adminTempUserPassword('${u.user_id}')">🔑 Temp PW</button>
       </div>
     </div>`;
   }).join('');
+}
+
+async function adminToggleActive(userId, btn){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin access required.'); return; }
+  try{
+    const row = btn && btn.closest('.admin-user-row');
+    const current = row ? row.dataset.isActive === 'true' : true;
+    const newVal  = !current;
+    const { error } = await sb.rpc('admin_set_account_active', { p_user_id: userId, p_active: newVal });
+    if(error) throw error;
+    showToast(newVal ? '✅ Account re-activated.' : '🚫 Account deactivated — they can no longer log in.');
+    renderAdminUsers();
+  }catch(err){
+    console.error('adminToggleActive error:', err);
+    showToast('❌ ' + (err.message || err));
+  }
 }
 
 async function adminSaveUser(userId, btn){
@@ -7923,6 +7951,12 @@ async function restoreSession(){
     refreshStudentViews();
     populateSubjectDropdown();
   } else if(profile.role === 'professor' || profile.role === 'admin'){
+    if(typeof profile.is_active !== 'undefined' && profile.is_active === false){
+      sb.auth.signOut().catch(()=>{});
+      showToast('⛔ Your account has been deactivated by an administrator. Contact the super admin.');
+      go('s-landing');
+      return;
+    }
     document.getElementById('p-sidebar-name').textContent = profile.full_name||'';
     setAvatar('p-sidebar-avatar', profile.full_name, profile.avatar_url);
     go('s-professor'); pPage('p-dashboard'); refreshProfViews();
