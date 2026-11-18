@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v182';
+const APP_BUILD = 'v183';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -314,8 +314,10 @@ function domainEq(a, b){ return !!(a && b) && domainNorm(a) === domainNorm(b); }
 // The Art Appreciation domain is a general subject — everyone takes it, so
 // its professors teach every section and see every student on the roster.
 function isGeneralProfessor(){
-  return isProfessorRole() && currentProfile &&
-    !!currentProfile.department &&
+  if(!isProfessorRole() || !currentProfile) return false;
+  // Super-admin sitting in the Art Appreciation seat is scoped as Art App.
+  if(isSuperAdmin() && _profViewAsDomain && domainNorm(_profViewAsDomain) === domainNorm(NEW_ARTAPP)) return true;
+  return !!currentProfile.department &&
     domainNorm(currentProfile.department) === domainNorm(NEW_ARTAPP);
 }
 function isProfessorRole(){
@@ -339,8 +341,27 @@ function isFullProfessor(){
 // own program. Super admins see everything. Rows created before the
 // department column existed (department = null) are treated as Multimedia
 // Arts, which is where the whole system started.
+let _profViewAsDomain = PROGRAM_MM; // super-admin preference: which professor's seat they are viewing
+function setProfViewAs(which){
+  _profViewAsDomain = which === 'artapp' ? NEW_ARTAPP : PROGRAM_MM;
+  // Update chip states
+  document.querySelectorAll('.sa-view-chip').forEach(b=>{
+    b.classList.toggle('active', b.getAttribute('data-domain') === which);
+  });
+  // Land them somewhere sensible and refresh licensed rows
+  if(typeof pPage === 'function') pPage('p-dashboard');
+  if(typeof refreshProfViews === 'function') refreshProfViews();
+  if(typeof applyProfessorPermissions === 'function') applyProfessorPermissions();
+}
+// Super admin: pick which professor view is active — multimedia or Art App.
+function initSuperAdminViewPicker(){
+  const picker = document.getElementById('super-admin-view-picker');
+  if(!picker) return;
+  picker.style.display = isSuperAdmin() ? 'block' : 'none';
+}
+
 function currentScopeDepartment(){
-  if(isSuperAdmin()) return null;          // no filter
+  if(isSuperAdmin() && _profViewAsDomain) return _profViewAsDomain; // super admin picks a professor seat to sit in
   return (currentProfile && currentProfile.department) || null;
 }
 function sectionInScope(sec){
@@ -6893,6 +6914,8 @@ function applyProfessorPermissions(){
   // the low-effort browsing path for non-grading professors. Full-access
   // professors use Artworks for Review; super admins use admin flows.
   navShow('nav-p-submitted-works', !full);
+  // Super admin's two seats — Multimedia / Art Appreciation.
+  initSuperAdminViewPicker();
 
 
   // Two-mode sidebar. Super admins start with just two entries; clicking
@@ -7222,6 +7245,7 @@ async function renderAdminAudit(){
 }
 
 async function refreshProfViews(){
+  initSuperAdminViewPicker();
   _profItems = await loadAllItemsForProfessor();
   // Drafts (withdrawn works + students' personal-gallery uploads) are never
   // in review — hide them from every professor surface (stats, queues, lists).

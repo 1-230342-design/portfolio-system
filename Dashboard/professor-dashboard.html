@@ -29,6 +29,14 @@
           Professor View
           <svg class="snav-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
         </a>
+        <!-- Super admin view selector — pick which professor's seat you sit in. -->
+        <div id="super-admin-view-picker" style="display:none; padding:6px 6px 8px 10px;border-bottom:1px solid rgba(255,255,255,.08); margin-bottom:4px;">
+          <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:5px;">View as professor of</div>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="sa-view-chip active" data-domain="mm" onclick="setProfViewAs('mm')">Multimedia</button>
+            <button type="button" class="sa-view-chip" data-domain="artapp" onclick="setProfViewAs('artapp')">Art Appreciation</button>
+          </div>
+        </div>
         <div class="prof-nav-group" id="p-prof-nav-group">
         <a class="snav-item active" id="nav-p-dashboard" onclick="pPage('p-dashboard')">
           <svg class="snav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
