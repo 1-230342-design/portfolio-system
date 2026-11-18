@@ -74,7 +74,12 @@ serve(async (req) => {
       const student_id = (a.student_id || '').trim();
       if(!student_id){ errors.push({ student_id: '(missing)', error: 'student_id required' }); continue; }
       const email    = student_id.includes('@') ? student_id : `${student_id}@asiatech.edu.ph`;
-      const password = (a.password && a.password.length >= 6) ? a.password : student_id;
+      // Default bootstrap password — public on the signup screen.
+      // Students must change it from Edit Profile → Change My Password
+      // after their first login. Only use as the initial password;
+      // never hardcode anyone's real institutional password here.
+      const DEFAULT_BOOTSTRAP_PASSWORD = 'MULTIMEDIA123';
+      const password = (a.password && a.password.length >= 6) ? a.password : DEFAULT_BOOTSTRAP_PASSWORD;
       const role     = a.role === 'professor' ? 'professor' : 'student';
       const full_name = (a.full_name || '').trim() || role === 'professor' ? (a.full_name || '').trim() || 'Professor' : (a.full_name || '').trim() || 'Student';
 
