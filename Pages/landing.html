@@ -395,7 +395,7 @@
       <h1 class="lp-display lp-serif">Create. Organize. Showcase.</h1>
       <p class="lp-hero-copy">A web-based portfolio management system built for multimedia arts students to organize, manage, and showcase their creative works — reviewed and graded by their professors, all in one place.</p>
       <div class="lp-hero-ctas">
-        <button class="lp-btn lp-btn-primary" onclick="go('s-signup-choice')">Get started</button>
+        <button class="lp-btn lp-btn-primary" onclick="browseAllStudents()">Browse students</button>
         <a class="lp-btn-text" onclick="scrollLandingTo('lp-explore')">Explore portfolios</a>
       </div>
     </div>
@@ -406,8 +406,9 @@
         <div class="lp-login-sub">Sign in to continue to your portfolio</div>
         <form id="lp-login-form" onsubmit="event.preventDefault(); handleLandingLogin('student')">
           <div class="lp-field">
-            <label for="lp-login-email">Email address</label>
-            <input id="lp-login-email" type="email" placeholder="example@gmail.com" required/>
+            <label for="lp-login-email">Student / Professor ID</label>
+            <input id="lp-login-email" type="text" placeholder="1-230478" required autocomplete="username" autocapitalize="none" spellcheck="false"/>
+            <div class="lp-field-hint" style="font-size:11px;color:var(--lp-ink-soft);margin-top:4px;">The ID the super admin registered you with.</div>
           </div>
           <div class="lp-field">
             <label for="lp-login-pass">Password</label>
@@ -424,7 +425,6 @@
             <button type="button" class="lp-btn lp-btn-ghost" onclick="handleLandingLogin('professor')">Login as professor</button>
           </div>
         </form>
-        <div class="lp-signup-line">Don't have an account? <a onclick="go('s-signup-choice')">Sign up</a></div>
       </div>
     </div>
   </div>

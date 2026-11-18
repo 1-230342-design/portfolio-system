@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v188';
+const APP_BUILD = 'v189';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -3892,7 +3892,7 @@ function handleAlertLink(){
 async function doLogin(){
   const raw  = document.getElementById('lp-login-email').value.trim();
   const pass = document.getElementById('lp-login-pass').value;
-  if(!raw)  { showToast('⚠️ Please enter your email'); return; }
+  if(!raw)  { showToast('⚠️ Please enter your professor ID'); return; }
   if(!pass) { showToast('⚠️ Please enter your password'); return; }
   const email = raw.includes('@') ? raw : raw+'@asiatech.edu.ph';
   showToast('🔐 Signing in…');
@@ -3907,15 +3907,11 @@ async function doLogin(){
   if(error){ showToast('❌ '+await specificLoginErrorMessage(email, error)); sendLoginAlert(email, false); return; }
   let profile = await getProfile(data.user.id);
   if(!profile){
-    // Profile row is missing — this can happen if the OTP step was skipped or RLS blocked the insert.
-    // Auto-create a minimal profile so the user isn't permanently locked out.
-    // Don't use the raw email/username as the name — it may just be a student number.
-    await sb.from('user_profiles').insert([{
-      user_id:  data.user.id,
-      full_name: 'Student',
-      role:     'student'
-    }]);
-    profile = await getProfile(data.user.id);
+    // Profile missing — the pre-enrolled roster is the only path in; this
+    // one wasn't registered, so reject them.
+    showToast('🔒 You\'re not officially enrolled. Contact the super admin to have your account created.');
+    try{ sb.auth.signOut().catch(()=>{}); }catch(e){}
+    return;
   }
   if(!profile){ showToast('❌ Could not load your profile. Please contact your administrator.'); return; }
   if(profile.role !== 'student'){ showToast('❌ Please use "Login as Professor" for professor accounts.'); return; }
@@ -3935,7 +3931,7 @@ async function doLogin(){
 async function doLoginProf(){
   const raw  = document.getElementById('lp-login-email').value.trim();
   const pass = document.getElementById('lp-login-pass').value;
-  if(!raw)  { showToast('⚠️ Please enter your email'); return; }
+  if(!raw)  { showToast('⚠️ Please enter your professor ID'); return; }
   if(!pass) { showToast('⚠️ Please enter your password'); return; }
   const email = raw.includes('@') ? raw : raw+'@asiatech.edu.ph';
   showToast('🔐 Signing in…');
@@ -5548,6 +5544,7 @@ function pPage(page){
   if(page==='p-archives' && typeof renderArchivesPage === 'function') renderArchivesPage();
   if(page==='p-admin') renderAdminPage();
   if(page==='p-admin-storage' && typeof renderAdminStoragePage === 'function') renderAdminStoragePage();
+  if(page==='p-admin-enroll' && typeof renderAdminEnrollPage === 'function') renderAdminEnrollPage();
   // Defined in js/submitted-works.js — the per-section list of sent-in works
   if(page==='p-submitted-works' && typeof renderSubmittedWorksPage === 'function') renderSubmittedWorksPage();
   // Leaving the Submitted Works page folds its section tree away again.
@@ -6930,6 +6927,7 @@ function applyProfessorPermissions(){
   navShow('nav-p-archives', full);
   navShow('nav-p-admin', superAdmin);
   navShow('nav-p-admin-storage', superAdmin);
+  navShow('nav-p-admin-enroll', superAdmin);
   navShow('nav-p-artapp-requests', typeof isArtAppProfessor === 'function' && isArtAppProfessor());
   if(typeof refreshArtAppBadge === 'function') refreshArtAppBadge();
   // Submitted Works is reviewer-only / view-only professors only — it's
@@ -8409,4 +8407,108 @@ function renderAdminStoragePage(){
   if(typeof loadAdminSectionOptions === 'function') loadAdminSectionOptions();
   if(typeof adminStorageTotals === 'function') adminStorageTotals();
   if(typeof renderAdminStorageReport === 'function') renderAdminStorageReport(true);
+}
+
+// ── ENROLL ACCOUNTS (super-admin only, no public sign-up) ──
+const DEPT_ALIASES = {
+  'mm':          'BS Information Technology Major in Multimedia Arts',
+  'multimedia':  'BS Information Technology Major in Multimedia Arts',
+  ' multimedia arts': 'BS Information Technology Major in Multimedia Arts',
+  'da':          'BS Information Technology Major in Data Analytics',
+  'data analytics': 'BS Information Technology Major in Data Analytics',
+  'aa':          'BS Information Technology (Art Appreciation prof)',
+  'art appreciation': 'BS Information Technology (Art Appreciation prof)',
+  'art app':     'BS Information Technology (Art Appreciation prof)',
+  'bs it':       'BS Information Technology',
+  'bsita':       'BS Information Technology',
+  'tourism':     'BS Tourism Management',
+  'hospitality': 'BS Hospitality Management',
+  'accountancy': 'BS Accountancy',
+  '':            null,
+};
+function resolveDepartmentInput(raw){
+  if(!raw) return null;
+  const key = String(raw).trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(DEPT_ALIASES, key) ? DEPT_ALIASES[key] : raw.trim();
+}
+async function adminEnrollSingle(){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin access required.'); return; }
+  const role = (document.getElementById('admin-enroll-role')    && document.getElementById('admin-enroll-role').value)    || 'student';
+  const idEl = document.getElementById('admin-enroll-id');
+  const nmEl = document.getElementById('admin-enroll-name');
+  const scEl = document.getElementById('admin-enroll-section');
+  const dpEl = document.getElementById('admin-enroll-dept');
+  const id   = ((idEl && idEl.value) || '').trim();
+  const name = ((nmEl && nmEl.value) || '').trim();
+  if(!id || !name){ showToast('ID and Full Name are required.'); return; }
+  const section = (scEl && scEl.value || '').trim() || null;
+  const department = dpEl ? (dpEl.value || null) : null;
+  const statusEl = document.getElementById('admin-enroll-status');
+  if(statusEl) statusEl.innerHTML = 'Saving…';
+  try{
+    const { data, error } = await sb.functions.invoke('admin-create-accounts', {
+      body: { accounts: [{ role, student_id: id, full_name: name, section, department }] },
+    });
+    if(error) throw error;
+    const ok  = (data && data.created && data.created.length) || 0;
+    const err = (data && data.errors  && data.errors.length)  || 0;
+    if(statusEl) statusEl.innerHTML = esc(`✅ ${ok} created${err ? ' · ❌ ' + err + ' failed' : ''}`);
+    if(idEl) idEl.value = ''; if(nmEl) nmEl.value = ''; if(scEl) scEl.value = '';
+    showToast(`✅ ${ok} account created (password: the ID itself)`);
+  }catch(err){
+    console.error('adminEnrollSingle:', err);
+    if(statusEl) statusEl.innerHTML = '❌ ' + esc(err.message || String(err));
+    showToast('❌ ' + (err.message || err));
+  }
+}
+async function adminEnrollBulk(){
+  if(!isSuperAdmin()){ showToast('🔒 Super admin access required.'); return; }
+  const ta = document.getElementById('admin-enroll-bulk');
+  const raw = (ta && ta.value || '').trim();
+  if(!raw){ showToast('Paste at least one line.'); return; }
+  const role = (document.getElementById('admin-enroll-bulk-role') && document.getElementById('admin-enroll-bulk-role').value) || 'student';
+  const accounts = [];
+  let lineNum = 0;
+  for(const rawLine of raw.split(/\r?\n/)){
+    lineNum++;
+    const line = rawLine.trim();
+    if(!line) continue;
+    const parts = line.split('|').map(s => s.trim());
+    const [student_id = '', full_name = '', section = '', dept = ''] = parts;
+    if(!student_id || !full_name){ accounts.push({ student_id: student_id || `(row ${lineNum} missing id)`, full_name: '—', section: null, department: null, _error: 'row ' + lineNum + ' missing id or name' }); continue; }
+    accounts.push({
+      role,
+      student_id,
+      full_name,
+      section: section || null,
+      department: resolveDepartmentInput(dept) || null,
+    });
+  }
+  if(!accounts.length){ showToast('No valid rows to send.'); return; }
+  const statusEl = document.getElementById('admin-enroll-status');
+  if(statusEl) statusEl.innerHTML = `Creating ${accounts.length} account(s)…`;
+  try{
+    const { data, error } = await sb.functions.invoke('admin-create-accounts', { body: { accounts } });
+    if(error) throw error;
+    const ok   = (data && data.created && data.created.length) || 0;
+    const errs = (data && data.errors  && data.errors.length)  || 0;
+    if(statusEl){
+      let html = `✅ ${ok} created`;
+      if(errs){
+        html += ` · ❌ ${errs} failed`;
+        html += '<br><pre style="white-space:pre-wrap;font-size:11px;max-height:160px;overflow:auto;background:rgba(244,67,54,.08);padding:8px;border-radius:6px;margin-top:6px;">';
+        html += esc((data.errors || []).map(e => `${e.student_id} — ${e.error}`).join('\n'));
+        html += '</pre>';
+      }
+      statusEl.innerHTML = html;
+    }
+    showToast(`✅ ${ok} created${errs ? ' · ❌ ' + errs + ' failed — see details' : ''}`);
+  }catch(err){
+    console.error('adminEnrollBulk:', err);
+    if(statusEl) statusEl.innerHTML = '❌ ' + esc(err.message || String(err));
+    showToast('❌ ' + (err.message || err));
+  }
+}
+function renderAdminEnrollPage(){
+  // nothing dynamic yet — kept for parity in case we pre-fill from the roster table later
 }
