@@ -25,7 +25,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // root) is fetched no-store on every load; when it names a newer build than
 // this script, the tab reloads itself once. sessionStorage stops a reload loop
 // if a lagging edge cache keeps handing back the old build.
-const APP_BUILD = 'v191';
+const APP_BUILD = 'v192';
 (function guardAgainstStaleBuild(){
   try{
     fetch('version.json?t=' + Date.now(), { cache:'no-store' })
@@ -4157,6 +4157,87 @@ async function resendCode(kind){
   if(!sent){ showToast('❌ Could not resend code. Please try again.'); return; }
   resetOtpTimer(kind);
   showToast('📧 Code resent! Check your email.');
+}
+
+// ── CHANGE MY PASSWORD (OTP via EmailJS) ──
+// Sends an 8-digit code to the student's own @asiatech.edu.ph inbox using the
+// same request_otp / verify_otp RPCs as the sign-up flow. No public signup
+// needed because the student is already logged in.
+let _cpVerifiedEmail = null;
+
+function cpToggleChangePassword(){
+  const el = document.getElementById('ep-changepass');
+  if(!el) return;
+  const opening = el.style.display === 'none';
+  if(opening){
+    document.getElementById('cp-email-label').textContent = (currentProfile && currentProfile.email) || (currentUser && currentUser.email) || '';
+    document.getElementById('cp-status').textContent = '';
+    document.getElementById('cp-code').value = '';
+    document.getElementById('cp-newpass').value = '';
+    document.getElementById('cp-newpass2').value = '';
+    document.getElementById('cp-step-send').style.display   = 'block';
+    document.getElementById('cp-step-verify').style.display = 'none';
+    document.getElementById('cp-step-set').style.display    = 'none';
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+async function cpSendCode(){
+  if(!currentUser || !currentProfile){ showToast('⚠️ Please sign in first.'); return; }
+  const email = currentProfile.email || currentUser.email;
+  if(!email){ showToast('⚠️ No email on file.'); return; }
+  _cpVerifiedEmail = null;
+  document.getElementById('cp-status').textContent = 'Sending code…';
+  try{
+    const sent = await sendCustomOtp(email);
+    if(!sent){ document.getElementById('cp-status').textContent = '❌ Could not send code.'; showToast('❌ Could not send code'); return; }
+    document.getElementById('cp-step-send').style.display   = 'none';
+    document.getElementById('cp-step-verify').style.display = 'block';
+    document.getElementById('cp-status').textContent = '✅ Code sent. Check your inbox.';
+  }catch(err){ console.error('cpSendCode:', err); document.getElementById('cp-status').textContent = '❌ ' + (err.message || err); }
+}
+async function cpVerifyCode(){
+  if(!currentUser || !currentProfile){ showToast('⚠️ Please sign in first.'); return; }
+  const email = currentProfile.email || currentUser.email;
+  const code  = String((document.getElementById('cp-code')||{}).value || '').trim();
+  if(code.length !== 8){ showToast('⚠️ Codes are 8 digits.'); return; }
+  document.getElementById('cp-status').textContent = 'Verifying…';
+  try{
+    const ok = await verifyCustomOtp(email, code);
+    if(!ok){ document.getElementById('cp-status').textContent = '❌ Code invalid or expired.'; return; }
+    _cpVerifiedEmail = email;
+    document.getElementById('cp-step-verify').style.display = 'none';
+    document.getElementById('cp-step-set').style.display    = 'block';
+    document.getElementById('cp-status').textContent = '✅ Verified — set your new password.';
+  }catch(err){ console.error('cpVerifyCode:', err); document.getElementById('cp-status').textContent = '❌ ' + (err.message || err); }
+}
+async function cpBackToSend(){
+  document.getElementById('cp-step-verify').style.display = 'none';
+  document.getElementById('cp-step-send').style.display   = 'block';
+  document.getElementById('cp-status').textContent = '';
+}
+async function cpSubmitNewPassword(){
+  if(!_cpVerifiedEmail){ showToast('⚠️ Verify the code first.'); return; }
+  const p1 = (document.getElementById('cp-newpass')||{}).value || '';
+  const p2 = (document.getElementById('cp-newpass2')||{}).value || '';
+  if(p1.length < 6){ showToast('⚠️ Password must be at least 6 characters'); return; }
+  if(p1 !== p2)  { showToast('⚠️ Passwords do not match'); return; }
+  showToast('🔐 Updating password…');
+  document.getElementById('cp-status').textContent = 'Updating password…';
+  try{
+    const { error } = await sb.auth.updateUser({ password: p1 });
+    if(error) throw error;
+    document.getElementById('cp-status').textContent = '✅ Password updated.';
+    showToast('✅ Password updated.');
+    // collapse the panel
+    document.getElementById('ep-changepass').style.display = 'none';
+    _cpVerifiedEmail = null;
+  }catch(err){
+    console.error('cpSubmitNewPassword:', err);
+    document.getElementById('cp-status').textContent = '❌ ' + (err.message || err);
+    showToast('❌ ' + (err.message || err));
+  }
 }
 
 // ── FORGOT PASSWORD ──
